@@ -3,10 +3,13 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "packageManager": "pnpm@11.21.0",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check-skills": "./scripts/check-skills",
+    "bootstrap-team": "./scripts/bootstrap-team"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

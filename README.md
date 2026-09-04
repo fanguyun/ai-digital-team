@@ -15,11 +15,11 @@
 
 ## 启动项目
 
-环境要求：Node.js 18+、npm。
+环境要求：Node.js 18+、pnpm 11.21.0。
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 启动后访问终端输出的本地地址，通常是 `http://localhost:5173`。
@@ -27,8 +27,8 @@ npm run dev
 生产构建：
 
 ```bash
-npm run build
-npm run preview
+pnpm build
+pnpm preview
 ```
 
 ## 目录结构
@@ -50,6 +50,22 @@ npm run preview
 团队默认通过 `agents/main-agent/AGENTS.md` 路由任务。每个岗位目录包含独立的 `AGENTS.md`，岗位专属 Skill 位于对应的 `.agents/skills/` 目录。
 
 Skill 入口保持软链接，不复制 Skill 文件。换设备后，如果软链接目标不存在，按团队规则提示并在用户确认后安装。
+
+## 换设备初始化
+
+拉取项目后，先检查 Skill 软链接：
+
+```bash
+pnpm check-skills
+```
+
+如果本机的 Skill 管理器路径不同，可设置 `SKILLS_MANAGER_ROOT` 后修复链接：
+
+```bash
+SKILLS_MANAGER_ROOT="$HOME/.skills-manager" pnpm bootstrap-team
+```
+
+脚本会优先复用本机已有 Skill；缺失 Skill 时会逐项询问是否全局安装，确认后才调用 Skills Manager。项目侧始终保持软链接形式。
 
 ## 后续扩展
 

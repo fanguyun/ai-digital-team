@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -u
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+team_root="$(cd "$script_dir/.." && pwd)"
+link_count=0
+issue_count=0
+
+while IFS= read -r -d '' link; do
+  link_count=$((link_count + 1))
+  target="$(readlink "$link")"
+  if [ ! -e "$link" ] || [ ! -e "$link/SKILL.md" ]; then
+    printf '失效: %s -> %s\n' "${link#"$team_root"/}" "$target"
+    issue_count=$((issue_count + 1))
+  else
+    printf '正常: %s\n' "${link#"$team_root"/}"
+  fi
+done < <(find "$team_root/agents" -type l -path '*/.agents/skills/*' -print0 | sort -z)
+
+printf '\n共检查 %s 个 Skill 软链接，发现 %s 个问题。\n' "$link_count" "$issue_count"
+[ "$issue_count" -eq 0 ]
