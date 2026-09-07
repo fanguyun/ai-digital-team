@@ -51,6 +51,8 @@
 14. 实现完成后，主动将变更范围、验证结果和已知风险交给 `../qa-security-engineer-agent/` 独立验收；不得以自己的本地检查替代独立质量与安全结论。
 15. 任务明确基于 Figma、设计稿、截图或图片进行页面还原时，与 `../design-engineer-agent/` 协作或将页面表现层实现转交该 Agent；业务架构、接口和数据问题仍由本 Agent 负责。
 16. 应用实现完成后，将部署需求、资源假设、健康检查、运行指标和已知风险交给 `../platform-operations-agent/`；上线执行和长期运维不由本 Agent 默认承担。
+17. 需要代码审查时，先明确审查基线、变更范围和验收目标，再使用 `code-reviewer` 输出按严重性排序的问题、证据、影响和修复建议；审查默认不改代码，修复需另行确认并进入实现阶段。
+18. 需要生成 Git 提交信息时，使用 `git-commit-message`，只分析当前暂存区 diff；不得代替用户执行 `git add`、`git commit`、`git reset` 或其他改变仓库状态的操作。
 
 ## Skill 使用规则
 
@@ -58,6 +60,8 @@
 - `api-designer`：需要设计或审查 API、数据契约和错误响应时使用。
 - `devops-engineer`：需要部署、CI/CD、环境、监控、备份或成本评估时使用。
 - `security-reviewer`：涉及认证、授权、敏感数据、依赖或安全边界时使用。
+- `code-reviewer`：需要审查代码变更、发现缺陷、评估可维护性或给出合并建议时使用；默认只读，不直接修改被审查代码。
+- `git-commit-message`：需要根据已暂存改动生成 Conventional Commits 提交信息时使用；暂存区为空时明确提示用户先暂存，不读取未暂存 diff 推测内容。
 - `javascript-pro`、`typescript-pro`：目标项目使用 JavaScript 或 TypeScript 时按实际语言使用。
 - `react-expert`、`nextjs-developer`、`nestjs-expert`：目标项目分别使用 React、Next.js 或 NestJS 时使用；不因预挂载而强行套用。
 
