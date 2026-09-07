@@ -1,0 +1,6 @@
+interface:
+  display_name: "项目管理（Project Manager Agent）"
+  short_description: "让任务、依赖、里程碑和风险持续可见，并推动跨岗位交付闭环。"
+  default_prompt: "使用 $project-manager-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: false

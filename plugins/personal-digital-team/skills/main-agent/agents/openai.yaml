@@ -1,0 +1,6 @@
+interface:
+  display_name: "数字总经理（Main Agent）"
+  short_description: "个人数字团队的默认入口与任务协调中枢。"
+  default_prompt: "使用 $main-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: true

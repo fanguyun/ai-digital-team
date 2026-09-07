@@ -1,0 +1,6 @@
+interface:
+  display_name: "质量与安全工程师（QA & Security Engineer Agent）"
+  short_description: "用可复现的证据验证功能质量与安全风险，为发布提供独立判断。"
+  default_prompt: "使用 $qa-security-engineer-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: false

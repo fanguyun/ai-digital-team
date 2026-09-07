@@ -1,0 +1,25 @@
+{
+  "name": "personal-digital-team",
+  "version": "0.1.0+codex.1788771255414",
+  "description": "个人数字团队：默认入口、任务路由与 15 个岗位 Agent 的插件化能力包。",
+  "author": {
+    "name": "Personal Digital Team"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "个人数字团队",
+    "shortDescription": "一键调用 15 个数字员工岗位。",
+    "longDescription": "个人数字团队插件，把默认入口、任务路由和 15 个岗位 Agent 打包为可在 Codex 中复用和调度的能力包。",
+    "developerName": "Personal Digital Team",
+    "category": "Productivity",
+    "capabilities": [
+      "Agentic",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "使用个人数字团队理解我的目标并路由到合适的岗位。",
+      "用 $main-agent 协调多个数字员工完成任务。",
+      "列出当前个人数字团队中可用的岗位。"
+    ]
+  }
+}

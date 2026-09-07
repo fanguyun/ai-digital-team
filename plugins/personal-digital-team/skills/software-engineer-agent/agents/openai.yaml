@@ -1,0 +1,6 @@
+interface:
+  display_name: "软件工程师（Software Engineer Agent）"
+  short_description: "把已确认的产品方案转化为可靠、可维护、可部署的工程实现。"
+  default_prompt: "使用 $software-engineer-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: false

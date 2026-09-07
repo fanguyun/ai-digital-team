@@ -1,0 +1,20 @@
+{
+  "name": "personal-digital-team",
+  "interface": {
+    "displayName": "Personal Digital Team"
+  },
+  "plugins": [
+    {
+      "name": "personal-digital-team",
+      "source": {
+        "source": "local",
+        "path": "./plugins/personal-digital-team"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

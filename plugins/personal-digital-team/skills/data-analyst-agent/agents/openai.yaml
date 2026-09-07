@@ -1,0 +1,6 @@
+interface:
+  display_name: "数据分析师（Data Analyst Agent）"
+  short_description: "用明确口径和可复核证据，把数据转化为经营判断。"
+  default_prompt: "使用 $data-analyst-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: false

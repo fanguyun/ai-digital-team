@@ -1,0 +1,6 @@
+interface:
+  display_name: "客户成功与交付（Customer Success Agent）"
+  short_description: "把客户承诺、交付过程和反馈风险整理成可追踪的交付协作。"
+  default_prompt: "使用 $customer-success-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: false

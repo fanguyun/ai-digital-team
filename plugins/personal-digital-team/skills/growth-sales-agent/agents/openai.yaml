@@ -1,0 +1,6 @@
+interface:
+  display_name: "增长与销售（Growth & Sales Agent）"
+  short_description: "把目标客户、获客线索和沟通机会整理成可执行、可核对的增长动作。"
+  default_prompt: "使用 $growth-sales-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: false

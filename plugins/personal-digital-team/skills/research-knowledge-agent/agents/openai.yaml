@@ -1,0 +1,6 @@
+interface:
+  display_name: "研究与知识管理（Research & Knowledge Agent）"
+  short_description: "用可靠来源和清晰结构，把外部信息与个人知识整理成可复用资产。"
+  default_prompt: "使用 $research-knowledge-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: false

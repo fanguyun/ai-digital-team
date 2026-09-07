@@ -1,0 +1,6 @@
+interface:
+  display_name: "设计实现工程师（Design Engineer Agent）"
+  short_description: "将 Figma、设计源文件、截图或图片精准还原为可运行、可验证的前端页面。"
+  default_prompt: "使用 $design-engineer-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,6 @@
+interface:
+  display_name: "财务与行政（Finance & Operations Agent）"
+  short_description: "用准确、可追溯的记录支持个人公司的收支、合同和经营决策。"
+  default_prompt: "使用 $finance-operations-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: false

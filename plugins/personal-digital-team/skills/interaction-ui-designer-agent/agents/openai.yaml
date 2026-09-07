@@ -1,0 +1,6 @@
+interface:
+  display_name: "Interaction UI Designer Agent"
+  short_description: "Interaction UI Designer Agent"
+  default_prompt: "使用 $interaction-ui-designer-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: false
