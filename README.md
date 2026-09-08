@@ -67,6 +67,15 @@ Skill 入口保持软链接，不复制 Skill 文件。换设备后，如果软�
 
 当前插件是“薄插件”：只包含 15 个岗位规则，不复制 Skill 文件；岗位规则通过 `$skill` 引用本机全局 Skill。
 
+插件内置两个只读诊断脚本：
+
+```bash
+node plugins/personal-digital-team/scripts/list-team.mjs --format json
+node plugins/personal-digital-team/scripts/check-installation.mjs
+```
+
+它们用于列出岗位和检查插件安装完整性，不会安装、同步或修改插件文件。
+
 ### 同步插件
 
 修改任意 `agents/*/AGENTS.md` 后，运行：
