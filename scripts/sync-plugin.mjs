@@ -68,14 +68,18 @@ function listAgentSlugs() {
     .sort()
 }
 
-function writeIfChanged(path, content, log) {
+function writeIfChanged(path, content, log, { dryRun = false } = {}) {
   if (existsSync(path) && readFileSync(path, 'utf8') === content) return false
+  if (dryRun) {
+    log(`would sync ${path.replace(`${repoRoot}/`, '')}`)
+    return true
+  }
   writeFileSync(path, content, 'utf8')
   log(`synced ${path.replace(`${repoRoot}/`, '')}`)
   return true
 }
 
-function bumpPluginVersion(log, count) {
+function bumpPluginVersion(log, count, { dryRun = false } = {}) {
   if (!existsSync(pluginJsonPath)) {
     log(`skip version bump: ${pluginJsonPath} not found`)
     return
@@ -93,6 +97,10 @@ function bumpPluginVersion(log, count) {
     ...(manifest.interface || {}),
     shortDescription: `一键调用 ${count} 个数字员工岗位。`,
     longDescription: `个人数字团队插件，把默认入口、任务路由和 ${count} 个岗位 Agent 打包为可在 Codex 中复用和调度的能力包。`,
+  }
+  if (dryRun) {
+    log(`would bump version ${oldVersion} -> ${nextVersion}`)
+    return
   }
   writeFileSync(pluginJsonPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
   log(`version ${oldVersion} -> ${nextVersion}`)
@@ -117,8 +125,8 @@ function validatePlugin(log) {
   if (output) log(output)
 }
 
-export function syncPlugin({ log = console.log } = {}) {
-  mkdirSync(skillsRoot, { recursive: true })
+export function syncPlugin({ log = console.log, dryRun = false } = {}) {
+  if (!dryRun) mkdirSync(skillsRoot, { recursive: true })
 
   const slugs = listAgentSlugs()
   let changed = false
@@ -147,12 +155,12 @@ export function syncPlugin({ log = console.log } = {}) {
 
     const skillDir = join(skillsRoot, slug)
     const agentsDir = join(skillDir, 'agents')
-    mkdirSync(agentsDir, { recursive: true })
+    if (!dryRun) mkdirSync(agentsDir, { recursive: true })
     const shortDescription =
       summary.length > 64 ? `${summary.slice(0, 63)}…` : summary
 
     changed =
-      writeIfChanged(join(skillDir, 'SKILL.md'), skillContent, log) || changed
+      writeIfChanged(join(skillDir, 'SKILL.md'), skillContent, log, { dryRun }) || changed
 
     const agentYaml = [
       'interface:',
@@ -165,19 +173,26 @@ export function syncPlugin({ log = console.log } = {}) {
     ].join('\n')
 
     changed =
-      writeIfChanged(join(agentsDir, 'openai.yaml'), agentYaml, log) || changed
+      writeIfChanged(join(agentsDir, 'openai.yaml'), agentYaml, log, { dryRun }) || changed
   }
 
-  for (const entry of readdirSync(skillsRoot, { withFileTypes: true })) {
+  const pluginSkillEntries = existsSync(skillsRoot)
+    ? readdirSync(skillsRoot, { withFileTypes: true })
+    : []
+  for (const entry of pluginSkillEntries) {
     if (!entry.isDirectory() || entry.name.startsWith('.')) continue
     if (slugs.includes(entry.name)) continue
 
-    rmSync(join(skillsRoot, entry.name), { recursive: true, force: true })
-    log(`removed stale skill ${entry.name}`)
+    if (dryRun) {
+      log(`would remove stale skill ${entry.name}`)
+    } else {
+      rmSync(join(skillsRoot, entry.name), { recursive: true, force: true })
+      log(`removed stale skill ${entry.name}`)
+    }
     changed = true
   }
 
-  if (changed) bumpPluginVersion(log, slugs.length)
+  if (changed) bumpPluginVersion(log, slugs.length, { dryRun })
   validatePlugin(log)
   return changed
 }
@@ -186,5 +201,19 @@ const isMain =
   process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 
 if (isMain) {
-  syncPlugin()
+  const args = new Set(process.argv.slice(2))
+  const supportedArgs = new Set(['--dry-run', '--check'])
+  const unknownArgs = [...args].filter((arg) => !supportedArgs.has(arg))
+  if (unknownArgs.length > 0) {
+    console.error(`未知参数: ${unknownArgs.join(', ')}`)
+    console.error('用法: node scripts/sync-plugin.mjs [--dry-run|--check]')
+    process.exitCode = 2
+  } else {
+    const dryRun = args.has('--dry-run') || args.has('--check')
+    const changed = syncPlugin({ dryRun })
+    if (args.has('--check') && changed) {
+      console.error('插件与源目录不同步，请先运行 pnpm sync-plugin。')
+      process.exitCode = 1
+    }
+  }
 }

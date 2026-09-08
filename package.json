@@ -9,6 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "check-skills": "./scripts/check-skills",
+    "check-plugin": "node scripts/check-plugin.mjs",
+    "check-team": "pnpm check-skills && pnpm check-plugin",
     "bootstrap-team": "./scripts/bootstrap-team",
     "sync-plugin": "node scripts/sync-plugin.mjs"
   },

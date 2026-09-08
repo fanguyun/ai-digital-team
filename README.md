@@ -31,6 +31,12 @@ pnpm build
 pnpm preview
 ```
 
+团队与插件校验：
+
+```bash
+pnpm check-team
+```
+
 ## 目录结构
 
 ```text
@@ -75,6 +81,13 @@ pnpm sync-plugin
 
 ```bash
 PLUGIN_VALIDATOR_PATH=/path/to/validate_plugin.py pnpm sync-plugin
+```
+
+同步前可先预览变更，或在 CI 中只检查是否同步：
+
+```bash
+pnpm sync-plugin --dry-run
+pnpm sync-plugin --check
 ```
 
 ### 安装
