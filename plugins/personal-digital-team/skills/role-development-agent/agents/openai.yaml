@@ -1,0 +1,6 @@
+interface:
+  display_name: "岗位发展与能力评估（Role Development Agent）"
+  short_description: "评估现有岗位能力与最新外部实践之间的差距，输出可核验的升级建议和实施方案。"
+  default_prompt: "使用 $role-development-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: false

@@ -44,6 +44,7 @@ function extractSummary(markdown, fallback) {
 
 function transformBody(body) {
   return body
+    .replace(/\.\.\/\.\.\/scripts\//g, '__PLUGIN_SCRIPTS__/')
     .replace(/\.\.\/([a-z0-9-]+)\/AGENTS\.md/g, (_, slug) => `$${slug}`)
     .replace(/\.\.\/([a-z0-9-]+)\//g, (_, slug) => `$${slug}`)
     .replace(
@@ -53,6 +54,7 @@ function transformBody(body) {
     .replace(/agents\/([a-z0-9-]+)\/AGENTS\.md/g, (_, slug) => `$${slug}`)
     .replace(/agents\/([a-z0-9-]+)\//g, (_, slug) => `$${slug}`)
     .replace(/\.agents\/skills\/([a-z0-9-]+)/g, (_, skill) => `$${skill}`)
+    .replace(/__PLUGIN_SCRIPTS__\//g, '../../scripts/')
 }
 
 function listAgentSlugs() {

@@ -18,6 +18,7 @@
 | Agent | 目录 | 负责范围 |
 | --- | --- | --- |
 | 数字总经理（Main Agent） | `agents/main-agent/` | 默认入口、任务路由、跨岗位协作、结果整合 |
+| 岗位发展与能力评估（Role Development Agent） | `agents/role-development-agent/` | 评估岗位能力、Skill 与最新实践，输出升级建议和实施方案 |
 | 交互 UI 设计师（Interaction UI Designer Agent） | `agents/interaction-ui-designer-agent/` | 项目要求分析、页面设计、页面实现、交互优化、UI 验证 |
 | 产品与解决方案负责人（Product & Solution Agent） | `agents/product-solution-agent/` | 需求分析、方案设计、实现型 Markdown PRD、验收标准 |
 | 软件工程师（Software Engineer Agent） | `agents/software-engineer-agent/` | 架构选型、接口设计、代码实现、测试、部署与工程排障 |

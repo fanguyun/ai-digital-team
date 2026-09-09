@@ -16,6 +16,18 @@ const agents = [
     trigger: '所有未指定岗位的复杂任务'
   },
   {
+    id: 'role-development',
+    name: '岗位发展与能力评估',
+    en: 'Role Development Agent',
+    group: '管理中枢',
+    color: '#9b4dca',
+    icon: '⬡',
+    role: '基于岗位规则、关联 Skill 与最新资料，评估能力差距并输出升级方案。',
+    skills: ['research', 'spec-miner', 'writing-for-agents'],
+    status: '在线',
+    trigger: '岗位能力盘点、Skill 更新建议、岗位升级方案'
+  },
+  {
     id: 'product',
     name: '产品与解决方案负责人',
     en: 'Product & Solution Agent',
@@ -200,7 +212,7 @@ const groups = [
 ];
 
 const agentPaths = {
-  main: 'main-agent', product: 'product-solution-agent', ui: 'interaction-ui-designer-agent',
+  main: 'main-agent', 'role-development': 'role-development-agent', product: 'product-solution-agent', ui: 'interaction-ui-designer-agent',
   design: 'design-engineer-agent', software: 'software-engineer-agent', qa: 'qa-security-engineer-agent',
   platform: 'platform-operations-agent', research: 'research-knowledge-agent', content: 'content-brand-agent',
   growth: 'growth-sales-agent', customer: 'customer-success-agent', finance: 'finance-operations-agent',
