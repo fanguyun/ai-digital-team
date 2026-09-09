@@ -1,15 +1,15 @@
 {
   "name": "personal-digital-team",
-  "version": "0.1.0+codex.1788925054006",
-  "description": "个人数字团队：默认入口、任务路由与 16 个岗位 Agent 的插件化能力包。",
+  "version": "0.1.0+codex.1788928748997",
+  "description": "个人数字团队：默认入口、任务路由与 17 个岗位 Agent 的插件化能力包。",
   "author": {
     "name": "Personal Digital Team"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "个人数字团队",
-    "shortDescription": "一键调用 16 个数字员工岗位。",
-    "longDescription": "个人数字团队插件，把默认入口、任务路由和 16 个岗位 Agent 打包为可在 Codex 中复用和调度的能力包。",
+    "shortDescription": "一键调用 17 个数字员工岗位。",
+    "longDescription": "个人数字团队插件，把默认入口、任务路由和 17 个岗位 Agent 打包为可在 Codex 中复用和调度的能力包。",
     "developerName": "Personal Digital Team",
     "category": "Productivity",
     "capabilities": [

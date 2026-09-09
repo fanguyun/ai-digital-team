@@ -28,6 +28,18 @@ const agents = [
     trigger: '岗位能力盘点、Skill 更新建议、岗位升级方案'
   },
   {
+    id: 'career-talent',
+    name: '求职与人才发展专家',
+    en: 'Career & Talent Development Agent',
+    group: '增长经营',
+    color: '#b15b3f',
+    icon: '♙',
+    role: '基于真实简历和目标岗位 JD，优化简历并准备可核对的面试指南。',
+    skills: ['job-hunt', 'writing-for-agents', 'STAR 匹配'],
+    status: '在线',
+    trigger: '简历优化、JD 匹配、面试准备、求职策略'
+  },
+  {
     id: 'product',
     name: '产品与解决方案负责人',
     en: 'Product & Solution Agent',
@@ -212,7 +224,7 @@ const groups = [
 ];
 
 const agentPaths = {
-  main: 'main-agent', 'role-development': 'role-development-agent', product: 'product-solution-agent', ui: 'interaction-ui-designer-agent',
+  main: 'main-agent', 'role-development': 'role-development-agent', 'career-talent': 'career-talent-agent', product: 'product-solution-agent', ui: 'interaction-ui-designer-agent',
   design: 'design-engineer-agent', software: 'software-engineer-agent', qa: 'qa-security-engineer-agent',
   platform: 'platform-operations-agent', research: 'research-knowledge-agent', content: 'content-brand-agent',
   growth: 'growth-sales-agent', customer: 'customer-success-agent', finance: 'finance-operations-agent',
@@ -358,7 +370,7 @@ function App() {
         <nav className="side-nav" aria-label="团队导航">
           <div className="nav-caption">工作台</div>
           <button className={`nav-item ${workspaceView === 'overview' ? 'active' : ''}`} onClick={() => setWorkspaceView('overview')}>
-            <Icon>▦</Icon> 团队总览 <span className="nav-count">15</span>
+            <Icon>▦</Icon> 团队总览 <span className="nav-count">{agents.length}</span>
           </button>
           <button className={`nav-item ${workspaceView === 'workflow' ? 'active' : ''}`} onClick={() => setWorkspaceView('workflow')}>
             <Icon>↗</Icon> 协作流程

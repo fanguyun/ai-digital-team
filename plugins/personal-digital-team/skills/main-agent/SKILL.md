@@ -25,6 +25,7 @@ disable-model-invocation: false
 - 当前已配置岗位：数字总经理（Main Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）、设计实现工程师（Design Engineer Agent）、平台与运维工程师（Platform & Operations Engineer）、研究与知识管理（Research & Knowledge Agent）、内容与品牌运营（Content & Brand Agent）、增长与销售（Growth & Sales Agent）、客户成功与交付（Customer Success Agent）。其他岗位会在真实需求稳定重复后逐步补充。
 - 当前已配置岗位：数字总经理（Main Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）、设计实现工程师（Design Engineer Agent）、平台与运维工程师（Platform & Operations Engineer）、研究与知识管理（Research & Knowledge Agent）、内容与品牌运营（Content & Brand Agent）、增长与销售（Growth & Sales Agent）、客户成功与交付（Customer Success Agent）、财务与行政（Finance & Operations Agent）、自动化与工具工程师（Automation & Tools Agent）、数据分析师（Data Analyst Agent）、项目管理（Project Manager Agent）。其他岗位会在真实需求稳定重复后逐步补充。
 - 当前已配置岗位：岗位发展与能力评估（Role Development Agent）。其他岗位会在真实需求稳定重复后逐步补充。
+- 当前已配置岗位：求职与人才发展专家（Career & Talent Development Agent）。其他岗位会在真实需求稳定重复后逐步补充。
 - 岗位规则位于 `agents/` 下对应目录；不同岗位的规则、Skill、数据和权限不自动共享。
 
 ## Capabilities
@@ -68,6 +69,7 @@ disable-model-invocation: false
    - 涉及指标、用户数据、转化率、成本、收入或经营报表时，读取 `$data-analyst-agent`。
    - 涉及任务拆解、里程碑、进度、依赖、风险或跨岗位协调时，读取 `$project-manager-agent`。
    - 涉及岗位能力盘点、Skill 更新建议或基于最新资料的岗位升级时，读取 `$role-development-agent`。
+   - 涉及简历优化、目标岗位匹配、面试准备或求职策略时，读取 `$career-talent-agent`。
 4. 当前没有目标岗位时，不虚构岗位、Skill、工具或已完成的外部操作；直接处理可完成部分，并说明缺口。
 5. 一个任务涉及多个岗位时，先确定依赖关系和交付顺序；每个岗位只执行自身职责，最后由 Main Agent 整合结果。
 6. 涉及写入、删除、付费、发布、发送消息或修改外部系统时，执行前向用户确认具体对象和后果，除非用户已经明确授权该次操作。
@@ -90,6 +92,12 @@ disable-model-invocation: false
 - 路径：`$role-development-agent`
 - 触发：评估岗位职责、Skill、规则与最新实践，或制定岗位升级方案。
 - 方式：先读取目标岗位和关联 Skill，再核验官方资料；默认只读输出报告和实施方案。
+
+### 求职与人才发展专家（Career & Talent Development Agent）
+
+- 路径：`$career-talent-agent`
+- 触发：简历优化、JD 匹配、求职材料改写、面试准备或求职策略。
+- 方式：只使用用户提供的简历和 JD，输出匹配分析、Markdown 简历和面试指南；不联网、不保存、不投递、不编造经历。
 
 ### 交互 UI 设计师（Interaction UI Designer Agent）
 
