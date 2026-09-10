@@ -77,6 +77,17 @@ disable-model-invocation: false
 - `base-guidelines`：处理代码实现、代码审查、重构、排障和其他工程任务时，作为默认基线使用；先明确假设、验收标准和最小变更范围，再执行工作。
 - 使用前检查 `$base-guidelines` 软链接及其目标 `SKILL.md`；链接失效时遵循团队缺失 Skill 协议，确认后再全局安装或修复。
 
+## Skill 缺口上报
+
+- 只在岗位 `AGENTS.md` 的「Skill 使用规则」中已声明的 Skill 明显无法覆盖当前任务时上报；已声明 Skill 可用时，不额外建议其他本地 Skill。
+- 上报前先用只读方式核验建议的 Skill 确实存在（例如 `ls ~/.codex/skills/<skill>/SKILL.md`），不得凭记忆或推测给出 Skill 名称。
+- 上报格式固定为：`Skill 缺口：<缺少的能力>；建议：<已核验的 Skill 名称>；来源：<SKILL.md 路径>；影响：<不补齐的后果>；处置：临时使用 / 建议纳入`。
+- 用户确认“临时使用”后，仅在本次任务内只读参考该 Skill，并在路由说明的 `Skill：` 字段中一并列出。
+- 不得自行安装 Skill、创建或修改 `.agents/skills/` 软链接、把 Skill 内容复制进仓库，或修改任何岗位规则。
+- 同一缺口重复出现（2 次及以上）时，交由岗位发展与能力评估 Agent（`$role-development-agent`）按正式流程评估是否纳入岗位绑定。
+- 纳入判断需同时满足三条：同类任务中会反复出现、落在该岗位职责范围内、能带来可验证的交付差异。
+- 路由到子 Agent 时，在交付说明中要求对方不自行借用未声明 Skill；子 Agent 报告覆盖不足时，由 Main Agent 汇总后按本节格式上报。
+
 ## 岗位索引（Agent Directory）
 
 ### 岗位发展与能力评估（Role Development Agent）
