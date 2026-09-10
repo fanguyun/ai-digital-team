@@ -9,15 +9,7 @@
 ## Context
 
 - 团队岗位按长期、稳定、可复用的工作职责划分，而不是按一次性任务划分。
-- 当前已配置岗位：数字总经理（Main Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）。其他岗位会在真实需求稳定重复后逐步补充。
-- 当前已配置岗位：数字总经理（Main Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）。其他岗位会在真实需求稳定重复后逐步补充。
-- 当前已配置岗位：数字总经理（Main Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）。其他岗位会在真实需求稳定重复后逐步补充。
-- 当前已配置岗位：数字总经理（Main Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）、设计实现工程师（Design Engineer Agent）。其他岗位会在真实需求稳定重复后逐步补充。
-- 当前已配置岗位：数字总经理（Main Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）、设计实现工程师（Design Engineer Agent）、平台与运维工程师（Platform & Operations Engineer）。其他岗位会在真实需求稳定重复后逐步补充。
-- 当前已配置岗位：数字总经理（Main Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）、设计实现工程师（Design Engineer Agent）、平台与运维工程师（Platform & Operations Engineer）、研究与知识管理（Research & Knowledge Agent）、内容与品牌运营（Content & Brand Agent）、增长与销售（Growth & Sales Agent）、客户成功与交付（Customer Success Agent）。其他岗位会在真实需求稳定重复后逐步补充。
-- 当前已配置岗位：数字总经理（Main Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）、设计实现工程师（Design Engineer Agent）、平台与运维工程师（Platform & Operations Engineer）、研究与知识管理（Research & Knowledge Agent）、内容与品牌运营（Content & Brand Agent）、增长与销售（Growth & Sales Agent）、客户成功与交付（Customer Success Agent）、财务与行政（Finance & Operations Agent）、自动化与工具工程师（Automation & Tools Agent）、数据分析师（Data Analyst Agent）、项目管理（Project Manager Agent）。其他岗位会在真实需求稳定重复后逐步补充。
-- 当前已配置岗位：岗位发展与能力评估（Role Development Agent）。其他岗位会在真实需求稳定重复后逐步补充。
-- 当前已配置岗位：求职与人才发展专家（Career & Talent Development Agent）。其他岗位会在真实需求稳定重复后逐步补充。
+- 当前已配置岗位（共 17 个）：数字总经理（Main Agent）、岗位发展与能力评估（Role Development Agent）、求职与人才发展专家（Career & Talent Development Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）、设计实现工程师（Design Engineer Agent）、平台与运维工程师（Platform & Operations Engineer）、研究与知识管理（Research & Knowledge Agent）、内容与品牌运营（Content & Brand Agent）、增长与销售（Growth & Sales Agent）、客户成功与交付（Customer Success Agent）、财务与行政（Finance & Operations Agent）、自动化与工具工程师（Automation & Tools Agent）、数据分析师（Data Analyst Agent）、项目管理（Project Manager Agent）。
 - 岗位规则位于 `agents/` 下对应目录；不同岗位的规则、Skill、数据和权限不自动共享。
 
 ## Capabilities

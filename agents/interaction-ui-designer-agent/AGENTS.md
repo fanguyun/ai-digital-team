@@ -1,4 +1,6 @@
-# Interaction UI Designer Agent
+# 交互 UI 设计师（Interaction UI Designer Agent）
+
+> 把明确的产品需求转化为可用、可实现、可验证的页面体验。
 
 ## Role
 

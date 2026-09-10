@@ -17,15 +17,7 @@ disable-model-invocation: false
 ## Context
 
 - 团队岗位按长期、稳定、可复用的工作职责划分，而不是按一次性任务划分。
-- 当前已配置岗位：数字总经理（Main Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）。其他岗位会在真实需求稳定重复后逐步补充。
-- 当前已配置岗位：数字总经理（Main Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）。其他岗位会在真实需求稳定重复后逐步补充。
-- 当前已配置岗位：数字总经理（Main Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）。其他岗位会在真实需求稳定重复后逐步补充。
-- 当前已配置岗位：数字总经理（Main Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）、设计实现工程师（Design Engineer Agent）。其他岗位会在真实需求稳定重复后逐步补充。
-- 当前已配置岗位：数字总经理（Main Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）、设计实现工程师（Design Engineer Agent）、平台与运维工程师（Platform & Operations Engineer）。其他岗位会在真实需求稳定重复后逐步补充。
-- 当前已配置岗位：数字总经理（Main Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）、设计实现工程师（Design Engineer Agent）、平台与运维工程师（Platform & Operations Engineer）、研究与知识管理（Research & Knowledge Agent）、内容与品牌运营（Content & Brand Agent）、增长与销售（Growth & Sales Agent）、客户成功与交付（Customer Success Agent）。其他岗位会在真实需求稳定重复后逐步补充。
-- 当前已配置岗位：数字总经理（Main Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）、设计实现工程师（Design Engineer Agent）、平台与运维工程师（Platform & Operations Engineer）、研究与知识管理（Research & Knowledge Agent）、内容与品牌运营（Content & Brand Agent）、增长与销售（Growth & Sales Agent）、客户成功与交付（Customer Success Agent）、财务与行政（Finance & Operations Agent）、自动化与工具工程师（Automation & Tools Agent）、数据分析师（Data Analyst Agent）、项目管理（Project Manager Agent）。其他岗位会在真实需求稳定重复后逐步补充。
-- 当前已配置岗位：岗位发展与能力评估（Role Development Agent）。其他岗位会在真实需求稳定重复后逐步补充。
-- 当前已配置岗位：求职与人才发展专家（Career & Talent Development Agent）。其他岗位会在真实需求稳定重复后逐步补充。
+- 当前已配置岗位（共 17 个）：数字总经理（Main Agent）、岗位发展与能力评估（Role Development Agent）、求职与人才发展专家（Career & Talent Development Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）、设计实现工程师（Design Engineer Agent）、平台与运维工程师（Platform & Operations Engineer）、研究与知识管理（Research & Knowledge Agent）、内容与品牌运营（Content & Brand Agent）、增长与销售（Growth & Sales Agent）、客户成功与交付（Customer Success Agent）、财务与行政（Finance & Operations Agent）、自动化与工具工程师（Automation & Tools Agent）、数据分析师（Data Analyst Agent）、项目管理（Project Manager Agent）。
 - 岗位规则位于 `agents/` 下对应目录；不同岗位的规则、Skill、数据和权限不自动共享。
 
 ## Capabilities
@@ -78,7 +70,7 @@ disable-model-invocation: false
 9. 路由说明固定使用格式：`本次使用：<子 Agent 或未使用子 Agent>；Skill：<实际使用的 Skill 名称或未使用 Skill>；原因：<一句话>`。例如：`本次使用：软件工程师（Software Engineer Agent）；Skill：architecture-designer、typescript-pro；原因：任务涉及架构设计和 TypeScript 实现`。
 10. 用户明确指定子 Agent 时，按用户指定岗位填写；普通问答或 Main Agent 直接处理时填写“未使用子 Agent”。只把本次实际读取并采用的 Skill 列入，不得把仅被预挂载或检查过的 Skill 描述为已使用。
 11. 子 Agent 需要使用 Skill 时，先检查项目中的 Skill 软链接及目标 `SKILL.md`；如果目标不存在或软链接失效，先暂停并向用户说明缺失 Skill、全局安装命令或来源及影响范围，获得明确确认后再安装。
-12. Skill 安装或修复后，项目侧必须继续使用 `.$skills` 软链接；不得复制 Skill 文件或改成项目内副本。
+12. Skill 安装或修复后，项目侧必须继续使用 `.agents/skills/` 软链接；不得复制 Skill 文件或改成项目内副本。
 
 ## Main Agent Skill 使用规则
 

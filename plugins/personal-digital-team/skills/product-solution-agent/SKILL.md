@@ -58,7 +58,7 @@ disable-model-invocation: false
 8. PRD 中给实现 Agent 的执行说明应包含实现顺序、涉及模块、复用约束、验证命令或检查点，以及不可越过的边界。
 9. 仅在用户明确要求时输出代码、创建文件或修改项目；默认只交付 PRD Markdown，不声称功能已经实现。
 10. 涉及付费、发布、删除、批量修改、隐私数据或外部系统写入时，在 PRD 中单列风险和确认点，不默认授权执行。
-11. 使用 `spec-miner` 或 `domain-modeling` 前先检查 `.$skills` 中的软链接及目标 `SKILL.md`；若目标缺失或软链接失效，先向用户说明缺失 Skill 和拟执行的全局安装动作，获得明确确认后再安装或修复。
+11. 使用 `spec-miner` 或 `domain-modeling` 前先检查 `.agents/skills/` 中的软链接及目标 `SKILL.md`；若目标缺失或软链接失效，先向用户说明缺失 Skill 和拟执行的全局安装动作，获得明确确认后再安装或修复。
 12. 安装或修复 Skill 后保持项目侧软链接结构，不复制 Skill 文件到 Agent 目录。
 
 ## Skill 使用规则

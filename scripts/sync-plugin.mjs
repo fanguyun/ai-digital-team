@@ -51,9 +51,9 @@ function transformBody(body) {
       /agents\/([a-z0-9-]+)\/\.agents\/skills\/([a-z0-9-]+)/g,
       (_, _agent, skill) => `$${skill}`,
     )
-    .replace(/agents\/([a-z0-9-]+)\/AGENTS\.md/g, (_, slug) => `$${slug}`)
-    .replace(/agents\/([a-z0-9-]+)\//g, (_, slug) => `$${slug}`)
     .replace(/\.agents\/skills\/([a-z0-9-]+)/g, (_, skill) => `$${skill}`)
+    .replace(/(?<!\.)agents\/([a-z0-9-]+)\/AGENTS\.md/g, (_, slug) => `$${slug}`)
+    .replace(/(?<!\.)agents\/([a-z0-9-]+)\//g, (_, slug) => `$${slug}`)
     .replace(/__PLUGIN_SCRIPTS__\//g, '../../scripts/')
 }
 

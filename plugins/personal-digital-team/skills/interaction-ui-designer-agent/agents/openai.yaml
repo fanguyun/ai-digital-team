@@ -1,6 +1,6 @@
 interface:
-  display_name: "Interaction UI Designer Agent"
-  short_description: "Interaction UI Designer Agent"
+  display_name: "交互 UI 设计师（Interaction UI Designer Agent）"
+  short_description: "把明确的产品需求转化为可用、可实现、可验证的页面体验。"
   default_prompt: "使用 $interaction-ui-designer-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
 policy:
   allow_implicit_invocation: false
