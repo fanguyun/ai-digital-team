@@ -104,6 +104,8 @@ pnpm sync-plugin --check
 ```bash
 codex plugin marketplace add <repo-root>
 codex plugin add personal-digital-team@personal-digital-team
+## 更新
+codex plugin marketplace upgrade personal-digital-team
 ```
 
 安装后建议开启新线程，让 Codex 重新加载插件中的 skills 和 agent 元数据。
