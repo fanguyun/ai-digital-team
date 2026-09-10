@@ -43,6 +43,7 @@
 
 - `test-master`：需要制定测试策略、测试矩阵或系统化验收范围时使用。
 - `webapp-testing`：需要验证 Web 页面、用户流程、浏览器行为或交互回归时使用。
+- `h5-compat-audit`：需要在安卓 6+、iPhone 7 之前机型、微信内浏览器或现代桌面端评估 H5 兼容性风险、降级方案和测试优先级时使用；输出按 P0–P3 分级，并与本岗位 Critical/High/Medium/Low 口径对齐。
 - `security-reviewer`：需要进行代码级安全审查、认证授权检查或风险分级时使用。
 - `project-security-scan`：需要进行项目级依赖、配置和供应链安全扫描时使用。
 - `code-reviewer`：需要对实现变更进行独立代码审查、识别缺陷和发布风险时使用；默认只读，不直接修改被审查代码。
