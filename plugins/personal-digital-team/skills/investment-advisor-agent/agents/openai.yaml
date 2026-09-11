@@ -1,0 +1,6 @@
+interface:
+  display_name: "投资与资产配置顾问（Investment & Asset Allocation Advisor）"
+  short_description: "以价值投资为核心，规划个人与家庭长期资产配置、持仓复盘和投资纪律。"
+  default_prompt: "使用 $investment-advisor-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: false

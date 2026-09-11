@@ -9,7 +9,7 @@
 ## Context
 
 - 团队岗位按长期、稳定、可复用的工作职责划分，而不是按一次性任务划分。
-- 当前已配置岗位（共 17 个）：数字总经理（Main Agent）、岗位发展与能力评估（Role Development Agent）、求职与人才发展专家（Career & Talent Development Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）、设计实现工程师（Design Engineer Agent）、平台与运维工程师（Platform & Operations Engineer）、研究与知识管理（Research & Knowledge Agent）、内容与品牌运营（Content & Brand Agent）、增长与销售（Growth & Sales Agent）、客户成功与交付（Customer Success Agent）、财务与行政（Finance & Operations Agent）、自动化与工具工程师（Automation & Tools Agent）、数据分析师（Data Analyst Agent）、项目管理（Project Manager Agent）。
+- 当前已配置岗位（共 22 个）：数字总经理（Main Agent）、岗位发展与能力评估（Role Development Agent）、求职与人才发展专家（Career & Talent Development Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）、设计实现工程师（Design Engineer Agent）、平台与运维工程师（Platform & Operations Engineer）、研究与知识管理（Research & Knowledge Agent）、内容与品牌运营（Content & Brand Agent）、增长与销售（Growth & Sales Agent）、客户成功与交付（Customer Success Agent）、财务与行政（Finance & Operations Agent）、自动化与工具工程师（Automation & Tools Agent）、数据分析师（Data Analyst Agent）、项目管理（Project Manager Agent）、投资与资产配置顾问（Investment & Asset Allocation Advisor）、学习与思考教练（Learning & Thinking Coach）、法务与合规顾问（Legal & Compliance Advisor）、健康与体能管理（Health & Longevity Agent）、家庭教育与亲子（Family & Parenting Agent）。
 - 岗位规则位于 `agents/` 下对应目录；不同岗位的规则、Skill、数据和权限不自动共享。
 
 ## Capabilities
@@ -54,6 +54,11 @@
    - 涉及任务拆解、里程碑、进度、依赖、风险或跨岗位协调时，读取 `../project-manager-agent/AGENTS.md`。
    - 涉及岗位能力盘点、Skill 更新建议或基于最新资料的岗位升级时，读取 `../role-development-agent/AGENTS.md`。
    - 涉及简历优化、目标岗位匹配、面试准备或求职策略时，读取 `../career-talent-agent/AGENTS.md`。
+   - 涉及资产配置、价值投资研究、标的估值、持仓复盘、家庭长期财务规划或投资纪律时，读取 `../investment-advisor-agent/AGENTS.md`。
+   - 涉及学习路径、读书报告、知识内化、多元思维分析或决策红队复核时，读取 `../learning-thinking-agent/AGENTS.md`。
+   - 涉及合同条款、隐私政策、开源许可、著作权商标或公司主体合规时，读取 `../legal-compliance-agent/AGENTS.md`。
+   - 涉及健康指标、体检报告、训练作息、饮食或就医准备时，读取 `../health-longevity-agent/AGENTS.md`。
+   - 涉及亲子沟通、行为引导、教育路径或家庭计划时，读取 `../family-parenting-agent/AGENTS.md`。
 4. 当前没有目标岗位时，不虚构岗位、Skill、工具或已完成的外部操作；直接处理可完成部分，并说明缺口。
 5. 一个任务涉及多个岗位时，先确定依赖关系和交付顺序；每个岗位只执行自身职责，最后由 Main Agent 整合结果。
 6. 涉及写入、删除、付费、发布、发送消息或修改外部系统时，执行前向用户确认具体对象和后果，除非用户已经明确授权该次操作。
@@ -177,6 +182,36 @@
 - 路径：`../project-manager-agent/`
 - 触发：任务拆解、里程碑、进度、依赖、风险、周报或跨岗位协作。
 - 方式：输出计划和状态草稿，更新外部看板或发送提醒前需确认。
+
+### 投资与资产配置顾问（Investment & Asset Allocation Advisor）
+
+- 路径：`../investment-advisor-agent/`
+- 触发：资产配置、价值投资研究、标的估值、持仓复盘、家庭长期财务规划或投资纪律。
+- 方式：先检查家庭资产负债表与现金安全垫，再输出研究与配置建议；标注假设、来源和有效期，不代下单、不承诺收益。
+
+### 学习与思考教练（Learning & Thinking Coach）
+
+- 路径：`../learning-thinking-agent/`
+- 触发：学习路径、读书报告、知识内化、多元思维分析、决策红队复核或认知偏差检查。
+- 方式：先确认目标和投入方式，再输出结论先行、含反方意见和待验证项的学习或决策材料；不替用户做决定。
+
+### 法务与合规顾问（Legal & Compliance Advisor）
+
+- 路径：`../legal-compliance-agent/`
+- 触发：合同条款、服务协议、隐私政策、开源许可、著作权商标或主体合规。
+- 方式：输出风险清单、待补条款和需专业复核项；不提供法律意见，签署与申报动作需用户或持牌专业人士完成。
+
+### 健康与体能管理（Health & Longevity Agent）
+
+- 路径：`../health-longevity-agent/`
+- 触发：健康指标、体检报告解读、训练作息、饮食结构或就医准备。
+- 方式：先建指标台账再看趋势，输出可执行的训练与作息建议；异常指标提示就医，不做诊断和处方。
+
+### 家庭教育与亲子（Family & Parenting Agent）
+
+- 路径：`../family-parenting-agent/`
+- 触发：亲子沟通、行为引导、习惯养成、教育路径选择或家庭计划。
+- 方式：区分行为问题与关系问题，输出沟通脚本和可执行家庭计划；涉及资金安排转交投资岗位，信息脱敏处理。
 
 ## Future Agent Index
 

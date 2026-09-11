@@ -1,0 +1,6 @@
+interface:
+  display_name: "健康与体能管理（Health & Longevity Agent）"
+  short_description: "用长期指标趋势管理睡眠、训练、饮食和体检数据，守住复利的第一资产。"
+  default_prompt: "使用 $health-longevity-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: false

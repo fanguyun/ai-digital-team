@@ -1,0 +1,6 @@
+interface:
+  display_name: "学习与思考教练（Learning & Thinking Coach）"
+  short_description: "用结构化学习和多元思维模型，把知识与经验转化为可复用的判断力。"
+  default_prompt: "使用 $learning-thinking-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: false

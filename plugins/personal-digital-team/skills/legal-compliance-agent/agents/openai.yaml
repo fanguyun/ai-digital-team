@@ -1,0 +1,6 @@
+interface:
+  display_name: "法务与合规顾问（Legal & Compliance Advisor）"
+  short_description: "用风险清单和待补条款，帮个人与公司守住合同、隐私和知识产权的边界。"
+  default_prompt: "使用 $legal-compliance-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: false

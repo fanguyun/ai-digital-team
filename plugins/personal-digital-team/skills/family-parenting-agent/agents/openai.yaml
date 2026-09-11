@@ -1,0 +1,6 @@
+interface:
+  display_name: "家庭教育与亲子（Family & Parenting Agent）"
+  short_description: "用尊重的沟通方式和可执行的家庭计划，支持亲子关系与教育路径选择。"
+  default_prompt: "使用 $family-parenting-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: false

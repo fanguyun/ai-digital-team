@@ -210,6 +210,66 @@ const agents = [
     skills: ['writing-plans', 'handoff', 'to-questionnaire'],
     status: '在线',
     trigger: '任务、里程碑、进度、依赖、风险'
+  },
+  {
+    id: 'investment',
+    name: '投资与资产配置顾问',
+    en: 'Investment & Asset Allocation Advisor',
+    group: '个人财富',
+    color: '#1f6f6f',
+    icon: '⬢',
+    role: '规划个人与家庭长期资产配置，做价值投资研究与持仓复盘，守住投资纪律。',
+    skills: ['dca-strategy', 'marks-market-cycles', 'multi-mental-models'],
+    status: '在线',
+    trigger: '资产配置、价值投资研究、持仓复盘'
+  },
+  {
+    id: 'learning',
+    name: '学习与思考教练',
+    en: 'Learning & Thinking Coach',
+    group: '个人成长',
+    color: '#4a63c8',
+    icon: '✧',
+    role: '设计学习路径与读书内化，用多元思维模型和红队复核提升判断质量。',
+    skills: ['learning-mentor', 'reading-assistant', 'multi-mental-models'],
+    status: '在线',
+    trigger: '学习路径、读书报告、多元思维、决策复核'
+  },
+  {
+    id: 'health',
+    name: '健康与体能管理',
+    en: 'Health & Longevity Agent',
+    group: '个人成长',
+    color: '#2f8f5b',
+    icon: '✚',
+    role: '用长期指标趋势管理睡眠、训练、饮食和体检数据。',
+    skills: ['xlsx', 'research', 'gws-docs'],
+    status: '在线',
+    trigger: '健康指标、体检解读、训练作息'
+  },
+  {
+    id: 'family',
+    name: '家庭教育与亲子',
+    en: 'Family & Parenting Agent',
+    group: '个人成长',
+    color: '#a8577f',
+    icon: '✿',
+    role: '用尊重的沟通方式和可执行的家庭计划，支持亲子关系与教育选择。',
+    skills: ['kohn-unconditional-parenting', 'research', 'xlsx'],
+    status: '在线',
+    trigger: '亲子沟通、行为引导、教育路径'
+  },
+  {
+    id: 'legal',
+    name: '法务与合规顾问',
+    en: 'Legal & Compliance Advisor',
+    group: '后台支持',
+    color: '#546e7a',
+    icon: '⚖',
+    role: '用风险清单和待补条款，守住合同、隐私和知识产权的边界。',
+    skills: ['pdf', 'research', 'xlsx'],
+    status: '在线',
+    trigger: '合同条款、隐私政策、许可与合规'
   }
 ];
 
@@ -220,7 +280,9 @@ const groups = [
   '设计体验',
   '工程交付',
   '增长经营',
-  '后台支持'
+  '后台支持',
+  '个人财富',
+  '个人成长'
 ];
 
 const agentPaths = {
@@ -228,7 +290,10 @@ const agentPaths = {
   design: 'design-engineer-agent', software: 'software-engineer-agent', qa: 'qa-security-engineer-agent',
   platform: 'platform-operations-agent', research: 'research-knowledge-agent', content: 'content-brand-agent',
   growth: 'growth-sales-agent', customer: 'customer-success-agent', finance: 'finance-operations-agent',
-  automation: 'automation-tools-agent', data: 'data-analyst-agent', project: 'project-manager-agent'
+  automation: 'automation-tools-agent', data: 'data-analyst-agent', project: 'project-manager-agent',
+  investment: 'investment-advisor-agent', learning: 'learning-thinking-agent',
+  legal: 'legal-compliance-agent', health: 'health-longevity-agent',
+  family: 'family-parenting-agent'
 };
 
 const agentDocuments = import.meta.glob('../agents/*/AGENTS.md', {
