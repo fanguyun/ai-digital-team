@@ -243,9 +243,9 @@ const agents = [
     color: '#2f8f5b',
     icon: '✚',
     role: '用长期指标趋势管理睡眠、训练、饮食和体检数据。',
-    skills: ['xlsx', 'research', 'gws-docs'],
+    skills: ['cardio-training', 'rp-diet', 'daily-habits'],
     status: '在线',
-    trigger: '健康指标、体检解读、训练作息'
+    trigger: '健康指标、体检解读、训练饮食、作息习惯'
   },
   {
     id: 'family',

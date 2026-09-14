@@ -37,7 +37,7 @@
 | 投资与资产配置顾问（Investment & Asset Allocation Advisor） | `agents/investment-advisor-agent/` | 长期资产配置、价值投资研究、持仓复盘与投资纪律 |
 | 学习与思考教练（Learning & Thinking Coach） | `agents/learning-thinking-agent/` | 学习路径、读书内化、多元思维模型与决策红队复核 |
 | 法务与合规顾问（Legal & Compliance Advisor） | `agents/legal-compliance-agent/` | 合同条款、隐私政策、知识产权与基础合规风险清单 |
-| 健康与体能管理（Health & Longevity Agent） | `agents/health-longevity-agent/` | 健康指标台账、体检趋势、训练作息与就医准备 |
+| 健康与体能管理（Health & Longevity Agent） | `agents/health-longevity-agent/` | 健康指标台账、体检趋势、训练饮食、生活习惯与就医准备 |
 | 家庭教育与亲子（Family & Parenting Agent） | `agents/family-parenting-agent/` | 亲子沟通、行为引导、教育路径与家庭计划 |
 
 ## 公共边界（Shared Boundaries）
