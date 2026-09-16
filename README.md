@@ -5,7 +5,7 @@
 ## 当前功能
 
 - 展示数字团队介绍和团队运行状态。
-- 展示当前 22 个 Agent 及其中文名、英文名、职责和所属分组。
+- 展示当前 26 个 Agent 及其中文名、英文名、职责和所属分组。
 - 按岗位分组筛选 Agent。
 - 搜索角色名称、职责和 Skill。
 - 查看单个 Agent 的岗位使命、触发条件和已连接 Skill。
@@ -65,7 +65,7 @@ Skill 入口保持软链接，不复制 Skill 文件。换设备后，如果软�
 
 团队同时提供 Codex 插件版本，位置在 `plugins/personal-digital-team/`，仓库级 marketplace 位于 `.agents/plugins/marketplace.json`。
 
-当前插件是“薄插件”：只包含 22 个岗位规则，不复制 Skill 文件；岗位规则通过 `$skill` 引用本机全局 Skill。
+当前插件是“薄插件”：只包含 26 个岗位规则，不复制 Skill 文件；岗位规则通过 `$skill` 引用本机全局 Skill。
 
 插件内置两个只读诊断脚本：
 
@@ -120,7 +120,7 @@ codex plugin marketplace upgrade personal-digital-team
 
 ## 换设备初始化
 
-拉取项目后，先检查 Skill 软链接：
+拉取项目后，先检查 Skill 软链接。该检查同时验证已有软链接是否有效，以及岗位规则引用的已安装 Skill 是否已建立岗位级绑定：
 
 ```bash
 pnpm check-skills

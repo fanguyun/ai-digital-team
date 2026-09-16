@@ -19,10 +19,13 @@
 | --- | --- | --- |
 | 数字总经理（Main Agent） | `agents/main-agent/` | 默认入口、任务路由、跨岗位协作、结果整合 |
 | 岗位发展与能力评估（Role Development Agent） | `agents/role-development-agent/` | 评估岗位能力、Skill 与最新实践，输出升级建议和实施方案 |
+| 商业战略与经营分析（Business Strategy Agent） | `agents/business-strategy-agent/` | 商业模式、市场进入、竞争定位、经营目标与资源配置 |
 | 求职与人才发展专家（Career & Talent Development Agent） | `agents/career-talent-agent/` | 基于简历和目标岗位 JD 优化简历，输出匹配分析与面试指南 |
+| 用户研究与体验研究（User Research Agent） | `agents/user-research-agent/` | 用户访谈、问卷、可用性测试、需求证据与体验洞察 |
 | 交互 UI 设计师（Interaction UI Designer Agent） | `agents/interaction-ui-designer-agent/` | 项目要求分析、页面设计、页面实现、交互优化、UI 验证 |
 | 产品与解决方案负责人（Product & Solution Agent） | `agents/product-solution-agent/` | 需求分析、方案设计、实现型 Markdown PRD、验收标准 |
 | 软件工程师（Software Engineer Agent） | `agents/software-engineer-agent/` | 架构选型、接口设计、代码实现、测试、部署与工程排障 |
+| AI 应用工程师（AI Application Engineer Agent） | `agents/ai-application-engineer-agent/` | 模型接入、RAG、Agent 工作流、评测、成本与 AI 安全边界 |
 | 质量与安全工程师（QA & Security Engineer Agent） | `agents/qa-security-engineer-agent/` | 功能测试、回归验证、安全审查、依赖扫描与发布风险判断 |
 | 设计实现工程师（Design Engineer Agent） | `agents/design-engineer-agent/` | Figma/设计稿/截图还原、素材映射、页面实现与视觉验证 |
 | 平台与运维工程师（Platform & Operations Engineer） | `agents/platform-operations-agent/` | 上线方案、基础设施、硬件建议、监控告警与长期运维 |
@@ -37,6 +40,7 @@
 | 投资与资产配置顾问（Investment & Asset Allocation Advisor） | `agents/investment-advisor-agent/` | 长期资产配置、价值投资研究、持仓复盘与投资纪律 |
 | 学习与思考教练（Learning & Thinking Coach） | `agents/learning-thinking-agent/` | 学习路径、读书内化、多元思维模型与决策红队复核 |
 | 法务与合规顾问（Legal & Compliance Advisor） | `agents/legal-compliance-agent/` | 合同条款、隐私政策、知识产权与基础合规风险清单 |
+| 隐私与数据治理（Privacy & Data Governance Agent） | `agents/privacy-data-governance-agent/` | 数据盘点、分类分级、生命周期、访问权限与 AI 数据治理 |
 | 健康与体能管理（Health & Longevity Agent） | `agents/health-longevity-agent/` | 健康指标台账、体检趋势、训练饮食、生活习惯与就医准备 |
 | 家庭教育与亲子（Family & Parenting Agent） | `agents/family-parenting-agent/` | 亲子沟通、行为引导、教育路径与家庭计划 |
 

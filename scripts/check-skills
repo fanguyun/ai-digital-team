@@ -3,6 +3,7 @@ set -u
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 team_root="$(cd "$script_dir/.." && pwd)"
+skills_root="${SKILLS_MANAGER_ROOT:-${HOME:-}/.skills-manager}"
 link_count=0
 issue_count=0
 
@@ -16,6 +17,44 @@ while IFS= read -r -d '' link; do
     printf '正常: %s\n' "${link#"$team_root"/}"
   fi
 done < <(find "$team_root/agents" -type l -path '*/.agents/skills/*' -print0 | sort -z)
+
+declaration_output="$(node - "$team_root" "$skills_root/skills" <<'NODE'
+const fs = require('node:fs')
+const path = require('node:path')
+
+const [teamRoot, installedSkillsRoot] = process.argv.slice(2)
+const agentsRoot = path.join(teamRoot, 'agents')
+const issues = []
+
+for (const entry of fs.readdirSync(agentsRoot, { withFileTypes: true })) {
+  if (!entry.isDirectory()) continue
+
+  const rulesPath = path.join(agentsRoot, entry.name, 'AGENTS.md')
+  if (!fs.existsSync(rulesPath)) continue
+
+  const rules = fs.readFileSync(rulesPath, 'utf8')
+  const referencedNames = [...rules.matchAll(/`([A-Za-z0-9][A-Za-z0-9._:-]*)`/g)]
+    .map((match) => match[1])
+  const declaredSkills = [...new Set(referencedNames)]
+    .filter((name) => fs.existsSync(path.join(installedSkillsRoot, name, 'SKILL.md')))
+    .sort()
+  const linkedSkillsRoot = path.join(agentsRoot, entry.name, '.agents', 'skills')
+
+  for (const skillName of declaredSkills) {
+    if (!fs.existsSync(path.join(linkedSkillsRoot, skillName, 'SKILL.md'))) {
+      issues.push(`缺少绑定: agents/${entry.name}/.agents/skills/${skillName}`)
+    }
+  }
+}
+
+console.log(issues.length)
+for (const issue of issues) console.log(issue)
+NODE
+ )"
+
+declared_issue_count="$(printf '%s\n' "$declaration_output" | sed -n '1p')"
+printf '%s\n' "$declaration_output" | sed '1d'
+issue_count=$((issue_count + declared_issue_count))
 
 printf '\n共检查 %s 个 Skill 软链接，发现 %s 个问题。\n' "$link_count" "$issue_count"
 [ "$issue_count" -eq 0 ]

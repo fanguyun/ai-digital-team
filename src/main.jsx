@@ -40,6 +40,30 @@ const agents = [
     trigger: '简历优化、JD 匹配、面试准备、求职策略'
   },
   {
+    id: 'business-strategy',
+    name: '商业战略与经营分析',
+    en: 'Business Strategy Agent',
+    group: '产品策略',
+    color: '#8b5e34',
+    icon: '◇',
+    role: '把市场机会、商业模式和资源约束转化为可验证的经营选择。',
+    skills: [],
+    status: '在线',
+    trigger: '商业模式、市场进入、竞争定位、经营目标'
+  },
+  {
+    id: 'user-research',
+    name: '用户研究与体验研究',
+    en: 'User Research Agent',
+    group: '产品策略',
+    color: '#b06b54',
+    icon: '◎',
+    role: '用真实用户证据验证问题、需求与体验。',
+    skills: ['million-dollar-weekend-research'],
+    status: '在线',
+    trigger: '用户访谈、问卷、可用性测试、需求证据'
+  },
+  {
     id: 'product',
     name: '产品与解决方案负责人',
     en: 'Product & Solution Agent',
@@ -102,6 +126,18 @@ const agents = [
     skills: ['test-master', 'webapp-testing', 'project-security-scan'],
     status: '在线',
     trigger: '功能验收、安全审查、发布门禁'
+  },
+  {
+    id: 'ai-application',
+    name: 'AI 应用工程师',
+    en: 'AI Application Engineer Agent',
+    group: '工程交付',
+    color: '#5b55b5',
+    icon: '◉',
+    role: '把模型能力转化为安全、可评测、可维护的 AI 应用。',
+    skills: ['rag-architect', 'prompt-engineer'],
+    status: '在线',
+    trigger: '模型接入、RAG、Agent、Prompt、AI 评测'
   },
   {
     id: 'platform',
@@ -270,6 +306,18 @@ const agents = [
     skills: ['pdf', 'research', 'xlsx'],
     status: '在线',
     trigger: '合同条款、隐私政策、许可与合规'
+  },
+  {
+    id: 'privacy-data-governance',
+    name: '隐私与数据治理',
+    en: 'Privacy & Data Governance Agent',
+    group: '后台支持',
+    color: '#486b7a',
+    icon: '◐',
+    role: '让数据从收集、使用到删除都具备明确目的、权限与审计边界。',
+    skills: [],
+    status: '在线',
+    trigger: '数据盘点、分类分级、生命周期、AI 数据治理'
   }
 ];
 
@@ -287,13 +335,15 @@ const groups = [
 
 const agentPaths = {
   main: 'main-agent', 'role-development': 'role-development-agent', 'career-talent': 'career-talent-agent', product: 'product-solution-agent', ui: 'interaction-ui-designer-agent',
+  'business-strategy': 'business-strategy-agent', 'user-research': 'user-research-agent',
   design: 'design-engineer-agent', software: 'software-engineer-agent', qa: 'qa-security-engineer-agent',
+  'ai-application': 'ai-application-engineer-agent',
   platform: 'platform-operations-agent', research: 'research-knowledge-agent', content: 'content-brand-agent',
   growth: 'growth-sales-agent', customer: 'customer-success-agent', finance: 'finance-operations-agent',
   automation: 'automation-tools-agent', data: 'data-analyst-agent', project: 'project-manager-agent',
   investment: 'investment-advisor-agent', learning: 'learning-thinking-agent',
   legal: 'legal-compliance-agent', health: 'health-longevity-agent',
-  family: 'family-parenting-agent'
+  family: 'family-parenting-agent', 'privacy-data-governance': 'privacy-data-governance-agent'
 };
 
 const agentDocuments = import.meta.glob('../agents/*/AGENTS.md', {

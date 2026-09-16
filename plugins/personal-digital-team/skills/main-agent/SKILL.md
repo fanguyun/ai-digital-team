@@ -17,7 +17,7 @@ disable-model-invocation: false
 ## Context
 
 - 团队岗位按长期、稳定、可复用的工作职责划分，而不是按一次性任务划分。
-- 当前已配置岗位（共 22 个）：数字总经理（Main Agent）、岗位发展与能力评估（Role Development Agent）、求职与人才发展专家（Career & Talent Development Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）、设计实现工程师（Design Engineer Agent）、平台与运维工程师（Platform & Operations Engineer）、研究与知识管理（Research & Knowledge Agent）、内容与品牌运营（Content & Brand Agent）、增长与销售（Growth & Sales Agent）、客户成功与交付（Customer Success Agent）、财务与行政（Finance & Operations Agent）、自动化与工具工程师（Automation & Tools Agent）、数据分析师（Data Analyst Agent）、项目管理（Project Manager Agent）、投资与资产配置顾问（Investment & Asset Allocation Advisor）、学习与思考教练（Learning & Thinking Coach）、法务与合规顾问（Legal & Compliance Advisor）、健康与体能管理（Health & Longevity Agent）、家庭教育与亲子（Family & Parenting Agent）。
+- 当前已配置岗位（共 26 个）：数字总经理（Main Agent）、岗位发展与能力评估（Role Development Agent）、商业战略与经营分析（Business Strategy Agent）、求职与人才发展专家（Career & Talent Development Agent）、用户研究与体验研究（User Research Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）、AI 应用工程师（AI Application Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）、设计实现工程师（Design Engineer Agent）、平台与运维工程师（Platform & Operations Engineer）、研究与知识管理（Research & Knowledge Agent）、内容与品牌运营（Content & Brand Agent）、增长与销售（Growth & Sales Agent）、客户成功与交付（Customer Success Agent）、财务与行政（Finance & Operations Agent）、自动化与工具工程师（Automation & Tools Agent）、数据分析师（Data Analyst Agent）、项目管理（Project Manager Agent）、投资与资产配置顾问（Investment & Asset Allocation Advisor）、学习与思考教练（Learning & Thinking Coach）、法务与合规顾问（Legal & Compliance Advisor）、隐私与数据治理（Privacy & Data Governance Agent）、健康与体能管理（Health & Longevity Agent）、家庭教育与亲子（Family & Parenting Agent）。
 - 岗位规则位于 `agents/` 下对应目录；不同岗位的规则、Skill、数据和权限不自动共享。
 
 ## Capabilities
@@ -61,10 +61,14 @@ disable-model-invocation: false
    - 涉及指标、用户数据、转化率、成本、收入或经营报表时，读取 `$data-analyst-agent`。
    - 涉及任务拆解、里程碑、进度、依赖、风险或跨岗位协调时，读取 `$project-manager-agent`。
    - 涉及岗位能力盘点、Skill 更新建议或基于最新资料的岗位升级时，读取 `$role-development-agent`。
+   - 涉及商业模式、市场进入、竞争定位、经营目标或战略资源配置时，读取 `$business-strategy-agent`。
    - 涉及简历优化、目标岗位匹配、面试准备或求职策略时，读取 `$career-talent-agent`。
+   - 涉及用户访谈、问卷、可用性测试、需求证据或体验研究时，读取 `$user-research-agent`。
+   - 涉及模型接入、RAG、Agent 工作流、Prompt、AI 评测、模型成本或 AI 安全边界时，读取 `$ai-application-engineer-agent`。
    - 涉及资产配置、价值投资研究、标的估值、持仓复盘、家庭长期财务规划或投资纪律时，读取 `$investment-advisor-agent`。
    - 涉及学习路径、读书报告、知识内化、多元思维分析或决策红队复核时，读取 `$learning-thinking-agent`。
    - 涉及合同条款、隐私政策、开源许可、著作权商标或公司主体合规时，读取 `$legal-compliance-agent`。
+   - 涉及数据盘点、分类分级、保留删除、访问权限、数据共享或 AI 数据使用边界时，读取 `$privacy-data-governance-agent`。
    - 涉及健康指标、体检报告、训练作息、饮食或就医准备时，读取 `$health-longevity-agent`。
    - 涉及亲子沟通、行为引导、教育路径或家庭计划时，读取 `$family-parenting-agent`。
 4. 当前没有目标岗位时，不虚构岗位、Skill、工具或已完成的外部操作；直接处理可完成部分，并说明缺口。
@@ -94,6 +98,30 @@ disable-model-invocation: false
 - 路由到子 Agent 时，在交付说明中要求对方不自行借用未声明 Skill；子 Agent 报告覆盖不足时，由 Main Agent 汇总后按本节格式上报。
 
 ## 岗位索引（Agent Directory）
+
+### 商业战略与经营分析（Business Strategy Agent）
+
+- 路径：`$business-strategy-agent`
+- 触发：商业模式、市场进入、竞争定位、经营目标、资源配置或战略复盘。
+- 方式：整合研究、产品、增长、财务和数据证据，输出方案比较、验证计划与停止条件；不把预测描述为事实。
+
+### 用户研究与体验研究（User Research Agent）
+
+- 路径：`$user-research-agent`
+- 触发：用户访谈、问卷、可用性测试、需求证据或体验洞察。
+- 方式：默认输出研究计划和材料草稿；招募、联系、录音或处理真实用户数据前需确认。
+
+### AI 应用工程师（AI Application Engineer Agent）
+
+- 路径：`$ai-application-engineer-agent`
+- 触发：模型接入、RAG、Agent 工作流、Prompt、AI 评测、成本或安全边界。
+- 方式：先定义业务基线、数据权限和评测标准，再输出架构、成本和风险方案；确认后才实现或调用付费服务。
+
+### 隐私与数据治理（Privacy & Data Governance Agent）
+
+- 路径：`$privacy-data-governance-agent`
+- 触发：数据盘点、分类分级、生命周期、访问权限、第三方共享或 AI 数据治理。
+- 方式：输出数据流、风险和控制要求，并区分治理建议、待法务确认项与待技术验证项；不直接删除数据或修改生产权限。
 
 ### 岗位发展与能力评估（Role Development Agent）
 

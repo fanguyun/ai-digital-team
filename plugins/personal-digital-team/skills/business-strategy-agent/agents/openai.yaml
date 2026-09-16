@@ -1,0 +1,6 @@
+interface:
+  display_name: "商业战略与经营分析（Business Strategy Agent）"
+  short_description: "把市场机会、商业模式和资源约束转化为可验证的经营选择。"
+  default_prompt: "使用 $business-strategy-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: false

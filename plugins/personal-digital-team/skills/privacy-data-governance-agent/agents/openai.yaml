@@ -1,0 +1,6 @@
+interface:
+  display_name: "隐私与数据治理（Privacy & Data Governance Agent）"
+  short_description: "让数据从收集、使用到删除都具备明确目的、责任、权限与审计边界。"
+  default_prompt: "使用 $privacy-data-governance-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: false
