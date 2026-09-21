@@ -104,9 +104,15 @@ pnpm sync-plugin --check
 ```bash
 codex plugin marketplace add <repo-root>
 codex plugin add personal-digital-team@personal-digital-team
-## 更新
-codex plugin marketplace upgrade personal-digital-team
 ```
+
+本仓库使用本地 marketplace，修改并执行 `pnpm sync-plugin` 后，通过重新执行安装命令刷新插件缓存：
+
+```bash
+codex plugin add personal-digital-team@personal-digital-team
+```
+
+`codex plugin marketplace upgrade` 仅用于 Git marketplace，不适用于当前 `source: local` 配置。
 
 安装后建议开启新线程，让 Codex 重新加载插件中的 skills 和 agent 元数据。
 
