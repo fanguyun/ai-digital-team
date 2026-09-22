@@ -171,7 +171,7 @@ const agents = [
     color: '#c54e63',
     icon: '✎',
     role: '把研究和真实经验转化为一致、可信的品牌内容。',
-    skills: ['copywriting', 'brandkit', 'seo-audit'],
+    skills: ['copywriting', 'brandkit', 'seo-audit', 'changelog-maintenance'],
     status: '在线',
     trigger: '公众号、小红书、官网与案例'
   },
