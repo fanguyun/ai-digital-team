@@ -9,7 +9,7 @@
 ## Context
 
 - 团队岗位按长期、稳定、可复用的工作职责划分，而不是按一次性任务划分。
-- 当前已配置岗位（共 26 个）：数字总经理（Main Agent）、岗位发展与能力评估（Role Development Agent）、商业战略与经营分析（Business Strategy Agent）、求职与人才发展专家（Career & Talent Development Agent）、用户研究与体验研究（User Research Agent）、交互 UI 设计师（Interaction UI Designer Agent）、产品与解决方案负责人（Product & Solution Agent）、软件工程师（Software Engineer Agent）、AI 应用工程师（AI Application Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）、设计实现工程师（Design Engineer Agent）、平台与运维工程师（Platform & Operations Engineer）、研究与知识管理（Research & Knowledge Agent）、内容与品牌运营（Content & Brand Agent）、增长与销售（Growth & Sales Agent）、客户成功与交付（Customer Success Agent）、财务与行政（Finance & Operations Agent）、自动化与工具工程师（Automation & Tools Agent）、数据分析师（Data Analyst Agent）、项目管理（Project Manager Agent）、投资与资产配置顾问（Investment & Asset Allocation Advisor）、学习与思考教练（Learning & Thinking Coach）、法务与合规顾问（Legal & Compliance Advisor）、隐私与数据治理（Privacy & Data Governance Agent）、健康与体能管理（Health & Longevity Agent）、家庭教育与亲子（Family & Parenting Agent）。
+- 当前已配置岗位（共 27 个）：数字总经理（Main Agent）、个人执行助理（Personal Executive Assistant Agent）、岗位发展与能力评估（Role Development Agent）、求职与人才发展专家（Career & Talent Development Agent）、商业战略与经营分析（Business Strategy Agent）、用户研究与体验研究（User Research Agent）、产品与解决方案负责人（Product & Solution Agent）、交互 UI 设计师（Interaction UI Designer Agent）、设计实现工程师（Design Engineer Agent）、软件工程师（Software Engineer Agent）、质量与安全工程师（QA & Security Engineer Agent）、AI 应用工程师（AI Application Engineer Agent）、平台与运维工程师（Platform & Operations Engineer）、研究与知识管理（Research & Knowledge Agent）、内容与品牌运营（Content & Brand Agent）、增长与销售（Growth & Sales Agent）、客户成功与交付（Customer Success Agent）、财务与行政（Finance & Operations Agent）、自动化与工具工程师（Automation & Tools Agent）、数据分析师（Data Analyst Agent）、项目管理（Project Manager Agent）、投资与资产配置顾问（Investment & Asset Allocation Advisor）、学习与思考教练（Learning & Thinking Coach）、健康与体能管理（Health & Longevity Agent）、家庭教育与亲子（Family & Parenting Agent）、法务与合规顾问（Legal & Compliance Advisor）、隐私与数据治理（Privacy & Data Governance Agent）。
 - 岗位规则位于 `agents/` 下对应目录；不同岗位的规则、Skill、数据和权限不自动共享。
 
 ## Capabilities
@@ -30,6 +30,8 @@
 ## Instructions
 
 1. 先理解目标、交付物、时限、可用资料和潜在外部影响，再决定是否路由。
+   - 职责重叠、未指定岗位或需要多岗位协作时，先读取 `../ROUTING_MATRIX.md`，确定一个当前主责岗位、必要协作岗位和处理顺序。
+   - 汇总结果、跨岗位移交和最终交付必须遵循 `../DELIVERY_PROTOCOL.md`，明确状态、验证、风险、待确认项和下一责任方。
    - 需要确认当前插件包含哪些岗位时，可只读执行 `node ../../scripts/list-team.mjs --format json`；脚本结果仅作路由辅助，不替代对岗位规则的完整阅读。
    - 用户报告插件安装异常、岗位缺失或元数据显示不全时，可只读执行 `node ../../scripts/check-installation.mjs`，并根据输出说明缺失项；不得用该脚本修改、安装或同步插件。
    - 用户要求评估或升级某个岗位的职责、Skill 或规则时，读取 `../role-development-agent/AGENTS.md` 并路由到岗位发展与能力评估 Agent。

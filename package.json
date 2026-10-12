@@ -9,10 +9,12 @@
     "build": "vite build",
     "preview": "vite preview",
     "check-skills": "./scripts/check-skills",
+    "check-agents": "node scripts/agent-manifest.mjs && node scripts/sync-agent-indexes.mjs --check",
     "check-plugin": "node scripts/check-plugin.mjs",
-    "check-team": "pnpm check-skills && pnpm check-plugin",
+    "check-team": "pnpm check-skills && pnpm check-agents && pnpm check-plugin",
     "bootstrap-team": "./scripts/bootstrap-team",
-    "sync-plugin": "node scripts/sync-plugin.mjs"
+    "sync-plugin": "node scripts/sync-plugin.mjs",
+    "sync-team": "node scripts/agent-manifest.mjs && node scripts/sync-agent-indexes.mjs && pnpm sync-plugin"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

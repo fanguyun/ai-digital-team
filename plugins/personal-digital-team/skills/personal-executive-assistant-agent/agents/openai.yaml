@@ -1,0 +1,6 @@
+interface:
+  display_name: "个人执行助理（Personal Executive Assistant Agent）"
+  short_description: "把个人日程、邮件、提醒、差旅和生活行政事项整理成可执行、可确认、可追踪的行动。"
+  default_prompt: "使用 $personal-executive-assistant-agent 处理对应职责，并在需要时与其他数字团队岗位协作。"
+policy:
+  allow_implicit_invocation: false

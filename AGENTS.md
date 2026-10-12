@@ -8,26 +8,31 @@
 
 ## 入口规则（Entry Rules）
 
-- 用户没有明确指定岗位 Agent 时，先完整读取 `agents/main-agent/AGENTS.md`。
-- 用户明确指定某个岗位 Agent 时，只读取该岗位目录中的 `AGENTS.md`，不自动混用其他岗位规则。
+- 用户没有明确指定岗位 Agent 时，先完整读取 `agents/main-agent/AGENTS.md` 和 `agents/DELIVERY_PROTOCOL.md`；需要路由时再读取 `agents/ROUTING_MATRIX.md`。
+- 用户明确指定某个岗位 Agent 时，读取该岗位目录中的 `AGENTS.md` 和 `agents/DELIVERY_PROTOCOL.md`，不自动混用其他岗位规则。
 - 当前没有匹配的岗位 Agent 时，由 Main Agent 直接处理；如果任务确实需要长期专属职责，再提出新增岗位建议。
 - 岗位 Agent 的规则、数据和操作权限应保持边界清晰；后续新增岗位时，不把岗位专属 Skill 放在团队根目录。
+- 职责重叠、未指定岗位或需要多岗位协作时，按照 `agents/ROUTING_MATRIX.md` 确定一个当前主责岗位和协作顺序。
+- 所有岗位的实质性交付和跨岗位交接必须遵循 `agents/DELIVERY_PROTOCOL.md`；具体岗位规则可以增加更严格要求。
 
 ## Agent 索引（Agent Directory）
+
+> 本节由 `agents/manifest.json` 自动生成，请勿手工编辑。
 
 | Agent | 目录 | 负责范围 |
 | --- | --- | --- |
 | 数字总经理（Main Agent） | `agents/main-agent/` | 默认入口、任务路由、跨岗位协作、结果整合 |
+| 个人执行助理（Personal Executive Assistant Agent） | `agents/personal-executive-assistant-agent/` | 个人日程、邮件、提醒、差旅和生活行政执行 |
 | 岗位发展与能力评估（Role Development Agent） | `agents/role-development-agent/` | 评估岗位能力、Skill 与最新实践，输出升级建议和实施方案 |
-| 商业战略与经营分析（Business Strategy Agent） | `agents/business-strategy-agent/` | 商业模式、市场进入、竞争定位、经营目标与资源配置 |
 | 求职与人才发展专家（Career & Talent Development Agent） | `agents/career-talent-agent/` | 基于简历和目标岗位 JD 优化简历，输出匹配分析与面试指南 |
+| 商业战略与经营分析（Business Strategy Agent） | `agents/business-strategy-agent/` | 商业模式、市场进入、竞争定位、经营目标与资源配置 |
 | 用户研究与体验研究（User Research Agent） | `agents/user-research-agent/` | 用户访谈、问卷、可用性测试、需求证据与体验洞察 |
-| 交互 UI 设计师（Interaction UI Designer Agent） | `agents/interaction-ui-designer-agent/` | 项目要求分析、页面设计、页面实现、交互优化、UI 验证 |
 | 产品与解决方案负责人（Product & Solution Agent） | `agents/product-solution-agent/` | 需求分析、方案设计、实现型 Markdown PRD、验收标准 |
-| 软件工程师（Software Engineer Agent） | `agents/software-engineer-agent/` | 架构选型、接口设计、代码实现、测试、部署与工程排障 |
-| AI 应用工程师（AI Application Engineer Agent） | `agents/ai-application-engineer-agent/` | 模型接入、RAG、Agent 工作流、评测、成本与 AI 安全边界 |
-| 质量与安全工程师（QA & Security Engineer Agent） | `agents/qa-security-engineer-agent/` | 功能测试、回归验证、安全审查、依赖扫描与发布风险判断 |
+| 交互 UI 设计师（Interaction UI Designer Agent） | `agents/interaction-ui-designer-agent/` | 项目要求分析、页面设计、页面实现、交互优化、UI 验证 |
 | 设计实现工程师（Design Engineer Agent） | `agents/design-engineer-agent/` | Figma/设计稿/截图还原、素材映射、页面实现与视觉验证 |
+| 软件工程师（Software Engineer Agent） | `agents/software-engineer-agent/` | 架构选型、接口设计、代码实现、测试、部署与工程排障 |
+| 质量与安全工程师（QA & Security Engineer Agent） | `agents/qa-security-engineer-agent/` | 功能测试、回归验证、安全审查、依赖扫描与发布风险判断 |
+| AI 应用工程师（AI Application Engineer Agent） | `agents/ai-application-engineer-agent/` | 模型接入、RAG、Agent 工作流、评测、成本与 AI 安全边界 |
 | 平台与运维工程师（Platform & Operations Engineer） | `agents/platform-operations-agent/` | 上线方案、基础设施、硬件建议、监控告警与长期运维 |
 | 研究与知识管理（Research & Knowledge Agent） | `agents/research-knowledge-agent/` | 行业研究、竞品分析、资料整理、来源核验与知识库维护建议 |
 | 内容与品牌运营（Content & Brand Agent） | `agents/content-brand-agent/` | 内容策划、公众号/小红书/官网内容、品牌表达与发布草稿 |
@@ -39,11 +44,10 @@
 | 项目管理（Project Manager Agent） | `agents/project-manager-agent/` | 任务、里程碑、进度、依赖、风险与跨岗位协调 |
 | 投资与资产配置顾问（Investment & Asset Allocation Advisor） | `agents/investment-advisor-agent/` | 长期资产配置、价值投资研究、持仓复盘与投资纪律 |
 | 学习与思考教练（Learning & Thinking Coach） | `agents/learning-thinking-agent/` | 学习路径、读书内化、多元思维模型与决策红队复核 |
-| 法务与合规顾问（Legal & Compliance Advisor） | `agents/legal-compliance-agent/` | 合同条款、隐私政策、知识产权与基础合规风险清单 |
-| 隐私与数据治理（Privacy & Data Governance Agent） | `agents/privacy-data-governance-agent/` | 数据盘点、分类分级、生命周期、访问权限与 AI 数据治理 |
 | 健康与体能管理（Health & Longevity Agent） | `agents/health-longevity-agent/` | 健康指标台账、体检趋势、训练饮食、生活习惯与就医准备 |
 | 家庭教育与亲子（Family & Parenting Agent） | `agents/family-parenting-agent/` | 亲子沟通、行为引导、教育路径与家庭计划 |
-
+| 法务与合规顾问（Legal & Compliance Advisor） | `agents/legal-compliance-agent/` | 合同条款、隐私政策、知识产权与基础合规风险清单 |
+| 隐私与数据治理（Privacy & Data Governance Agent） | `agents/privacy-data-governance-agent/` | 数据盘点、分类分级、生命周期、访问权限与 AI 数据治理 |
 ## 公共边界（Shared Boundaries）
 
 - 规则文件只描述职责、流程、数据边界和验收方式，不保存密码、令牌、银行卡信息或其他敏感凭证。
@@ -51,3 +55,4 @@
 - Skill 安装完成后，项目侧继续保留 `.agents/skills/` 下的软链接形式；不得把 Skill 文件复制进项目，也不得用复制文件替代软链接。
 - 涉及新增、修改、删除、付费或对外发布等有外部影响的操作时，先确认目标和后果，再执行。
 - 真实数据目录、代码仓库和知识库由各自的工作对象维护；只有明确授权的 Agent 才能访问或修改。
+- 跨岗位任务只设一个当前主责岗位；协作岗位输出专业意见，由主责岗位或 Main Agent 统一整合。

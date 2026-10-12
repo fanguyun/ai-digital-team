@@ -1,0 +1,653 @@
+{
+  "schemaVersion": 2,
+  "groups": [
+    "管理中枢",
+    "产品策略",
+    "设计体验",
+    "工程交付",
+    "增长经营",
+    "后台支持",
+    "个人财富",
+    "个人成长"
+  ],
+  "agents": [
+    {
+      "slug": "main-agent",
+      "id": "main",
+      "name": "数字总经理",
+      "en": "Main Agent",
+      "group": "管理中枢",
+      "color": "#6857e8",
+      "icon": "✦",
+      "role": "默认入口、任务路由、跨岗位协作与结果整合。",
+      "scope": "默认入口、任务路由、跨岗位协作、结果整合",
+      "skills": [
+        "路由协调",
+        "任务拆解",
+        "结果整合"
+      ],
+      "status": "在线",
+      "trigger": "所有未指定岗位的复杂任务"
+    },
+    {
+      "slug": "personal-executive-assistant-agent",
+      "id": "personal-executive-assistant",
+      "name": "个人执行助理",
+      "en": "Personal Executive Assistant Agent",
+      "group": "管理中枢",
+      "color": "#7b61c9",
+      "icon": "◌",
+      "role": "把个人日程、邮件、提醒、差旅和生活行政事项整理成可执行、可确认、可追踪的行动。",
+      "scope": "个人日程、邮件、提醒、差旅和生活行政执行",
+      "skills": [
+        "agently-mail",
+        "12306",
+        "gws-docs",
+        "xlsx",
+        "to-questionnaire",
+        "handoff",
+        "writing-for-agents",
+        "travel-plan-viz"
+      ],
+      "status": "在线",
+      "trigger": "日程、邮件、提醒、差旅、个人待办和生活行政"
+    },
+    {
+      "slug": "role-development-agent",
+      "id": "role-development",
+      "name": "岗位发展与能力评估",
+      "en": "Role Development Agent",
+      "group": "管理中枢",
+      "color": "#9b4dca",
+      "icon": "⬡",
+      "role": "基于岗位规则、关联 Skill 与最新资料，评估能力差距并输出升级方案。",
+      "scope": "评估岗位能力、Skill 与最新实践，输出升级建议和实施方案",
+      "skills": [
+        "research",
+        "spec-miner",
+        "writing-for-agents"
+      ],
+      "status": "在线",
+      "trigger": "岗位能力盘点、Skill 更新建议、岗位升级方案"
+    },
+    {
+      "slug": "career-talent-agent",
+      "id": "career-talent",
+      "name": "求职与人才发展专家",
+      "en": "Career & Talent Development Agent",
+      "group": "增长经营",
+      "color": "#b15b3f",
+      "icon": "♙",
+      "role": "基于真实简历和目标岗位 JD，优化简历并准备可核对的面试指南。",
+      "scope": "基于简历和目标岗位 JD 优化简历，输出匹配分析与面试指南",
+      "skills": [
+        "job-hunt",
+        "writing-for-agents",
+        "STAR 匹配"
+      ],
+      "status": "在线",
+      "trigger": "简历优化、JD 匹配、面试准备、求职策略"
+    },
+    {
+      "slug": "business-strategy-agent",
+      "id": "business-strategy",
+      "name": "商业战略与经营分析",
+      "en": "Business Strategy Agent",
+      "group": "产品策略",
+      "color": "#8b5e34",
+      "icon": "◇",
+      "role": "把市场机会、商业模式和资源约束转化为可验证的经营选择。",
+      "scope": "商业模式、市场进入、竞争定位、经营目标与资源配置",
+      "skills": [],
+      "status": "在线",
+      "trigger": "商业模式、市场进入、竞争定位、经营目标"
+    },
+    {
+      "slug": "user-research-agent",
+      "id": "user-research",
+      "name": "用户研究与体验研究",
+      "en": "User Research Agent",
+      "group": "产品策略",
+      "color": "#b06b54",
+      "icon": "◎",
+      "role": "用真实用户证据验证问题、需求与体验。",
+      "scope": "用户访谈、问卷、可用性测试、需求证据与体验洞察",
+      "skills": [
+        "million-dollar-weekend-research"
+      ],
+      "status": "在线",
+      "trigger": "用户访谈、问卷、可用性测试、需求证据"
+    },
+    {
+      "slug": "product-solution-agent",
+      "id": "product",
+      "name": "产品与解决方案负责人",
+      "en": "Product & Solution Agent",
+      "group": "产品策略",
+      "color": "#df6a45",
+      "icon": "◈",
+      "role": "把业务想法整理成可直接交给大模型实现的 Markdown PRD。",
+      "scope": "需求分析、方案设计、实现型 Markdown PRD、验收标准",
+      "skills": [
+        "spec-miner",
+        "domain-modeling",
+        "PRD 设计"
+      ],
+      "status": "在线",
+      "trigger": "需求分析、产品方案、功能规划"
+    },
+    {
+      "slug": "interaction-ui-designer-agent",
+      "id": "ui",
+      "name": "交互 UI 设计师",
+      "en": "Interaction UI Designer Agent",
+      "group": "设计体验",
+      "color": "#278f88",
+      "icon": "⌘",
+      "role": "从产品需求形成页面结构、交互和视觉方案。",
+      "scope": "项目要求分析、页面设计、页面实现、交互优化、UI 验证",
+      "skills": [
+        "ui-ux-pro-max",
+        "frontend-design",
+        "web-design-guidelines"
+      ],
+      "status": "在线",
+      "trigger": "页面设计、交互优化、UI 审查"
+    },
+    {
+      "slug": "design-engineer-agent",
+      "id": "design",
+      "name": "设计实现工程师",
+      "en": "Design Engineer Agent",
+      "group": "设计体验",
+      "color": "#1b73a5",
+      "icon": "▣",
+      "role": "将 Figma、设计源文件、截图或图片精准还原为前端页面。",
+      "scope": "Figma/设计稿/截图还原、素材映射、页面实现与视觉验证",
+      "skills": [
+        "figma-implement-design",
+        "image-to-code-skill",
+        "frontend-design"
+      ],
+      "status": "在线",
+      "trigger": "Figma、截图还原、素材映射"
+    },
+    {
+      "slug": "software-engineer-agent",
+      "id": "software",
+      "name": "软件工程师",
+      "en": "Software Engineer Agent",
+      "group": "工程交付",
+      "color": "#3c6edb",
+      "icon": "⌁",
+      "role": "负责架构选型、接口设计、代码实现、测试与工程排障。",
+      "scope": "架构选型、接口设计、代码实现、测试、部署与工程排障",
+      "skills": [
+        "architecture-designer",
+        "api-designer",
+        "typescript-pro"
+      ],
+      "status": "在线",
+      "trigger": "架构、接口、代码实现、工程排障"
+    },
+    {
+      "slug": "qa-security-engineer-agent",
+      "id": "qa",
+      "name": "质量与安全工程师",
+      "en": "QA & Security Engineer Agent",
+      "group": "工程交付",
+      "color": "#c04e75",
+      "icon": "✓",
+      "role": "用可复现证据验证功能质量与安全风险，为发布提供独立判断。",
+      "scope": "功能测试、回归验证、安全审查、依赖扫描与发布风险判断",
+      "skills": [
+        "test-master",
+        "webapp-testing",
+        "project-security-scan"
+      ],
+      "status": "在线",
+      "trigger": "功能验收、安全审查、发布门禁"
+    },
+    {
+      "slug": "ai-application-engineer-agent",
+      "id": "ai-application",
+      "name": "AI 应用工程师",
+      "en": "AI Application Engineer Agent",
+      "group": "工程交付",
+      "color": "#5b55b5",
+      "icon": "◉",
+      "role": "把模型能力转化为安全、可评测、可维护的 AI 应用。",
+      "scope": "模型接入、RAG、Agent 工作流、评测、成本与 AI 安全边界",
+      "skills": [
+        "rag-architect",
+        "prompt-engineer"
+      ],
+      "status": "在线",
+      "trigger": "模型接入、RAG、Agent、Prompt、AI 评测"
+    },
+    {
+      "slug": "platform-operations-agent",
+      "id": "platform",
+      "name": "平台与运维工程师",
+      "en": "Platform & Operations Engineer",
+      "group": "工程交付",
+      "color": "#267b68",
+      "icon": "⌂",
+      "role": "负责上线、基础设施、监控告警、备份恢复与长期运维。",
+      "scope": "上线方案、基础设施、硬件建议、监控告警与长期运维",
+      "skills": [
+        "devops-engineer",
+        "sre-engineer",
+        "monitoring-expert"
+      ],
+      "status": "在线",
+      "trigger": "上线、监控、备份、容量和运维"
+    },
+    {
+      "slug": "research-knowledge-agent",
+      "id": "research",
+      "name": "研究与知识管理",
+      "en": "Research & Knowledge Agent",
+      "group": "增长经营",
+      "color": "#9a6b32",
+      "icon": "⌕",
+      "role": "用可靠来源和清晰结构，把外部信息整理成可复用资产。",
+      "scope": "行业研究、竞品分析、资料整理、来源核验与知识库维护建议",
+      "skills": [
+        "research",
+        "spec-miner",
+        "weread-skills"
+      ],
+      "status": "在线",
+      "trigger": "行业研究、竞品分析、知识库"
+    },
+    {
+      "slug": "content-brand-agent",
+      "id": "content",
+      "name": "内容与品牌运营",
+      "en": "Content & Brand Agent",
+      "group": "增长经营",
+      "color": "#c54e63",
+      "icon": "✎",
+      "role": "把研究和真实经验转化为一致、可信的品牌内容。",
+      "scope": "内容策划、公众号/小红书/官网内容、品牌表达与发布草稿",
+      "skills": [
+        "copywriting",
+        "brandkit",
+        "seo-audit",
+        "changelog-maintenance"
+      ],
+      "status": "在线",
+      "trigger": "公众号、小红书、官网与案例"
+    },
+    {
+      "slug": "growth-sales-agent",
+      "id": "growth",
+      "name": "增长与销售",
+      "en": "Growth & Sales Agent",
+      "group": "增长经营",
+      "color": "#d27c2b",
+      "icon": "↗",
+      "role": "将目标客户、获客线索和沟通机会整理成可执行动作。",
+      "scope": "获客、线索研究、报价草稿、销售话术与跟进计划",
+      "skills": [
+        "research",
+        "copywriting",
+        "线索优先级"
+      ],
+      "status": "在线",
+      "trigger": "获客、线索、报价、销售跟进"
+    },
+    {
+      "slug": "customer-success-agent",
+      "id": "customer",
+      "name": "客户成功与交付",
+      "en": "Customer Success Agent",
+      "group": "增长经营",
+      "color": "#397a9f",
+      "icon": "◌",
+      "role": "把客户承诺、交付过程和反馈风险整理成可追踪协作。",
+      "scope": "需求澄清、交付跟踪、验收协作、反馈闭环与复购建议",
+      "skills": [
+        "to-questionnaire",
+        "handoff",
+        "writing-for-agents"
+      ],
+      "status": "在线",
+      "trigger": "需求澄清、交付计划、验收跟踪"
+    },
+    {
+      "slug": "finance-operations-agent",
+      "id": "finance",
+      "name": "财务与行政",
+      "en": "Finance & Operations Agent",
+      "group": "后台支持",
+      "color": "#7b6b4b",
+      "icon": "¥",
+      "role": "用准确、可追溯的记录支持收支、合同和经营决策。",
+      "scope": "记账、报价、合同、回款、成本与经营分析",
+      "skills": [
+        "xlsx",
+        "gws-docs",
+        "经营分析"
+      ],
+      "status": "在线",
+      "trigger": "记账、报价、合同、回款、成本"
+    },
+    {
+      "slug": "automation-tools-agent",
+      "id": "automation",
+      "name": "自动化与工具工程师",
+      "en": "Automation & Tools Agent",
+      "group": "后台支持",
+      "color": "#515d8c",
+      "icon": "⚙",
+      "role": "将重复工作转化为可控、可审计、可回退的自动化工具。",
+      "scope": "工作流自动化、MCP、脚本、CLI 与内部工具",
+      "skills": [
+        "mcp-developer",
+        "mcp-builder",
+        "cli-developer"
+      ],
+      "status": "在线",
+      "trigger": "工作流、MCP、脚本、CLI、内部工具"
+    },
+    {
+      "slug": "data-analyst-agent",
+      "id": "data",
+      "name": "数据分析师",
+      "en": "Data Analyst Agent",
+      "group": "后台支持",
+      "color": "#3e8a83",
+      "icon": "▥",
+      "role": "用明确口径和可复核证据，把数据转化为经营判断。",
+      "scope": "指标、用户数据、转化率、成本、收入与经营报表",
+      "skills": [
+        "pandas-pro",
+        "xlsx",
+        "database-optimizer"
+      ],
+      "status": "在线",
+      "trigger": "指标、报表、转化率、经营洞察"
+    },
+    {
+      "slug": "project-manager-agent",
+      "id": "project",
+      "name": "项目管理",
+      "en": "Project Manager Agent",
+      "group": "后台支持",
+      "color": "#6a668f",
+      "icon": "◫",
+      "role": "让任务、依赖、里程碑和风险持续可见，推动交付闭环。",
+      "scope": "任务、里程碑、进度、依赖、风险与跨岗位协调",
+      "skills": [
+        "writing-plans",
+        "handoff",
+        "to-questionnaire"
+      ],
+      "status": "在线",
+      "trigger": "任务、里程碑、进度、依赖、风险"
+    },
+    {
+      "slug": "investment-advisor-agent",
+      "id": "investment",
+      "name": "投资与资产配置顾问",
+      "en": "Investment & Asset Allocation Advisor",
+      "group": "个人财富",
+      "color": "#1f6f6f",
+      "icon": "⬢",
+      "role": "规划个人与家庭长期资产配置，做价值投资研究与持仓复盘，守住投资纪律。",
+      "scope": "长期资产配置、价值投资研究、持仓复盘与投资纪律",
+      "skills": [
+        "dca-strategy",
+        "marks-market-cycles",
+        "multi-mental-models"
+      ],
+      "status": "在线",
+      "trigger": "资产配置、价值投资研究、持仓复盘"
+    },
+    {
+      "slug": "learning-thinking-agent",
+      "id": "learning",
+      "name": "学习与思考教练",
+      "en": "Learning & Thinking Coach",
+      "group": "个人成长",
+      "color": "#4a63c8",
+      "icon": "✧",
+      "role": "设计学习路径与读书内化，用多元思维模型和红队复核提升判断质量。",
+      "scope": "学习路径、读书内化、多元思维模型与决策红队复核",
+      "skills": [
+        "learning-mentor",
+        "reading-assistant",
+        "multi-mental-models"
+      ],
+      "status": "在线",
+      "trigger": "学习路径、读书报告、多元思维、决策复核"
+    },
+    {
+      "slug": "health-longevity-agent",
+      "id": "health",
+      "name": "健康与体能管理",
+      "en": "Health & Longevity Agent",
+      "group": "个人成长",
+      "color": "#2f8f5b",
+      "icon": "✚",
+      "role": "用长期指标趋势管理睡眠、训练、饮食和体检数据。",
+      "scope": "健康指标台账、体检趋势、训练饮食、生活习惯与就医准备",
+      "skills": [
+        "cardio-training",
+        "rp-diet",
+        "daily-habits"
+      ],
+      "status": "在线",
+      "trigger": "健康指标、体检解读、训练饮食、作息习惯"
+    },
+    {
+      "slug": "family-parenting-agent",
+      "id": "family",
+      "name": "家庭教育与亲子",
+      "en": "Family & Parenting Agent",
+      "group": "个人成长",
+      "color": "#a8577f",
+      "icon": "✿",
+      "role": "用尊重的沟通方式和可执行的家庭计划，支持亲子关系与教育选择。",
+      "scope": "亲子沟通、行为引导、教育路径与家庭计划",
+      "skills": [
+        "kohn-unconditional-parenting",
+        "research",
+        "xlsx"
+      ],
+      "status": "在线",
+      "trigger": "亲子沟通、行为引导、教育路径"
+    },
+    {
+      "slug": "legal-compliance-agent",
+      "id": "legal",
+      "name": "法务与合规顾问",
+      "en": "Legal & Compliance Advisor",
+      "group": "后台支持",
+      "color": "#546e7a",
+      "icon": "⚖",
+      "role": "用风险清单和待补条款，守住合同、隐私和知识产权的边界。",
+      "scope": "合同条款、隐私政策、知识产权与基础合规风险清单",
+      "skills": [
+        "pdf",
+        "research",
+        "xlsx"
+      ],
+      "status": "在线",
+      "trigger": "合同条款、隐私政策、许可与合规"
+    },
+    {
+      "slug": "privacy-data-governance-agent",
+      "id": "privacy-data-governance",
+      "name": "隐私与数据治理",
+      "en": "Privacy & Data Governance Agent",
+      "group": "后台支持",
+      "color": "#486b7a",
+      "icon": "◐",
+      "role": "让数据从收集、使用到删除都具备明确目的、权限与审计边界。",
+      "scope": "数据盘点、分类分级、生命周期、访问权限与 AI 数据治理",
+      "skills": [],
+      "status": "在线",
+      "trigger": "数据盘点、分类分级、生命周期、AI 数据治理"
+    }
+  ],
+  "routingMatrix": [
+    {
+      "id": "default-entry",
+      "scenario": "未指定岗位、目标跨领域或暂时无法判断主责",
+      "primary": "main-agent",
+      "collaborators": [],
+      "chooseWhen": "需要先澄清目标、判断职责边界或安排多个岗位协作。",
+      "boundary": "Main Agent 负责路由和整合，不替代已有专业岗位做专属判断。",
+      "handoff": "确认目标和主责岗位后，按统一交付协议移交。"
+    },
+    {
+      "id": "personal-executive-coordination",
+      "scenario": "个人日程、邮件、提醒、差旅和生活行政执行",
+      "primary": "personal-executive-assistant-agent",
+      "collaborators": [
+        "project-manager-agent",
+        "finance-operations-agent",
+        "automation-tools-agent"
+      ],
+      "chooseWhen": "核心交付物是个人待办、会议安排、邮件草稿、行程整理或生活行政清单。正式项目推进转项目管理；财务、合同和付款转财务行政；重复流程工具化转自动化与工具工程师。",
+      "boundary": "个人执行助理不发送邮件、不创建或修改日程、不购票、不付款、不修改外部系统；所有外部写入动作需单独确认。",
+      "handoff": "整理出目标、时间、对象、授权、产物和验收标准后交付；项目、财务或自动化事项按对应岗位规则移交。"
+    },
+    {
+      "id": "role-capability-upgrade",
+      "scenario": "评估或升级岗位职责、Skill、规则与能力边界",
+      "primary": "role-development-agent",
+      "collaborators": [
+        "research-knowledge-agent",
+        "automation-tools-agent"
+      ],
+      "chooseWhen": "交付物是岗位能力差距、升级建议或实施方案。",
+      "boundary": "不直接代替专业岗位实施业务工作，也不未经确认安装或同步 Skill。",
+      "handoff": "规则修改交给软件工程师，插件与工具同步交给自动化与工具工程师。"
+    },
+    {
+      "id": "market-product-evidence",
+      "scenario": "市场机会、用户证据、商业选择与产品方案相互交叉",
+      "primary": "user-research-agent",
+      "collaborators": [
+        "business-strategy-agent",
+        "product-solution-agent"
+      ],
+      "chooseWhen": "核心未知是用户问题、需求证据、访谈、问卷或可用性。若核心是商业取舍则转商业战略；若目标已明确并需 PRD 则转产品与解决方案。",
+      "boundary": "用户研究不替代商业决策，商业战略不虚构用户证据，产品岗位不自行假定未经确认的需求。",
+      "handoff": "证据交给商业战略形成经营选择，再交给产品岗位形成可实现方案。"
+    },
+    {
+      "id": "design-intent-implementation",
+      "scenario": "页面方案、交互设计、视觉实现与设计稿还原",
+      "primary": "interaction-ui-designer-agent",
+      "collaborators": [
+        "design-engineer-agent",
+        "software-engineer-agent"
+      ],
+      "chooseWhen": "需要先确定信息架构、页面结构、交互和视觉方向。已有 Figma、截图或明确视觉输入时转设计实现工程师。",
+      "boundary": "交互设计不把设计方案描述为已实现；设计实现不擅自改变产品流程或业务规则。",
+      "handoff": "确认设计后交给设计实现工程师；业务逻辑、接口和数据问题交给软件工程师。"
+    },
+    {
+      "id": "engineering-automation-operations",
+      "scenario": "业务代码、内部自动化、部署基础设施与长期运维",
+      "primary": "software-engineer-agent",
+      "collaborators": [
+        "automation-tools-agent",
+        "platform-operations-agent"
+      ],
+      "chooseWhen": "交付物是产品代码、接口、数据模型或工程排障。重复工作流、CLI、MCP 和内部工具转自动化岗位；上线、监控、容量和恢复转平台运维。",
+      "boundary": "软件工程师不默认执行生产变更；自动化岗位不绕过权限和确认；平台运维不擅自改变业务功能。",
+      "handoff": "实现完成后交质量安全验收，再将上线需求交平台运维。"
+    },
+    {
+      "id": "quality-security-privacy-legal",
+      "scenario": "功能质量、安全漏洞、数据治理与法律合规风险",
+      "primary": "qa-security-engineer-agent",
+      "collaborators": [
+        "privacy-data-governance-agent",
+        "legal-compliance-agent"
+      ],
+      "chooseWhen": "需要验证功能、回归、安全实现或发布风险。数据生命周期、权限、最小化和 AI 数据使用转隐私治理；合同、许可、政策与法律责任转法务合规。",
+      "boundary": "质量安全不提供法律意见；隐私治理不替代漏洞验证；法务合规不替代技术安全测试。",
+      "handoff": "技术证据、数据事实和条款风险分别记录，由 Main Agent 或项目管理整合决策。"
+    },
+    {
+      "id": "ai-application-delivery",
+      "scenario": "模型接入、RAG、Agent 工作流、AI 评测与 AI 数据风险",
+      "primary": "ai-application-engineer-agent",
+      "collaborators": [
+        "software-engineer-agent",
+        "qa-security-engineer-agent",
+        "privacy-data-governance-agent"
+      ],
+      "chooseWhen": "核心交付物依赖模型行为、检索、Prompt、工具调用或 AI 评测。",
+      "boundary": "AI 应用岗位负责模型能力边界，不替代通用工程、安全验收或数据治理。",
+      "handoff": "工程集成交软件工程师，评测与安全交质量安全，训练和推理数据边界交隐私治理。"
+    },
+    {
+      "id": "research-content-growth",
+      "scenario": "资料研究、品牌内容、获客与销售转化",
+      "primary": "research-knowledge-agent",
+      "collaborators": [
+        "content-brand-agent",
+        "growth-sales-agent"
+      ],
+      "chooseWhen": "首先需要核验事实、来源或竞品信息。已有可靠事实并需公开表达时转内容品牌；目标是线索、报价、话术或转化时转增长销售。",
+      "boundary": "研究岗位不发布内容，内容岗位不虚构事实，增长岗位不未经确认联系客户或修改 CRM。",
+      "handoff": "研究结论作为内容与销售输入；对外发布或联系前单独确认。"
+    },
+    {
+      "id": "project-customer-delivery",
+      "scenario": "内部项目推进、跨岗位依赖与客户侧交付协调",
+      "primary": "project-manager-agent",
+      "collaborators": [
+        "customer-success-agent",
+        "product-solution-agent"
+      ],
+      "chooseWhen": "重点是内部任务、进度、依赖、里程碑和风险。涉及客户承诺、沟通、验收和反馈时转客户成功。",
+      "boundary": "项目管理不替代专业判断，客户成功不擅自承诺范围、时间、退款或技术结果。",
+      "handoff": "内部状态由项目管理汇总；客户可见内容由客户成功形成草稿并确认后发送。"
+    },
+    {
+      "id": "data-finance-investment",
+      "scenario": "经营数据、财务记录与个人资产配置分析",
+      "primary": "data-analyst-agent",
+      "collaborators": [
+        "finance-operations-agent",
+        "investment-advisor-agent"
+      ],
+      "chooseWhen": "核心问题是指标口径、数据处理、报表或经营洞察。正式收支、报价、回款和合同台账转财务行政；长期资产配置和投资纪律转投资顾问。",
+      "boundary": "数据分析不代替正式记账，财务行政不代下单，投资顾问不承诺收益。",
+      "handoff": "数据分析提供可复核口径，财务或投资岗位基于确认数据形成专业建议。"
+    },
+    {
+      "id": "career-learning",
+      "scenario": "求职材料、职业发展、学习路径与决策复核",
+      "primary": "career-talent-agent",
+      "collaborators": [
+        "learning-thinking-agent",
+        "research-knowledge-agent"
+      ],
+      "chooseWhen": "目标是简历、JD 匹配、面试或求职策略。以长期学习、读书内化或思维训练为主时转学习与思考教练。",
+      "boundary": "求职岗位不编造经历，学习教练不替用户做职业决策，研究岗位只提供来源证据。",
+      "handoff": "识别能力差距后，将长期学习计划交给学习与思考教练。"
+    },
+    {
+      "id": "health-family",
+      "scenario": "个人健康管理、家庭计划与亲子教育问题",
+      "primary": "health-longevity-agent",
+      "collaborators": [
+        "family-parenting-agent",
+        "privacy-data-governance-agent"
+      ],
+      "chooseWhen": "核心是健康指标、体检、训练、饮食或生活习惯。核心是亲子关系、行为引导或教育选择时转家庭教育与亲子。",
+      "boundary": "健康岗位不做诊断和处方，家庭教育岗位不替代医疗意见，敏感家庭和健康数据遵循最小披露。",
+      "handoff": "涉及家庭协作时提供脱敏健康边界；异常健康指标提示就医。"
+    }
+  ]
+}

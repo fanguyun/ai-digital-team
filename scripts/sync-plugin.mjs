@@ -9,6 +9,7 @@ import {
 import { spawnSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { loadAgentManifest } from './agent-manifest.mjs'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(scriptDir, '..')
@@ -17,6 +18,8 @@ const agentsRoot = join(repoRoot, 'agents')
 const pluginRoot = join(repoRoot, 'plugins', 'personal-digital-team')
 const skillsRoot = join(pluginRoot, 'skills')
 const pluginJsonPath = join(pluginRoot, '.codex-plugin', 'plugin.json')
+const routingMatrixPath = join(agentsRoot, 'ROUTING_MATRIX.md')
+const deliveryProtocolPath = join(agentsRoot, 'DELIVERY_PROTOCOL.md')
 const defaultValidatorPath = join(
   home,
   '.codex',
@@ -42,8 +45,20 @@ function extractSummary(markdown, fallback) {
   return match ? match[1].trim() : fallback
 }
 
+function withoutTopHeading(markdown) {
+  return markdown.trim().replace(/^#\s+.+\n+/, '')
+}
+
+function readSharedDocument(path, label) {
+  if (!existsSync(path)) throw new Error(`缺少${label}: ${path.replace(`${repoRoot}/`, '')}`)
+  return transformBody(withoutTopHeading(readFileSync(path, 'utf8')))
+}
+
 function transformBody(body) {
   return body
+    .replace(/`\.\.\/ROUTING_MATRIX\.md`/g, '本 Skill 后附的“团队路由矩阵（共享规则）”')
+    .replace(/`\.\.\/DELIVERY_PROTOCOL\.md`/g, '本 Skill 后附的“团队统一交付协议（共享规则）”')
+    .replace(/`agents\/DELIVERY_PROTOCOL\.md`/g, '“团队统一交付协议（共享规则）”')
     .replace(/\.\.\/\.\.\/scripts\//g, '__PLUGIN_SCRIPTS__/')
     .replace(/\.\.\/([a-z0-9-]+)\/AGENTS\.md/g, (_, slug) => `$${slug}`)
     .replace(/\.\.\/([a-z0-9-]+)\//g, (_, slug) => `$${slug}`)
@@ -58,16 +73,7 @@ function transformBody(body) {
 }
 
 function listAgentSlugs() {
-  if (!existsSync(agentsRoot)) return []
-  return readdirSync(agentsRoot, { withFileTypes: true })
-    .filter(
-      (entry) =>
-        entry.isDirectory() &&
-        !entry.name.startsWith('.') &&
-        existsSync(join(agentsRoot, entry.name, 'AGENTS.md')),
-    )
-    .map((entry) => entry.name)
-    .sort()
+  return loadAgentManifest().agents.map((agent) => agent.slug)
 }
 
 function writeIfChanged(path, content, log, { dryRun = false } = {}) {
@@ -131,6 +137,8 @@ export function syncPlugin({ log = console.log, dryRun = false } = {}) {
   if (!dryRun) mkdirSync(skillsRoot, { recursive: true })
 
   const slugs = listAgentSlugs()
+  const routingMatrix = readSharedDocument(routingMatrixPath, '路由矩阵')
+  const deliveryProtocol = readSharedDocument(deliveryProtocolPath, '统一交付协议')
   let changed = false
 
   for (const slug of slugs) {
@@ -141,6 +149,12 @@ export function syncPlugin({ log = console.log, dryRun = false } = {}) {
     const title = extractTitle(source, slug)
     const summary = extractSummary(source, title)
     const body = transformBody(source.trim())
+
+    const sharedSections = []
+    if (slug === 'main-agent') {
+      sharedSections.push('## 团队路由矩阵（共享规则）', '', routingMatrix, '')
+    }
+    sharedSections.push('## 团队统一交付协议（共享规则）', '', deliveryProtocol, '')
 
     const skillContent = [
       '---',
@@ -153,6 +167,7 @@ export function syncPlugin({ log = console.log, dryRun = false } = {}) {
       '',
       body,
       '',
+      ...sharedSections,
     ].join('\n')
 
     const skillDir = join(skillsRoot, slug)

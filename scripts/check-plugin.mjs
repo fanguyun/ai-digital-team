@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import { loadAgentManifest } from './agent-manifest.mjs'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(scriptDir, '..')
@@ -17,14 +18,15 @@ function issue(message) {
   issueCount += 1
 }
 
-function directoriesWithAgents(root) {
-  return readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && existsSync(join(root, entry.name, 'AGENTS.md')))
-    .map((entry) => entry.name)
-    .sort()
+let agentManifest
+try {
+  agentManifest = loadAgentManifest()
+} catch (error) {
+  issue(`Agent 清单无效: ${error.message}`)
+  agentManifest = { agents: [] }
 }
 
-const agentSlugs = directoriesWithAgents(agentsRoot)
+const agentSlugs = agentManifest.agents.map((agent) => agent.slug)
 const pluginSlugs = existsSync(skillsRoot)
   ? readdirSync(skillsRoot, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
@@ -44,6 +46,18 @@ for (const slug of agentSlugs) {
   }
   if (!existsSync(skillPath)) issue(`缺少插件 Skill: ${skillPath.replace(`${repoRoot}/`, '')}`)
   if (!existsSync(yamlPath)) issue(`缺少插件元数据: ${yamlPath.replace(`${repoRoot}/`, '')}`)
+  if (existsSync(skillPath)) {
+    const skillContent = readFileSync(skillPath, 'utf8')
+    if (!skillContent.includes('## 团队统一交付协议（共享规则）')) {
+      issue(`${skillPath.replace(`${repoRoot}/`, '')} 缺少统一交付协议`)
+    }
+    if (slug === 'main-agent' && !skillContent.includes('## 团队路由矩阵（共享规则）')) {
+      issue(`${skillPath.replace(`${repoRoot}/`, '')} 缺少团队路由矩阵`)
+    }
+    if (/`\.\.\/(ROUTING_MATRIX|DELIVERY_PROTOCOL)\.md`/.test(skillContent)) {
+      issue(`${skillPath.replace(`${repoRoot}/`, '')} 保留了不可用的共享规则相对路径`)
+    }
+  }
 }
 
 for (const slug of pluginSlugs) {
