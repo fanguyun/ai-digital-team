@@ -3,6 +3,19 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "files": [
+    "dsh",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fanguyun/ai-digital-team.git"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./dsh/cordis.patch.yml"
+    }
+  },
   "packageManager": "pnpm@11.21.0",
   "scripts": {
     "dev": "vite",
@@ -11,16 +24,18 @@
     "check-skills": "./scripts/check-skills",
     "check-agents": "node scripts/agent-manifest.mjs && node scripts/sync-agent-indexes.mjs --check",
     "check-plugin": "node scripts/check-plugin.mjs",
-    "check-team": "pnpm check-skills && pnpm check-agents && pnpm check-plugin",
+    "check-deepseek-harness": "node scripts/check-deepseek-harness.mjs",
+    "check-team": "pnpm check-skills && pnpm check-agents && pnpm check-plugin && pnpm check-deepseek-harness",
     "bootstrap-team": "./scripts/bootstrap-team",
     "sync-plugin": "node scripts/sync-plugin.mjs",
-    "sync-team": "node scripts/agent-manifest.mjs && node scripts/sync-agent-indexes.mjs && pnpm sync-plugin"
+    "sync-deepseek-harness": "node scripts/sync-deepseek-harness.mjs",
+    "sync-team": "node scripts/agent-manifest.mjs && node scripts/sync-agent-indexes.mjs && pnpm sync-plugin && pnpm sync-deepseek-harness"
   },
-  "dependencies": {
+  "dependencies": {},
+  "devDependencies": {
     "@vitejs/plugin-react": "latest",
     "vite": "latest",
     "react": "latest",
     "react-dom": "latest"
-  },
-  "devDependencies": {}
+  }
 }

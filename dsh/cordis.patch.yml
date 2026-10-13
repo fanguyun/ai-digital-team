@@ -1,0 +1,20 @@
+# DeepSeek Harness bundle patch for the Personal Digital Team.
+# It mounts the generated Harness-specific skills as an isolated provider.
+
+- insert:
+    - id: personal-digital-team-skills
+      name: '@deepseek-ai/dsh-skill-filesystem'
+      config:
+        providerName: personal-digital-team
+        includeDefaultRoots: false
+        watch: false
+        bundledSkillDir: !!js >-
+          process.getBuiltinModule('node:path').join(
+            process.getBuiltinModule('node:path').dirname(
+              process.getBuiltinModule('node:module')
+                .createRequire(baseUrl)
+                .resolve('personal-digital-team/package.json')
+            ),
+            'dsh',
+            'skills'
+          )

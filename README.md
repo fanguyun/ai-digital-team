@@ -142,6 +142,26 @@ codex plugin add personal-digital-team@personal-digital-team
 
 原 `agents/` 目录仍是维护源；插件是导出的可安装副本。仓库内继续使用目录式规则时，插件不会改变现有行为。
 
+## DeepSeek Harness 使用
+
+仓库根包同时声明了 DeepSeek Harness bundle。Harness 安装时会挂载 `dsh/skills/` 中自动生成的 27 个岗位 Skill，不影响现有 Codex 插件。
+
+使用当前 Git 仓库安装到指定 profile，例如 Web：
+
+```bash
+dsh plugin --profile web add https://github.com/fanguyun/ai-digital-team.git
+```
+
+其他 profile 将 `web` 替换为 `tui` 或 `headless`。安装后可以检查组合配置：
+
+```bash
+dsh --profile web --dump-config
+```
+
+输出中应包含 `personal-digital-team-skills`。进入 Harness 后使用 `/main-agent` 调用默认入口，或使用 `/personal-executive-assistant-agent` 等岗位命令。
+
+Harness bundle 只内置团队的岗位 Skill、路由矩阵和统一交付协议。岗位文档引用的 `research`、`xlsx`、`agently-mail` 等外部专项 Skill 不会被复制进本仓库；需要这些能力时，将对应 Skill 单独安装到 Harness 支持的 `.dsh/skills` 或 `.agents/skills` 目录。
+
 ## 换设备初始化
 
 拉取项目后，先检查 Skill 软链接。该检查同时验证已有软链接是否有效，以及岗位规则引用的已安装 Skill 是否已建立岗位级绑定：
@@ -181,6 +201,7 @@ pnpm sync-team
 - 校验路由场景、主责岗位、协作岗位和统一交付协议结构。
 - 生成 `agents/ROUTING_MATRIX.md`，刷新根目录岗位索引和 Main Agent 岗位总览。
 - 按 `agents/manifest.json` 的岗位顺序生成 `SKILL.md` 和 `agents/openai.yaml`。
+- 生成 `dsh/skills/` 下的 Harness Skill，并把岗位间调用转换为 `/岗位名`。
 - 清理已删除岗位对应的插件 skill 目录。
 - 内容变化时更新 `plugin.json` 的 cachebuster，并运行插件校验。
 - 跨岗位路径会从 `../` 转换为 `$<skill>`。
