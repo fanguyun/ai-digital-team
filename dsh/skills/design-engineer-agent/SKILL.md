@@ -104,8 +104,9 @@ disable-model-invocation: false
 
 ## 真实任务运行记录
 
-- 已配置 `TASK_RUNTIME_API_URL` 和 `TASK_RUNTIME_WRITE_TOKEN` 时，多步骤执行、跨岗位协作、工程实现或存在确认节点的实质性任务应写入任务运行时；普通问答、一次性解释和未进入执行阶段的方案讨论不创建记录。
-- 一个用户任务只创建一个 `TaskRun`。Main Agent 或当前主责岗位负责执行 `start` 并保留返回的任务 ID；协作岗位只向该任务追加事件，不得为同一目标重复创建任务。
+- 已配置 `TASK_RUNTIME_API_URL` 和 `TASK_RUNTIME_WRITE_TOKEN` 时，只要本次任务明确通过个人数字团队的 Main Agent 或任一岗位 Agent 处理，就必须写入任务运行时；不再按问答、解释、方案、工程实现或任务规模区分。完全未使用团队 Agent 的对话不创建记录。
+- 路由到团队 Agent 后，由 Main Agent 或当前主责岗位在开始处理任务时执行 `start` 并保留返回的任务 ID；最终回复中的“本次使用”说明只用于展示，不等同于已经创建运行记录。
+- 一个用户任务只创建一个 `TaskRun`。围绕同一目标的追问、补充和连续微调只追加事件；用户切换到新的独立目标时才创建新的任务记录。协作岗位只向现有任务追加自身事件，不得按消息或岗位重复创建任务。
 - Codex 使用 `--platform codex`，DeepSeek Harness 使用 `--platform deepseek-harness`。岗位名称使用清单中的 slug，例如 `software-engineer-agent`。
 - 源仓库、Codex 插件和 DeepSeek Harness 均通过随包分发的同一 CLI 调用 GraphQL，不得直接连接 PostgreSQL；以下路径相对当前岗位的 `AGENTS.md` 或 `SKILL.md` 所在目录解析：
 

@@ -454,6 +454,8 @@ export type UpdateInstalledSkill = { __typename?: 'Mutation', updateInstalledSki
 
 export type TaskRuntimeDashboardVariables = Exact<{
   filter?: InputMaybe<TaskRunFilter>;
+  after?: InputMaybe<Scalars['String']['input']>;
+  first?: InputMaybe<Scalars['Int']['input']>;
 }>;
 
 
@@ -493,4 +495,4 @@ export type AgentRuntimeChanged = { __typename?: 'Subscription', taskRunsChanged
 export type ActionCenterOverviewVariables = Exact<{ [key: string]: never; }>;
 
 
-export type ActionCenterOverview = { __typename?: 'Query', taskRuns: { __typename?: 'TaskRunConnection', edges: Array<{ __typename?: 'TaskRunEdge', node: { __typename?: 'TaskRun', id: string, title: string, primaryAgent: string, status: TaskRunStatus, summary?: string | null, updatedAt: string } }> }, runtimeHealth: { __typename?: 'RuntimeHealth', database: { __typename?: 'RuntimeComponentHealth', status: string, message?: string | null }, realtime: { __typename?: 'RuntimeComponentHealth', status: string, message?: string | null } }, teamRuntimeOverview: { __typename?: 'TeamRuntimeOverview', totalTaskCount: number, trackedWorkCount: number, totalTokenCoverage: RuntimeMetricCoverage }, installedSkills: Array<{ __typename?: 'InstalledSkill', id: string, name: string, updatable: boolean }> };
+export type ActionCenterOverview = { __typename?: 'Query', taskRuns: { __typename?: 'TaskRunConnection', edges: Array<{ __typename?: 'TaskRunEdge', node: { __typename?: 'TaskRun', id: string, title: string, primaryAgent: string, status: TaskRunStatus, summary?: string | null, updatedAt: string } }> }, runtimeHealth: { __typename?: 'RuntimeHealth', database: { __typename?: 'RuntimeComponentHealth', status: string, message?: string | null }, realtime: { __typename?: 'RuntimeComponentHealth', status: string, message?: string | null } }, installedSkills: Array<{ __typename?: 'InstalledSkill', id: string, name: string, updatable: boolean }> };

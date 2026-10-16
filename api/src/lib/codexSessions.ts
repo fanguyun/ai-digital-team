@@ -5,8 +5,9 @@ import { basename, join } from 'node:path'
 import { createInterface } from 'node:readline'
 
 import {
-  digitalTeamSlugs,
+  digitalTeamAgents,
   isDigitalTeamProject,
+  type DigitalTeamAgent,
   type DeepSeekSessionSnapshot,
 } from './deepseekSessions'
 import {
@@ -28,23 +29,39 @@ const tokenCount = (value: unknown) => {
 export const codexSessionRoot = () =>
   process.env.CODEX_SESSION_ROOT || join(homedir(), '.codex', 'sessions')
 
-const parentSessionId = (path: string) => {
+export const parentSessionId = (path: string) => {
   const ids = [...path.matchAll(uuidPattern())].map((match) => match[0])
-  return ids.length === 1 ? ids[0] : undefined
+  return ids[0]
 }
 
-const skillNameFromArguments = (value: unknown, teamSlugs: Set<string>) => {
+const normalizedAgentSlug = (
+  value: unknown,
+  teamAgents: DigitalTeamAgent[]
+) => {
   const text = typeof value === 'string' ? value : ''
-  if (!text || text.length > 400) return undefined
-  for (const slug of teamSlugs) {
+  if (!text || text.length > 2_000) return undefined
+  const normalized = text.toLocaleLowerCase()
+  for (const agent of teamAgents) {
+    const aliases = [agent.slug, agent.name, agent.en].filter(
+      (alias): alias is string => Boolean(alias)
+    )
     if (
-      text.includes(`"name":"${slug}"`) ||
-      text.includes(`skills/${slug}/SKILL.md`)
+      aliases.some((alias) => normalized.includes(alias.toLocaleLowerCase()))
     ) {
-      return slug
+      return agent.slug
     }
   }
   return undefined
+}
+
+const routeAgentFromMessage = (
+  value: unknown,
+  teamAgents: DigitalTeamAgent[]
+) => {
+  const text = typeof value === 'string' ? value : ''
+  const route = text.match(/本次使用：(.+?)(?:；|;|\n|$)/)?.[1]
+  if (!route || route.includes('未使用子 Agent')) return undefined
+  return normalizedAgentSlug(route, teamAgents)
 }
 
 export { usableTaskTitle }
@@ -67,7 +84,7 @@ export const summarizeCodexLines = (
   sessionId: string,
   now = Date.now(),
   _threadName?: string,
-  teamSlugs = digitalTeamSlugs()
+  teamAgents = digitalTeamAgents()
 ): DeepSeekSessionSnapshot[] => {
   let cwdName: string | undefined
   let teamProject = false
@@ -153,13 +170,24 @@ export const summarizeCodexLines = (
     markTime()
     if (!current) continue
 
-    const skillName = skillNameFromArguments(
-      record.payload?.arguments,
-      teamSlugs
-    )
+    const skillName = normalizedAgentSlug(record.payload?.arguments, teamAgents)
     if (skillName) {
       current.usedSkill = true
       current.primaryAgent ??= skillName
+    }
+
+    if (
+      record.payload?.type === 'message' &&
+      record.payload.role === 'assistant'
+    ) {
+      const text = (record.payload.content || [])
+        .map((part) => part.text || '')
+        .join('\n')
+      const routeAgent = routeAgentFromMessage(text, teamAgents)
+      if (routeAgent) {
+        current.usedSkill = true
+        current.primaryAgent = routeAgent
+      }
     }
 
     if (record.type !== 'token_usage_record') continue
@@ -229,10 +257,23 @@ const findParentSessions = async (root: string) => {
   const ranked = await Promise.all(
     matches.map(async (path) => ({
       path,
+      sessionId: parentSessionId(path),
       modifiedAt: (await stat(path)).mtimeMs,
     }))
   )
-  return ranked
+  const grouped = new Map<string, Array<{ path: string; modifiedAt: number }>>()
+  for (const entry of ranked) {
+    if (!entry.sessionId) continue
+    const files = grouped.get(entry.sessionId) || []
+    files.push({ path: entry.path, modifiedAt: entry.modifiedAt })
+    grouped.set(entry.sessionId, files)
+  }
+  return [...grouped.entries()]
+    .map(([sessionId, files]) => ({
+      sessionId,
+      files: files.sort((left, right) => left.modifiedAt - right.modifiedAt),
+      modifiedAt: Math.max(...files.map((file) => file.modifiedAt)),
+    }))
     .sort((left, right) => right.modifiedAt - left.modifiedAt)
     .slice(0, MAX_SESSIONS)
 }
@@ -265,23 +306,23 @@ export const loadCodexSessions = async (
   if (process.env.NODE_ENV === 'test' && !process.env.CODEX_SESSION_ROOT)
     return []
   const names = await loadThreadNames(root)
-  const teamSlugs = digitalTeamSlugs()
+  const teamAgents = digitalTeamAgents()
   const snapshots: DeepSeekSessionSnapshot[] = []
   for (const entry of await findParentSessions(root)) {
-    const sessionId = parentSessionId(entry.path)
-    if (!sessionId) continue
     const lines: string[] = []
-    const stream = createInterface({
-      input: createReadStream(entry.path, 'utf8'),
-    })
-    for await (const line of stream) lines.push(line)
+    for (const file of entry.files) {
+      const stream = createInterface({
+        input: createReadStream(file.path, 'utf8'),
+      })
+      for await (const line of stream) lines.push(line)
+    }
     snapshots.push(
       ...summarizeCodexLines(
         lines,
-        sessionId,
+        entry.sessionId,
         now,
-        names.get(sessionId),
-        teamSlugs
+        names.get(entry.sessionId),
+        teamAgents
       )
     )
   }

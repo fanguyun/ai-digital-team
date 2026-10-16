@@ -26,6 +26,8 @@ const runtimeTelemetryHarnessPath = join(
   'runtime-telemetry.mjs'
 )
 let issueCount = 0
+const requiredRuntimePolicy =
+  '只要本次任务明确通过个人数字团队的 Main Agent 或任一岗位 Agent 处理，就必须写入任务运行时'
 
 function issue(message) {
   console.error(`问题: ${message}`)
@@ -98,6 +100,9 @@ for (const agent of manifest.agents) {
   }
   if (!content.includes('## 真实任务运行记录')) {
     issue(`Harness Skill 缺少真实任务运行记录协议: ${agent.slug}`)
+  }
+  if (!content.includes(requiredRuntimePolicy)) {
+    issue(`Harness Skill 未启用团队 Agent 全量任务记录规则: ${agent.slug}`)
   }
 }
 

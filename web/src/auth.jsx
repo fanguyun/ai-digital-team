@@ -2,6 +2,9 @@ import { createContext, useContext, useEffect, useState } from 'react'
 
 import { Command, Eye, EyeOff } from 'lucide-react'
 
+import { RAFIKI_CREDIT } from 'src/illustrations/rafikiScenes'
+import { useThemedSceneSrc } from 'src/illustrations/useThemedSceneSrc'
+
 const AUTH_URL = '/.api/functions/auth'
 
 const AuthContext = createContext({
@@ -22,14 +25,18 @@ const LoginIdentity = () => (
         <span>数字办公室入口</span>
       </div>
     </div>
-    <div className="login-identity-copy">
-      <h1>先登录，再开始今天的协作。</h1>
-      <p>岗位、任务和插件都在门后。登录状态只保存在这台浏览器。</p>
+    <div className="login-identity-body">
+      <p className="login-identity-note">
+        让岗位、Skill 与任务在同一个数字办公室持续流动。
+      </p>
     </div>
   </section>
 )
 
 const LoginScreen = ({ onSuccess }) => {
+  const loginIllustration = useThemedSceneSrc(
+    '/illustrations/rafiki/team-work.svg'
+  )
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -74,9 +81,10 @@ const LoginScreen = ({ onSuccess }) => {
         <form className="login-form" onSubmit={submit}>
           <h2>登录</h2>
           <p>使用你的团队账号进入办公室。</p>
-          <label>
+          <label htmlFor="login-username">
             账号
             <input
+              id="login-username"
               name="username"
               autoComplete="username"
               value={username}
@@ -84,10 +92,11 @@ const LoginScreen = ({ onSuccess }) => {
               required
             />
           </label>
-          <label>
+          <label htmlFor="login-password">
             密码
             <span className="login-password">
               <input
+                id="login-password"
                 name="password"
                 type={showPassword ? 'text' : 'password'}
                 autoComplete="current-password"
@@ -115,6 +124,18 @@ const LoginScreen = ({ onSuccess }) => {
             {submitting ? '正在登录…' : '进入团队'}
           </button>
         </form>
+        <figure className="login-panel-art">
+          <img
+            className={loginIllustration.pending ? 'is-pending' : undefined}
+            src={loginIllustration.src}
+            alt="数字团队协作"
+          />
+          <figcaption>
+            <a href={RAFIKI_CREDIT.href} target="_blank" rel="noreferrer">
+              {RAFIKI_CREDIT.label}
+            </a>
+          </figcaption>
+        </figure>
       </section>
     </main>
   )

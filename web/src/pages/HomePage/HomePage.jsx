@@ -143,11 +143,6 @@ const ACTION_CENTER_OVERVIEW = gql`
         message
       }
     }
-    teamRuntimeOverview {
-      totalTaskCount
-      trackedWorkCount
-      totalTokenCoverage
-    }
     installedSkills {
       id
       name
@@ -277,7 +272,6 @@ function App() {
         taskRuns:
           actionCenterData?.taskRuns?.edges?.map((edge) => edge.node) || [],
         runtimeHealth: actionCenterData?.runtimeHealth,
-        overview: actionCenterData?.teamRuntimeOverview,
         skills: actionCenterData?.installedSkills || [],
         queryError: actionCenterError,
       }),

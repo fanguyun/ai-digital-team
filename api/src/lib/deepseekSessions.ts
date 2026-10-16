@@ -34,6 +34,12 @@ export type DeepSeekSessionSnapshot = {
   cachedTokens?: number
 }
 
+export type DigitalTeamAgent = {
+  slug: string
+  name?: string
+  en?: string
+}
+
 export const isDigitalTeamProject = (cwd?: string) => {
   const name = cwd ? basename(cwd) : ''
   return name === 'ai-digital-team' || name === 'personal-digital-team'
@@ -44,23 +50,28 @@ const sessionIdFromPath = (path: string) =>
     /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
   )?.[1]
 
-export const digitalTeamSlugs = () => {
+export const digitalTeamAgents = (): DigitalTeamAgent[] => {
   const manifestPath = [
     join(process.cwd(), 'agents', 'manifest.json'),
     join(process.cwd(), '..', 'agents', 'manifest.json'),
   ].find((path) => existsSync(path))
-  if (!manifestPath) return new Set<string>()
+  if (!manifestPath) return []
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
-    agents?: Array<{ slug?: string }>
+    agents?: Array<{ slug?: string; name?: string; en?: string }>
   }
-  return new Set(
-    (manifest.agents || [])
-      .map((agent) => agent.slug)
-      .filter(
-        (slug): slug is string =>
-          typeof slug === 'string' && slug.endsWith('-agent')
-      )
+  return (manifest.agents || []).filter(
+    (agent): agent is DigitalTeamAgent =>
+      typeof agent.slug === 'string' && agent.slug.endsWith('-agent')
   )
+}
+
+export const digitalTeamSlugs = () =>
+  new Set(digitalTeamAgents().map((agent) => agent.slug))
+
+const normalizeTeamAgent = (value: unknown, teamSlugs: Set<string>) => {
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  const normalized = value.trim().split(':').at(-1)
+  return normalized && teamSlugs.has(normalized) ? normalized : undefined
 }
 
 const skillNameFromCall = (record: {
@@ -147,13 +158,15 @@ export const summarizeDeepSeekLines = (
 ): DeepSeekSessionSnapshot[] => {
   let cwdName: string | undefined
   let teamProject = false
+  let sessionAgent: string | undefined
   let current: OpenTurn | null = null
   const turns: OpenTurn[] = []
 
   const openTurn = (turn: number, timestamp?: number) => {
     current = {
       turn,
-      usedSkill: false,
+      primaryAgent: sessionAgent,
+      usedSkill: Boolean(sessionAgent),
       startedAt: timestamp,
       updatedAt: timestamp,
     }
@@ -167,6 +180,7 @@ export const summarizeDeepSeekLines = (
       time?: number
       createdAt?: number
       cwd?: string
+      agentPreset?: string
       data?: {
         title?: string
         name?: string
@@ -193,6 +207,7 @@ export const summarizeDeepSeekLines = (
         cwdName = basename(record.cwd)
         teamProject = isDigitalTeamProject(record.cwd)
       }
+      sessionAgent = normalizeTeamAgent(record.agentPreset, teamSlugs)
       continue
     }
 
@@ -217,8 +232,8 @@ export const summarizeDeepSeekLines = (
       current.title ??= userRequest(record.data)
     }
 
-    const skillName = skillNameFromCall(record)
-    if (skillName && teamSlugs.has(skillName)) {
+    const skillName = normalizeTeamAgent(skillNameFromCall(record), teamSlugs)
+    if (skillName) {
       current.usedSkill = true
       current.primaryAgent ??= skillName
     }

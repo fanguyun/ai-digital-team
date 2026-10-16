@@ -170,6 +170,19 @@ describe('taskRuns service', () => {
     ).toBe(3)
   })
 
+  it('returns 20 task runs by default', async () => {
+    await Promise.all(
+      Array.from({ length: 21 }, (_, index) =>
+        createTaskRun({ input: createInput(`default-page-${index}`) }, context)
+      )
+    )
+
+    const page = await taskRuns({})
+
+    expect(page.edges).toHaveLength(20)
+    expect(page.pageInfo.hasNextPage).toBe(true)
+  })
+
   it('aggregates work, token usage, and latest model by agent', async () => {
     const created = await createTaskRun(
       {

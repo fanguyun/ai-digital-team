@@ -82,7 +82,7 @@ disable-model-invocation: false
 10. 用户明确指定子 Agent 时，按用户指定岗位填写；普通问答或 Main Agent 直接处理时填写“未使用子 Agent”。只把本次实际读取并采用的 Skill 列入，不得把仅被预挂载或检查过的 Skill 描述为已使用。
 11. 子 Agent 需要使用 Skill 时，先检查项目中的 Skill 软链接及目标 `SKILL.md`；如果目标不存在或软链接失效，先暂停并向用户说明缺失 Skill、全局安装命令或来源及影响范围，获得明确确认后再安装。
 12. Skill 安装或修复后，项目侧必须继续使用 `.agents/skills/` 软链接；不得复制 Skill 文件或改成项目内副本。
-13. 已配置任务运行时时，按照 本 Skill 后附的“团队统一交付协议（共享规则）” 的“真实任务运行记录”执行：Main Agent 对一个用户任务只创建一个任务记录，保存 `taskRunId`，并在跨岗位交接时传递；各岗位只追加自身阶段事件。
+13. 已配置任务运行时时，按照 本 Skill 后附的“团队统一交付协议（共享规则）” 的“真实任务运行记录”执行：凡本次任务由 Main Agent 或任一岗位 Agent 处理，都在开始处理时创建任务记录并保存 `taskRunId`；同一目标的追问和连续微调只追加事件，切换到新的独立目标时才创建新记录；跨岗位交接时传递同一 `taskRunId`，各岗位只追加自身阶段事件。
 14. 任务运行记录属于已启用的内部执行元数据，不替代外部操作确认。运行时写入失败时不得绕过 CLI 直连数据库，也不得阻塞与运行时无关的核心交付；在最终结果中说明未同步状态。
 
 ## Main Agent Skill 使用规则
@@ -336,8 +336,9 @@ disable-model-invocation: false
 
 ## 真实任务运行记录
 
-- 已配置 `TASK_RUNTIME_API_URL` 和 `TASK_RUNTIME_WRITE_TOKEN` 时，多步骤执行、跨岗位协作、工程实现或存在确认节点的实质性任务应写入任务运行时；普通问答、一次性解释和未进入执行阶段的方案讨论不创建记录。
-- 一个用户任务只创建一个 `TaskRun`。Main Agent 或当前主责岗位负责执行 `start` 并保留返回的任务 ID；协作岗位只向该任务追加事件，不得为同一目标重复创建任务。
+- 已配置 `TASK_RUNTIME_API_URL` 和 `TASK_RUNTIME_WRITE_TOKEN` 时，只要本次任务明确通过个人数字团队的 Main Agent 或任一岗位 Agent 处理，就必须写入任务运行时；不再按问答、解释、方案、工程实现或任务规模区分。完全未使用团队 Agent 的对话不创建记录。
+- 路由到团队 Agent 后，由 Main Agent 或当前主责岗位在开始处理任务时执行 `start` 并保留返回的任务 ID；最终回复中的“本次使用”说明只用于展示，不等同于已经创建运行记录。
+- 一个用户任务只创建一个 `TaskRun`。围绕同一目标的追问、补充和连续微调只追加事件；用户切换到新的独立目标时才创建新的任务记录。协作岗位只向现有任务追加自身事件，不得按消息或岗位重复创建任务。
 - Codex 使用 `--platform codex`，DeepSeek Harness 使用 `--platform deepseek-harness`。岗位名称使用清单中的 slug，例如 `software-engineer-agent`。
 - 源仓库、Codex 插件和 DeepSeek Harness 均通过随包分发的同一 CLI 调用 GraphQL，不得直接连接 PostgreSQL；以下路径相对当前岗位的 `AGENTS.md` 或 `SKILL.md` 所在目录解析：
 

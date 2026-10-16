@@ -1,6 +1,13 @@
-import { summarizeCodexLines } from './codexSessions'
+import { parentSessionId, summarizeCodexLines } from './codexSessions'
 
-const teamSlugs = new Set(['main-agent'])
+const teamAgents = [
+  { slug: 'main-agent', name: '数字总经理', en: 'Main Agent' },
+  {
+    slug: 'software-engineer-agent',
+    name: '软件工程师',
+    en: 'Software Engineer Agent',
+  },
+]
 const sessionId = '11111111-1111-4111-8111-111111111111'
 
 const meta = (cwd: string) =>
@@ -41,7 +48,7 @@ describe('Codex task summary', () => {
       sessionId,
       Date.parse('2026-10-15T03:00:00.000Z'),
       '整段线程名',
-      teamSlugs
+      teamAgents
     )
 
     expect(tasks.map((item) => item.title)).toEqual([
@@ -73,7 +80,7 @@ describe('Codex task summary', () => {
       sessionId,
       Date.parse('2026-10-15T03:00:00.000Z'),
       undefined,
-      teamSlugs
+      teamAgents
     )
 
     expect(tasks.map((item) => item.title)).toEqual(['交给数字团队'])
@@ -94,7 +101,7 @@ describe('Codex task summary', () => {
       sessionId,
       Date.parse('2026-10-15T03:00:00.000Z'),
       undefined,
-      teamSlugs
+      teamAgents
     )
 
     expect(tasks).toHaveLength(1)
@@ -123,7 +130,7 @@ describe('Codex task summary', () => {
       sessionId,
       Date.parse('2026-10-15T03:00:00.000Z'),
       undefined,
-      teamSlugs
+      teamAgents
     )
 
     expect(tasks).toEqual([])
@@ -147,7 +154,7 @@ describe('Codex task summary', () => {
       sessionId,
       Date.parse('2026-10-15T03:00:00.000Z'),
       undefined,
-      teamSlugs
+      teamAgents
     )
 
     expect(tasks.map((item) => item.title)).toEqual(['修复标题解析'])
@@ -163,9 +170,53 @@ describe('Codex task summary', () => {
       sessionId,
       Date.parse('2026-10-15T03:00:00.000Z'),
       undefined,
-      teamSlugs
+      teamAgents
     )
 
     expect(tasks).toHaveLength(1)
+  })
+
+  it('reads the thread id from segmented Codex rollout filenames', () => {
+    expect(
+      parentSessionId(
+        '/sessions/rollout-2026-10-16T15-53-05-11111111-1111-4111-8111-111111111111_22222222-2222-4222-8222-222222222222.jsonl'
+      )
+    ).toBe(sessionId)
+  })
+
+  it('records a plain request and resolves the routed team agent', () => {
+    const tasks = summarizeCodexLines(
+      [
+        meta('/Users/fan/another-project'),
+        request('普通项目中的团队任务', '2026-10-15T01:01:01.000Z').replace(
+          '前文\\nMy request:\\n',
+          ''
+        ),
+        JSON.stringify({
+          timestamp: '2026-10-15T01:01:02.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'assistant',
+            content: [
+              {
+                type: 'output_text',
+                text: '本次使用：软件工程师（Software Engineer Agent）；Skill：main-agent、base-guidelines；原因：工程实现',
+              },
+            ],
+          },
+        }),
+      ],
+      sessionId,
+      Date.parse('2026-10-15T03:00:00.000Z'),
+      undefined,
+      teamAgents
+    )
+
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0]).toMatchObject({
+      title: '普通项目中的团队任务',
+      primaryAgent: 'software-engineer-agent',
+    })
   })
 })

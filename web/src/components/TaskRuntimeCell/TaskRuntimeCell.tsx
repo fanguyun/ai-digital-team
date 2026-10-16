@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { Pagination } from 'antd'
 import {
   AlertCircle,
   CheckCircle2,
@@ -26,8 +27,12 @@ import { groupTaskRuns } from './activityGroups'
 import { describeWorkflowStage, WORKFLOW_STAGES } from './workflowFlow'
 
 export const QUERY = gql`
-  query TaskRuntimeDashboard($filter: TaskRunFilter) {
-    taskRuns(filter: $filter, first: 50) {
+  query TaskRuntimeDashboard(
+    $filter: TaskRunFilter
+    $after: String
+    $first: Int
+  ) {
+    taskRuns(filter: $filter, after: $after, first: $first) {
       edges {
         cursor
         node {
@@ -158,15 +163,25 @@ type SystemState = {
   label: string
 }
 
+type DashboardVariables = {
+  filter: null
+  after: string | null
+  first: number
+}
+
 type SuccessProps = CellProps & {
   taskRuns: {
     edges: Array<{ cursor: string; node: TaskRun }>
     pageInfo: { endCursor?: string | null; hasNextPage: boolean }
   }
   runtimeHealth: RuntimeHealth
-  queryResult: { refetch: () => Promise<unknown> }
+  queryResult: {
+    refetch: (variables?: DashboardVariables) => Promise<unknown>
+  }
   updating?: boolean
 }
+
+const PAGE_SIZE = 20
 
 const STATUS_OPTIONS: Array<{ value: TaskStatus | 'ALL'; label: string }> = [
   { value: 'ALL', label: '全部' },
@@ -232,7 +247,7 @@ const calculateSystemState = (
 }
 
 export const beforeQuery = () => ({
-  variables: { filter: null },
+  variables: { filter: null, after: null, first: PAGE_SIZE },
   fetchPolicy: 'cache-and-network' as const,
   nextFetchPolicy: 'cache-first' as const,
 })
@@ -286,7 +301,19 @@ const RealtimeStatus = ({
 const stageLabel = (stage: TaskStage) =>
   WORKFLOW_STAGES.find((item) => item.value === stage)?.label || stage
 
-const ActivityView = ({ taskRuns }: { taskRuns: TaskRun[] }) => {
+const ActivityView = ({
+  taskRuns,
+  page,
+  pageCount,
+  pageLoading,
+  onPageChange,
+}: {
+  taskRuns: TaskRun[]
+  page: number
+  pageCount: number
+  pageLoading: boolean
+  onPageChange: (page: number) => void
+}) => {
   const [status, setStatus] = useState<TaskStatus | 'ALL'>('ALL')
   const [query, setQuery] = useState('')
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
@@ -460,6 +487,22 @@ const ActivityView = ({ taskRuns }: { taskRuns: TaskRun[] }) => {
           <span>换个关键词，或切换状态筛选。</span>
         </div>
       )}
+      <nav className="runtime-pagination" aria-label="运行记录分页">
+        <span className="runtime-pagination-summary">
+          第 {page + 1} 页 · 每页 {PAGE_SIZE} 条
+        </span>
+        <Pagination
+          current={page + 1}
+          pageSize={PAGE_SIZE}
+          total={pageCount * PAGE_SIZE}
+          disabled={pageLoading}
+          responsive
+          showLessItems
+          showSizeChanger={false}
+          showTitle={false}
+          onChange={onPageChange}
+        />
+      </nav>
     </>
   )
 }
@@ -474,12 +517,64 @@ export const Success = ({
 }: SuccessProps) => {
   const tasks = taskRuns.edges.map((edge) => edge.node)
   const [subscriptionFailed, setSubscriptionFailed] = useState(false)
+  const [page, setPage] = useState(0)
+  const [pageLoading, setPageLoading] = useState(false)
+  const [pageCursors, setPageCursors] = useState<Array<string | null>>([null])
   const systemState = calculateSystemState(runtimeHealth, tasks)
+  const systemLabel = systemState.label
+  const systemTone = systemState.tone
+
+  const loadPage = useCallback(
+    async (after: string | null, nextPage: number) => {
+      setPageLoading(true)
+      try {
+        await queryResult.refetch({ filter: null, after, first: PAGE_SIZE })
+        setPage(nextPage)
+      } finally {
+        setPageLoading(false)
+      }
+    },
+    [queryResult]
+  )
+
+  const refreshCurrentPage = useCallback(
+    () => loadPage(pageCursors[page] ?? null, page),
+    [loadPage, page, pageCursors]
+  )
+
+  const changePage = (targetPage: number) => {
+    if (pageLoading) return
+
+    const targetIndex = targetPage - 1
+    if (targetIndex < 0 || targetIndex === page) return
+
+    if (targetIndex < pageCursors.length) {
+      void loadPage(pageCursors[targetIndex] ?? null, targetIndex)
+      return
+    }
+
+    const nextCursor = taskRuns.pageInfo.endCursor
+    if (
+      targetIndex !== page + 1 ||
+      !taskRuns.pageInfo.hasNextPage ||
+      !nextCursor
+    ) {
+      return
+    }
+
+    setPageCursors((current) => [...current.slice(0, targetIndex), nextCursor])
+    void loadPage(nextCursor, targetIndex)
+  }
+
+  const pageCount = Math.max(
+    pageCursors.length,
+    page + 1 + (taskRuns.pageInfo.hasNextPage ? 1 : 0)
+  )
 
   useSubscription(TASK_RUNS_CHANGED, {
     onData: () => {
       setSubscriptionFailed(false)
-      void queryResult.refetch()
+      void refreshCurrentPage()
     },
     onError: () => setSubscriptionFailed(true),
   })
@@ -487,15 +582,15 @@ export const Success = ({
   useEffect(() => {
     const reconnect = () => {
       setSubscriptionFailed(false)
-      void queryResult.refetch()
+      void refreshCurrentPage()
     }
     window.addEventListener('online', reconnect)
     return () => window.removeEventListener('online', reconnect)
-  }, [queryResult])
+  }, [refreshCurrentPage])
 
   useEffect(() => {
-    onSystemState?.(systemState)
-  }, [onSystemState, systemState.label, systemState.tone])
+    onSystemState?.({ label: systemLabel, tone: systemTone })
+  }, [onSystemState, systemLabel, systemTone])
 
   return (
     <section className="workspace-view task-runtime-view">
@@ -526,16 +621,25 @@ export const Success = ({
           <button
             type="button"
             className="runtime-refresh"
-            onClick={() => queryResult.refetch()}
-            disabled={updating}
+            onClick={() => void refreshCurrentPage()}
+            disabled={updating || pageLoading}
             aria-label="刷新任务状态"
             title="刷新任务状态"
           >
-            <RefreshCw className={updating ? 'spin' : ''} size={17} />
+            <RefreshCw
+              className={updating || pageLoading ? 'spin' : ''}
+              size={17}
+            />
           </button>
         </div>
       </div>
-      <ActivityView taskRuns={tasks} />
+      <ActivityView
+        taskRuns={tasks}
+        page={page}
+        pageCount={pageCount}
+        pageLoading={pageLoading}
+        onPageChange={changePage}
+      />
     </section>
   )
 }

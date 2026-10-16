@@ -23,6 +23,8 @@ const runtimeTelemetryPluginPath = join(
   'runtime-telemetry.mjs'
 )
 const requiredSections = ['Role', 'Context', 'Capabilities', 'Instructions']
+const requiredRuntimePolicy =
+  '只要本次任务明确通过个人数字团队的 Main Agent 或任一岗位 Agent 处理，就必须写入任务运行时'
 let issueCount = 0
 
 function issue(message) {
@@ -89,6 +91,9 @@ for (const slug of agentSlugs) {
     }
     if (!skillContent.includes('## 真实任务运行记录')) {
       issue(`${skillPath.replace(`${repoRoot}/`, '')} 缺少真实任务运行记录协议`)
+    }
+    if (!skillContent.includes(requiredRuntimePolicy)) {
+      issue(`${skillPath.replace(`${repoRoot}/`, '')} 未启用团队 Agent 全量任务记录规则`)
     }
     if (
       slug === 'main-agent' &&

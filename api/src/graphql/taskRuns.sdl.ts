@@ -207,7 +207,7 @@ export const schema = gql`
     taskRuns(
       filter: TaskRunFilter
       after: String
-      first: Int = 25
+      first: Int = 20
     ): TaskRunConnection! @requireAuth
     taskRun(id: ID!): TaskRun @requireAuth
     runtimeHealth: RuntimeHealth! @requireAuth

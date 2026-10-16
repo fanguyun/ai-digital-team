@@ -95,7 +95,7 @@ describe('DeepSeek task summary', () => {
   it('ignores turns that never call a digital-team skill outside the team project', () => {
     const tasks = summarizeDeepSeekLines(
       [
-        sessionLine,
+        { ...sessionLine, agentPreset: undefined },
         turn(1, '2026-10-15T01:01:00.000Z'),
         user('普通改动', '2026-10-15T01:01:00.000Z'),
       ].map((line) => JSON.stringify(line)),
@@ -105,6 +105,22 @@ describe('DeepSeek task summary', () => {
     )
 
     expect(tasks).toEqual([])
+  })
+
+  it('records turns when a digital-team agent is selected as the session preset', () => {
+    const tasks = summarizeDeepSeekLines(
+      [
+        sessionLine,
+        turn(1, '2026-10-15T01:01:00.000Z'),
+        user('单独调用团队 Agent', '2026-10-15T01:01:01.000Z'),
+      ].map((line) => JSON.stringify(line)),
+      sessionLine.id,
+      Date.parse('2026-10-15T02:00:00.000Z'),
+      teamSlugs
+    )
+
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0].primaryAgent).toBe('main-agent')
   })
 
   it('extracts a real request from a structured user message', () => {

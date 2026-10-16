@@ -16,7 +16,6 @@ const waitLabel = (minutes) => {
 export const buildActionCenterModel = ({
   taskRuns = [],
   runtimeHealth,
-  overview,
   skills = [],
   queryError,
   now = new Date(),
@@ -106,23 +105,6 @@ export const buildActionCenterModel = ({
       meta: '可尝试刷新',
       action: 'refresh',
       actionLabel: '重新同步',
-    })
-  }
-
-  if (
-    overview?.totalTaskCount > 0 &&
-    overview.totalTokenCoverage !== 'COMPLETE'
-  ) {
-    items.push({
-      id: 'token-coverage',
-      type: 'tokens',
-      priority: 'low',
-      title: 'Token 数据覆盖不完整',
-      agent: '数据总览',
-      description: `已记录 ${overview.trackedWorkCount || 0} / ${overview.totalTaskCount} 个任务的 Token 数据。`,
-      meta: overview.totalTokenCoverage === 'NONE' ? '暂无数据' : '部分覆盖',
-      action: 'runs',
-      actionLabel: '查看运行记录',
     })
   }
 

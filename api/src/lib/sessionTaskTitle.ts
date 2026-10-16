@@ -42,7 +42,7 @@ export const usableTaskTitle = (
 export const extractRequestTitle = (text: string) => {
   const marker = /^\s*My request:\s*(.*)$/im
   const match = marker.exec(text)
-  if (!match) return undefined
+  if (!match) return usableTaskTitle(text, { truncate: false })
 
   const inline = usableTaskTitle(match[1])
   if (inline) return inline

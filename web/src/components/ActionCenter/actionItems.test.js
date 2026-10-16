@@ -38,7 +38,7 @@ describe('action center model', () => {
     expect(model.counts).toMatchObject({ total: 2, waiting: 1, stale: 1 })
   })
 
-  it('collects health, coverage and skill update issues', () => {
+  it('collects health and skill updates without treating token coverage as pending', () => {
     const model = buildActionCenterModel({
       now,
       runtimeHealth: {
@@ -58,9 +58,8 @@ describe('action center model', () => {
 
     expect(model.items.map((item) => item.id)).toEqual([
       'health-realtime',
-      'token-coverage',
       'skill-updates',
     ])
-    expect(model.counts.system).toBe(3)
+    expect(model.counts.system).toBe(2)
   })
 })
