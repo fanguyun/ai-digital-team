@@ -7,11 +7,38 @@ import { syncDeepSeekHarness } from './sync-deepseek-harness.mjs'
 
 const packagePath = join(repoRoot, 'package.json')
 const patchPath = join(repoRoot, 'dsh', 'cordis.patch.yml')
+const taskRuntimeSourcePath = join(repoRoot, 'scripts', 'task-runtime.mjs')
+const taskRuntimeHarnessPath = join(
+  repoRoot,
+  'dsh',
+  'scripts',
+  'task-runtime.mjs'
+)
+const runtimeTelemetrySourcePath = join(
+  repoRoot,
+  'scripts',
+  'runtime-telemetry.mjs'
+)
+const runtimeTelemetryHarnessPath = join(
+  repoRoot,
+  'dsh',
+  'scripts',
+  'runtime-telemetry.mjs'
+)
 let issueCount = 0
 
 function issue(message) {
   console.error(`问题: ${message}`)
   issueCount += 1
+}
+
+if (!existsSync(runtimeTelemetryHarnessPath)) {
+  issue('缺少 Harness 运行时遥测适配器: dsh/scripts/runtime-telemetry.mjs')
+} else if (
+  readFileSync(runtimeTelemetryHarnessPath, 'utf8') !==
+  readFileSync(runtimeTelemetrySourcePath, 'utf8')
+) {
+  issue('Harness 运行时遥测适配器与源文件不同步')
 }
 
 const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'))
@@ -34,8 +61,18 @@ if (!existsSync(patchPath)) {
     "'dsh',",
     "'skills'",
   ]) {
-    if (!patch.includes(expected)) issue(`Harness bundle patch 缺少配置: ${expected}`)
+    if (!patch.includes(expected))
+      issue(`Harness bundle patch 缺少配置: ${expected}`)
   }
+}
+
+if (!existsSync(taskRuntimeHarnessPath)) {
+  issue('缺少 Harness 任务运行时 CLI: dsh/scripts/task-runtime.mjs')
+} else if (
+  readFileSync(taskRuntimeHarnessPath, 'utf8') !==
+  readFileSync(taskRuntimeSourcePath, 'utf8')
+) {
+  issue('Harness 任务运行时 CLI 与源文件不同步')
 }
 
 try {
@@ -59,6 +96,9 @@ for (const agent of manifest.agents) {
   if (!content.includes(`/${agent.slug}`)) {
     issue(`Harness Skill 缺少显式调用提示: /${agent.slug}`)
   }
+  if (!content.includes('## 真实任务运行记录')) {
+    issue(`Harness Skill 缺少真实任务运行记录协议: ${agent.slug}`)
+  }
 }
 
 const dshHome = mkdtempSync(join(tmpdir(), 'personal-digital-team-dsh-check-'))
@@ -70,7 +110,7 @@ try {
       cwd: repoRoot,
       env: { ...process.env, DSH_HOME: dshHome },
       encoding: 'utf8',
-    },
+    }
   )
   if (result.error?.code === 'ENOENT') {
     console.log('skip Harness CLI validation: dsh not found')
@@ -84,7 +124,9 @@ try {
 }
 
 if (issueCount === 0) {
-  console.log(`DeepSeek Harness 检查通过：${manifest.agents.length} 个岗位 Skill。`)
+  console.log(
+    `DeepSeek Harness 检查通过：${manifest.agents.length} 个岗位 Skill。`
+  )
 } else {
   console.error(`DeepSeek Harness 检查失败：发现 ${issueCount} 个问题。`)
   process.exitCode = 1

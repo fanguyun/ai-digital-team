@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:5433:5432'
+    environment:
+      POSTGRES_DB: personal_digital_team
+      POSTGRES_USER: personal_digital_team
+      POSTGRES_PASSWORD: personal_digital_team
+    volumes:
+      - personal-digital-team-postgres:/var/lib/postgresql
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U personal_digital_team -d personal_digital_team
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  personal-digital-team-postgres:

@@ -1,0 +1,101 @@
+// Don't forget to tell Prisma about your edits to this file using
+// `yarn cedar prisma migrate dev` or `yarn cedar prisma db push`.
+// `migrate` is like committing while `push` is for prototyping.
+// Read more about both here:
+// https://www.prisma.io/docs/orm/prisma-migrate
+
+datasource db {
+  provider = "postgresql"
+}
+
+// This specific combination of settings is the only way to make Prisma 7 work
+// in both CJS and ESM Cedar apps.
+// See https://github.com/cedarjs/cedar/pull/1761 for more info
+generator client {
+  provider               = "prisma-client"
+  output                 = "./generated/prisma"
+  moduleFormat           = "cjs"
+  generatedFileExtension = "mts"
+  importFileExtension    = "mts"
+}
+
+enum TaskRunStatus {
+  QUEUED
+  RUNNING
+  WAITING_CONFIRMATION
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum TaskRunStage {
+  INTAKE
+  PLANNING
+  EXECUTION
+  VERIFICATION
+  DELIVERY
+}
+
+model TaskRun {
+  id                String        @id @default(uuid()) @db.Uuid
+  title             String        @db.VarChar(200)
+  platform          String        @db.VarChar(80)
+  externalReference String?       @db.VarChar(300)
+  primaryAgent      String        @db.VarChar(160)
+  status            TaskRunStatus @default(QUEUED)
+  currentStage      TaskRunStage  @default(INTAKE)
+  summary           String?       @db.VarChar(1000)
+  version           Int           @default(1)
+  startedAt         DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
+  completedAt       DateTime?     @db.Timestamptz(3)
+  events            TaskEvent[]
+
+  @@index([status, updatedAt(sort: Desc)])
+  @@index([platform, updatedAt(sort: Desc)])
+  @@index([primaryAgent, updatedAt(sort: Desc)])
+  @@index([updatedAt(sort: Desc), id(sort: Desc)])
+}
+
+model User {
+  id           String        @id @default(uuid()) @db.Uuid
+  username     String        @unique @db.VarChar(80)
+  passwordHash String        @db.VarChar(300)
+  createdAt    DateTime      @default(now()) @db.Timestamptz(3)
+  sessions     AuthSession[]
+}
+
+model AuthSession {
+  id        String   @id @default(uuid()) @db.Uuid
+  tokenHash String   @unique @db.VarChar(64)
+  userId    String   @db.Uuid
+  expiresAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model TaskEvent {
+  id             String         @id @default(uuid()) @db.Uuid
+  taskRunId      String         @db.Uuid
+  sequence       Int
+  eventType      String         @db.VarChar(80)
+  status         TaskRunStatus?
+  stage          TaskRunStage
+  agent          String         @db.VarChar(160)
+  skills         String[]       @default([])
+  summary        String         @db.VarChar(1000)
+  evidence       Json?
+  inputTokens    Int?
+  outputTokens   Int?
+  cachedTokens   Int?
+  modelId        String?        @db.VarChar(160)
+  idempotencyKey String         @unique @db.VarChar(200)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+  taskRun        TaskRun        @relation(fields: [taskRunId], references: [id], onDelete: Restrict)
+
+  @@unique([taskRunId, sequence])
+  @@index([taskRunId, createdAt])
+  @@index([agent, createdAt(sort: Desc)])
+}

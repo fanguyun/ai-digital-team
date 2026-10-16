@@ -1,3 +1,11 @@
 node_modules/
 dist/
 .pnpm-store/
+.yarn/cache/
+.yarn/install-state.gz
+.cedar/
+.env
+backups/database/
+api/db/generated/
+web/dist/
+api/dist/

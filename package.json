@@ -2,7 +2,11 @@
   "name": "personal-digital-team",
   "private": true,
   "version": "0.1.0",
-  "type": "module",
+  "type": "commonjs",
+  "workspaces": [
+    "api",
+    "web"
+  ],
   "files": [
     "dsh",
     "README.md"
@@ -16,26 +20,44 @@
       "patch": "./dsh/cordis.patch.yml"
     }
   },
-  "packageManager": "pnpm@11.21.0",
+  "packageManager": "yarn@4.14.1",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
+    "dev": "cedar dev",
+    "build": "cedar build",
+    "type-check": "cedar type-check",
+    "task-runtime": "node scripts/task-runtime.mjs",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:migrate": "cedar prisma migrate dev",
+    "db:status": "docker compose ps postgres",
+    "db:backup": "node scripts/db-backup.mjs",
     "check-skills": "./scripts/check-skills",
     "check-agents": "node scripts/agent-manifest.mjs && node scripts/sync-agent-indexes.mjs --check",
+    "check-capabilities": "node --test tests/capability-health.test.mjs && node scripts/capability-health.mjs --platform codex --strict && node scripts/capability-health.mjs --platform deepseek-harness --strict",
     "check-plugin": "node scripts/check-plugin.mjs",
     "check-deepseek-harness": "node scripts/check-deepseek-harness.mjs",
-    "check-team": "pnpm check-skills && pnpm check-agents && pnpm check-plugin && pnpm check-deepseek-harness",
+    "check-team": "yarn check-skills && yarn check-agents && yarn check-plugin && yarn check-deepseek-harness && yarn check-capabilities",
     "bootstrap-team": "./scripts/bootstrap-team",
     "sync-plugin": "node scripts/sync-plugin.mjs",
     "sync-deepseek-harness": "node scripts/sync-deepseek-harness.mjs",
-    "sync-team": "node scripts/agent-manifest.mjs && node scripts/sync-agent-indexes.mjs && pnpm sync-plugin && pnpm sync-deepseek-harness"
+    "sync-team": "node scripts/agent-manifest.mjs && node scripts/sync-agent-indexes.mjs && yarn sync-plugin && yarn sync-deepseek-harness",
+    "test:node": "node --test tests/*.test.mjs",
+    "test:api:unit": "jest --config api/jest.unit.config.js",
+    "test:api": "cedar test api --no-watch",
+    "test:web": "cedar test web --no-watch",
+    "test": "yarn test:node && yarn test:api:unit && yarn test:api && yarn test:web"
   },
-  "dependencies": {},
   "devDependencies": {
-    "@vitejs/plugin-react": "latest",
-    "vite": "latest",
-    "react": "latest",
-    "react-dom": "latest"
+    "@cedarjs/core": "5.0.0",
+    "@cedarjs/eslint-config": "5.0.0",
+    "@cedarjs/project-config": "5.0.0",
+    "@cedarjs/testing": "5.0.0",
+    "prisma": "7.8.0"
+  },
+  "engines": {
+    "node": "=24.x"
+  },
+  "overrides": {
+    "react-is": "19.2.3"
   }
 }

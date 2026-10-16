@@ -80,10 +80,33 @@ disable-model-invocation: false
 ## 跨岗位交接
 
 - 发起岗位只传递完成下一步所需的最小上下文，避免复制无关历史和敏感数据。
-- 交接内容必须包含目标、当前状态、已确认事实、产物位置、已做验证、风险、待确认项和下一步验收标准。
+- 交接内容必须包含目标、当前状态、已确认事实、产物位置、已做验证、风险、待确认项、任务运行记录 ID（如已启用）和下一步验收标准。
 - 接收岗位先检查输入是否足够，不默认继承未经验证的推断，也不把上游草稿当成已确认事实。
 - 同一任务只设一个当前主责岗位；协作岗位输出专业意见，由主责岗位或 Main Agent 统一整合。
 - 交接不等于外部状态已更新；看板、客户系统、代码仓库、日历或其他系统的写入必须单独确认和验证。
+
+## 真实任务运行记录
+
+- 已配置 `TASK_RUNTIME_API_URL` 和 `TASK_RUNTIME_WRITE_TOKEN` 时，多步骤执行、跨岗位协作、工程实现或存在确认节点的实质性任务应写入任务运行时；普通问答、一次性解释和未进入执行阶段的方案讨论不创建记录。
+- 一个用户任务只创建一个 `TaskRun`。Main Agent 或当前主责岗位负责执行 `start` 并保留返回的任务 ID；协作岗位只向该任务追加事件，不得为同一目标重复创建任务。
+- Codex 使用 `--platform codex`，DeepSeek Harness 使用 `--platform deepseek-harness`。岗位名称使用清单中的 slug，例如 `software-engineer-agent`。
+- 源仓库、Codex 插件和 DeepSeek Harness 均通过随包分发的同一 CLI 调用 GraphQL，不得直接连接 PostgreSQL；以下路径相对当前岗位的 `AGENTS.md` 或 `SKILL.md` 所在目录解析：
+
+```bash
+node ../../scripts/task-runtime.mjs start --title "<任务标题>" --platform <codex|deepseek-harness> --agent <主责岗位> --stage <阶段> --summary "<短摘要>" --idempotency-key "<稳定键>" --json
+node ../../scripts/task-runtime.mjs event <taskRunId> --event-type "<事件类型>" --stage <阶段> --agent <当前岗位> --summary "<短摘要>" --idempotency-key "<稳定键>" --json
+```
+
+- CLI 默认以 `--telemetry auto` 从当前 Codex 或 DeepSeek Harness 会话日志提取模型与真实增量 Token；`start` 只记录模型，后续事件按上一个任务事件时间切分增量。适配器只提取时间、模型、Token 和会话标识，不提取、保存或上传 Prompt、消息正文或工具参数。可使用 `--telemetry off` 或 `TASK_RUNTIME_TELEMETRY=off` 关闭。
+- 需要覆盖自动值时，在对应事件上追加 `--model-id`、`--input-tokens`、`--output-tokens` 和 `--cached-tokens`；也可由运行环境设置 `TASK_RUNTIME_MODEL_ID`、`TASK_RUNTIME_INPUT_TOKENS`、`TASK_RUNTIME_OUTPUT_TOKENS`、`TASK_RUNTIME_CACHED_TOKENS`。优先级为命令行参数、环境变量、自动遥测；同一任务切换模型时按事件分别记录。
+- Token 按事件增量上报，`inputTokens + outputTokens` 计入总 Token，缓存 Token 单独统计且不重复计入总量。平台未提供真实值时省略字段并显示“未采集”，不得估算、伪造或用 0 代替未知值。
+- 员工“主责工作次数”按 `TaskRun.primaryAgent` 统计并排除已取消任务；Token 按事件中的执行岗位归属，已经真实发生的 Token 即使任务后来取消也保留在消耗统计中。
+- 同一统计范围内只有部分任务或部分 Token 维度完成上报时，界面和接口必须标记为“部分”；已知小计可以展示，但不得把缺失的输入、输出或缓存 Token 当作真实的 0。
+- 仅在有可核对变化时追加事件：阶段开始或完成、跨岗位交接、验证结果、失败、取消以及等待用户确认；不得把每条对话或内部思考写成事件。
+- 需要用户授权或高成本确认时执行 `wait-confirmation`；用户明确同意后执行 `resume`。最终状态必须使用 `complete`、`fail` 或 `cancel`，不得用普通 `event` 模拟终态。
+- 幂等键应由平台、任务外部引用、阶段和动作组成，并在重试时保持不变。未显式传入时 CLI 会根据规范化输入生成稳定键。
+- 只写入岗位、Skill、状态、阶段、短摘要和证据路径等元数据；禁止写入完整 Prompt、凭证、个人敏感正文或未经授权的业务数据。
+- CLI 不可用、API 不健康或写入失败时，不得直接写数据库或伪造成功记录；继续完成不依赖运行时的核心任务，并在交付中明确记录失败原因和未同步状态。
 
 ## 外部影响与确认
 

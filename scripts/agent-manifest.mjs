@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { validateCapabilityRequirements } from './capability-schema.mjs'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 export const repoRoot = resolve(scriptDir, '..')
@@ -17,6 +18,7 @@ const requiredStringFields = [
   'icon',
   'role',
   'scope',
+  'joinedAt',
   'status',
   'trigger',
 ]
@@ -28,21 +30,25 @@ function listAgentRuleDirectories() {
       (entry) =>
         entry.isDirectory() &&
         !entry.name.startsWith('.') &&
-        existsSync(join(agentsRoot, entry.name, 'AGENTS.md')),
+        existsSync(join(agentsRoot, entry.name, 'AGENTS.md'))
     )
     .map((entry) => entry.name)
     .sort()
 }
 
 function findDuplicates(values) {
-  return [...new Set(values.filter((value, index) => values.indexOf(value) !== index))]
+  return [
+    ...new Set(
+      values.filter((value, index) => values.indexOf(value) !== index)
+    ),
+  ]
 }
 
 export function validateAgentManifest(manifest) {
   const issues = []
 
-  if (manifest?.schemaVersion !== 2) {
-    issues.push('schemaVersion 必须为 2')
+  if (manifest?.schemaVersion !== 4) {
+    issues.push('schemaVersion 必须为 4')
   }
   if (!Array.isArray(manifest?.groups) || manifest.groups.length === 0) {
     issues.push('groups 必须是非空数组')
@@ -50,7 +56,10 @@ export function validateAgentManifest(manifest) {
   if (!Array.isArray(manifest?.agents) || manifest.agents.length === 0) {
     issues.push('agents 必须是非空数组')
   }
-  if (!Array.isArray(manifest?.routingMatrix) || manifest.routingMatrix.length === 0) {
+  if (
+    !Array.isArray(manifest?.routingMatrix) ||
+    manifest.routingMatrix.length === 0
+  ) {
     issues.push('routingMatrix 必须是非空数组')
   }
   if (issues.length > 0) return issues
@@ -64,8 +73,10 @@ export function validateAgentManifest(manifest) {
   const slugs = manifest.agents.map((agent) => agent?.slug)
   const duplicateIds = findDuplicates(ids)
   const duplicateSlugs = findDuplicates(slugs)
-  if (duplicateIds.length > 0) issues.push(`存在重复 id: ${duplicateIds.join(', ')}`)
-  if (duplicateSlugs.length > 0) issues.push(`存在重复 slug: ${duplicateSlugs.join(', ')}`)
+  if (duplicateIds.length > 0)
+    issues.push(`存在重复 id: ${duplicateIds.join(', ')}`)
+  if (duplicateSlugs.length > 0)
+    issues.push(`存在重复 slug: ${duplicateSlugs.join(', ')}`)
 
   manifest.agents.forEach((agent, index) => {
     const label = agent?.slug || agent?.id || `agents[${index}]`
@@ -74,14 +85,31 @@ export function validateAgentManifest(manifest) {
         issues.push(`${label} 的 ${field} 必须是非空字符串`)
       }
     }
-    if (!Array.isArray(agent?.skills) || agent.skills.some((skill) => typeof skill !== 'string')) {
+    if (
+      !Array.isArray(agent?.skills) ||
+      agent.skills.some((skill) => typeof skill !== 'string')
+    ) {
       issues.push(`${label} 的 skills 必须是字符串数组`)
     }
     if (!manifest.groups.includes(agent?.group)) {
       issues.push(`${label} 使用了未声明分组: ${agent?.group}`)
     }
-    if (typeof agent?.color === 'string' && !/^#[0-9a-f]{6}$/i.test(agent.color)) {
+    if (
+      typeof agent?.color === 'string' &&
+      !/^#[0-9a-f]{6}$/i.test(agent.color)
+    ) {
       issues.push(`${label} 的 color 必须是六位十六进制颜色`)
+    }
+    if (
+      typeof agent?.joinedAt === 'string' &&
+      !/^\d{4}-\d{2}-\d{2}$/.test(agent.joinedAt)
+    ) {
+      issues.push(`${label} 的 joinedAt 必须使用 YYYY-MM-DD 格式`)
+    }
+    for (const issue of validateCapabilityRequirements(
+      agent?.capabilityRequirements
+    )) {
+      issues.push(`${label} 的 ${issue}`)
     }
   })
 
@@ -95,7 +123,8 @@ export function validateAgentManifest(manifest) {
     if (!manifestSlugs.includes(slug)) issues.push(`清单缺少岗位目录: ${slug}`)
   }
   for (const slug of manifestSlugs) {
-    if (!ruleDirectories.includes(slug)) issues.push(`清单引用了不存在的岗位目录: ${slug}`)
+    if (!ruleDirectories.includes(slug))
+      issues.push(`清单引用了不存在的岗位目录: ${slug}`)
   }
 
   const routeIds = manifest.routingMatrix.map((route) => route?.id)
@@ -110,7 +139,14 @@ export function validateAgentManifest(manifest) {
   }
   manifest.routingMatrix.forEach((route, index) => {
     const label = route?.id || `routingMatrix[${index}]`
-    for (const field of ['id', 'scenario', 'primary', 'chooseWhen', 'boundary', 'handoff']) {
+    for (const field of [
+      'id',
+      'scenario',
+      'primary',
+      'chooseWhen',
+      'boundary',
+      'handoff',
+    ]) {
       if (typeof route?.[field] !== 'string' || route[field].trim() === '') {
         issues.push(`${label} 的 ${field} 必须是非空字符串`)
       }
@@ -124,7 +160,9 @@ export function validateAgentManifest(manifest) {
     }
     const duplicateCollaborators = findDuplicates(route.collaborators)
     if (duplicateCollaborators.length > 0) {
-      issues.push(`${label} 存在重复协作岗位: ${duplicateCollaborators.join(', ')}`)
+      issues.push(
+        `${label} 存在重复协作岗位: ${duplicateCollaborators.join(', ')}`
+      )
     }
     for (const collaborator of route.collaborators) {
       if (!slugs.includes(collaborator)) {
@@ -141,7 +179,9 @@ export function validateAgentManifest(manifest) {
 
 export function loadAgentManifest() {
   if (!existsSync(manifestPath)) {
-    throw new Error(`缺少 Agent 清单: ${manifestPath.replace(`${repoRoot}/`, '')}`)
+    throw new Error(
+      `缺少 Agent 清单: ${manifestPath.replace(`${repoRoot}/`, '')}`
+    )
   }
 
   let manifest
@@ -165,7 +205,7 @@ if (isMain) {
   try {
     const manifest = loadAgentManifest()
     console.log(
-      `Agent 清单检查通过：${manifest.agents.length} 个岗位，${manifest.groups.length} 个分组，${manifest.routingMatrix.length} 个路由场景。`,
+      `Agent 清单检查通过：${manifest.agents.length} 个岗位，${manifest.groups.length} 个分组，${manifest.routingMatrix.length} 个路由场景。`
     )
   } catch (error) {
     console.error(`Agent 清单检查失败：\n${error.message}`)

@@ -17,7 +17,19 @@ const home = process.env.HOME || process.env.USERPROFILE || repoRoot
 const agentsRoot = join(repoRoot, 'agents')
 const pluginRoot = join(repoRoot, 'plugins', 'personal-digital-team')
 const skillsRoot = join(pluginRoot, 'skills')
+const pluginScriptsRoot = join(pluginRoot, 'scripts')
 const pluginJsonPath = join(pluginRoot, '.codex-plugin', 'plugin.json')
+const taskRuntimeSourcePath = join(repoRoot, 'scripts', 'task-runtime.mjs')
+const taskRuntimeTargetPath = join(pluginScriptsRoot, 'task-runtime.mjs')
+const runtimeTelemetrySourcePath = join(
+  repoRoot,
+  'scripts',
+  'runtime-telemetry.mjs'
+)
+const runtimeTelemetryTargetPath = join(
+  pluginScriptsRoot,
+  'runtime-telemetry.mjs'
+)
 const routingMatrixPath = join(agentsRoot, 'ROUTING_MATRIX.md')
 const deliveryProtocolPath = join(agentsRoot, 'DELIVERY_PROTOCOL.md')
 const defaultValidatorPath = join(
@@ -27,7 +39,7 @@ const defaultValidatorPath = join(
   '.system',
   'plugin-creator',
   'scripts',
-  'validate_plugin.py',
+  'validate_plugin.py'
 )
 const validatorPath = process.env.PLUGIN_VALIDATOR_PATH || defaultValidatorPath
 
@@ -50,24 +62,37 @@ function withoutTopHeading(markdown) {
 }
 
 function readSharedDocument(path, label) {
-  if (!existsSync(path)) throw new Error(`缺少${label}: ${path.replace(`${repoRoot}/`, '')}`)
+  if (!existsSync(path))
+    throw new Error(`缺少${label}: ${path.replace(`${repoRoot}/`, '')}`)
   return transformBody(withoutTopHeading(readFileSync(path, 'utf8')))
 }
 
 function transformBody(body) {
   return body
-    .replace(/`\.\.\/ROUTING_MATRIX\.md`/g, '本 Skill 后附的“团队路由矩阵（共享规则）”')
-    .replace(/`\.\.\/DELIVERY_PROTOCOL\.md`/g, '本 Skill 后附的“团队统一交付协议（共享规则）”')
-    .replace(/`agents\/DELIVERY_PROTOCOL\.md`/g, '“团队统一交付协议（共享规则）”')
+    .replace(
+      /`\.\.\/ROUTING_MATRIX\.md`/g,
+      '本 Skill 后附的“团队路由矩阵（共享规则）”'
+    )
+    .replace(
+      /`\.\.\/DELIVERY_PROTOCOL\.md`/g,
+      '本 Skill 后附的“团队统一交付协议（共享规则）”'
+    )
+    .replace(
+      /`agents\/DELIVERY_PROTOCOL\.md`/g,
+      '“团队统一交付协议（共享规则）”'
+    )
     .replace(/\.\.\/\.\.\/scripts\//g, '__PLUGIN_SCRIPTS__/')
     .replace(/\.\.\/([a-z0-9-]+)\/AGENTS\.md/g, (_, slug) => `$${slug}`)
     .replace(/\.\.\/([a-z0-9-]+)\//g, (_, slug) => `$${slug}`)
     .replace(
       /agents\/([a-z0-9-]+)\/\.agents\/skills\/([a-z0-9-]+)/g,
-      (_, _agent, skill) => `$${skill}`,
+      (_, _agent, skill) => `$${skill}`
     )
     .replace(/\.agents\/skills\/([a-z0-9-]+)/g, (_, skill) => `$${skill}`)
-    .replace(/(?<!\.)agents\/([a-z0-9-]+)\/AGENTS\.md/g, (_, slug) => `$${slug}`)
+    .replace(
+      /(?<!\.)agents\/([a-z0-9-]+)\/AGENTS\.md/g,
+      (_, slug) => `$${slug}`
+    )
     .replace(/(?<!\.)agents\/([a-z0-9-]+)\//g, (_, slug) => `$${slug}`)
     .replace(/__PLUGIN_SCRIPTS__\//g, '../../scripts/')
 }
@@ -110,7 +135,11 @@ function bumpPluginVersion(log, count, { dryRun = false } = {}) {
     log(`would bump version ${oldVersion} -> ${nextVersion}`)
     return
   }
-  writeFileSync(pluginJsonPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
+  writeFileSync(
+    pluginJsonPath,
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    'utf8'
+  )
   log(`version ${oldVersion} -> ${nextVersion}`)
 }
 
@@ -126,7 +155,9 @@ function validatePlugin(log) {
 
   if (result.status !== 0) {
     const message = [result.stdout, result.stderr].filter(Boolean).join('\n')
-    throw new Error(message || `plugin validation failed with status ${result.status}`)
+    throw new Error(
+      message || `plugin validation failed with status ${result.status}`
+    )
   }
 
   const output = (result.stdout || '').trim()
@@ -134,12 +165,40 @@ function validatePlugin(log) {
 }
 
 export function syncPlugin({ log = console.log, dryRun = false } = {}) {
-  if (!dryRun) mkdirSync(skillsRoot, { recursive: true })
+  if (!existsSync(taskRuntimeSourcePath)) {
+    throw new Error(
+      `缺少任务运行时 CLI: ${taskRuntimeSourcePath.replace(`${repoRoot}/`, '')}`
+    )
+  }
+  if (!existsSync(runtimeTelemetrySourcePath)) {
+    throw new Error(
+      `缺少运行时遥测适配器: ${runtimeTelemetrySourcePath.replace(`${repoRoot}/`, '')}`
+    )
+  }
+  if (!dryRun) {
+    mkdirSync(skillsRoot, { recursive: true })
+    mkdirSync(pluginScriptsRoot, { recursive: true })
+  }
 
   const slugs = listAgentSlugs()
   const routingMatrix = readSharedDocument(routingMatrixPath, '路由矩阵')
-  const deliveryProtocol = readSharedDocument(deliveryProtocolPath, '统一交付协议')
-  let changed = false
+  const deliveryProtocol = readSharedDocument(
+    deliveryProtocolPath,
+    '统一交付协议'
+  )
+  let changed = writeIfChanged(
+    taskRuntimeTargetPath,
+    readFileSync(taskRuntimeSourcePath, 'utf8'),
+    log,
+    { dryRun }
+  )
+  changed =
+    writeIfChanged(
+      runtimeTelemetryTargetPath,
+      readFileSync(runtimeTelemetrySourcePath, 'utf8'),
+      log,
+      { dryRun }
+    ) || changed
 
   for (const slug of slugs) {
     const sourcePath = join(agentsRoot, slug, 'AGENTS.md')
@@ -154,7 +213,12 @@ export function syncPlugin({ log = console.log, dryRun = false } = {}) {
     if (slug === 'main-agent') {
       sharedSections.push('## 团队路由矩阵（共享规则）', '', routingMatrix, '')
     }
-    sharedSections.push('## 团队统一交付协议（共享规则）', '', deliveryProtocol, '')
+    sharedSections.push(
+      '## 团队统一交付协议（共享规则）',
+      '',
+      deliveryProtocol,
+      ''
+    )
 
     const skillContent = [
       '---',
@@ -177,7 +241,9 @@ export function syncPlugin({ log = console.log, dryRun = false } = {}) {
       summary.length > 64 ? `${summary.slice(0, 63)}…` : summary
 
     changed =
-      writeIfChanged(join(skillDir, 'SKILL.md'), skillContent, log, { dryRun }) || changed
+      writeIfChanged(join(skillDir, 'SKILL.md'), skillContent, log, {
+        dryRun,
+      }) || changed
 
     const agentYaml = [
       'interface:',
@@ -190,7 +256,9 @@ export function syncPlugin({ log = console.log, dryRun = false } = {}) {
     ].join('\n')
 
     changed =
-      writeIfChanged(join(agentsDir, 'openai.yaml'), agentYaml, log, { dryRun }) || changed
+      writeIfChanged(join(agentsDir, 'openai.yaml'), agentYaml, log, {
+        dryRun,
+      }) || changed
   }
 
   const pluginSkillEntries = existsSync(skillsRoot)

@@ -10,38 +10,89 @@
 - 搜索角色名称、职责和 Skill。
 - 查看单个 Agent 的岗位使命、触发条件和已连接 Skill。
 - 展开或收起卡片中的 Skill 信息。
-- 在应用内查看协作流程阶段与岗位分工。
-- 在应用内查看本地演示运行记录，并按状态筛选。
+- 查看由 PostgreSQL 保存的真实任务、五阶段协作流程和事件时间线。
+- 通过 GraphQL SSE 自动接收 Codex 与 DeepSeek Harness 的状态更新。
+- 使用统一 `task-runtime` CLI 创建任务、等待确认、恢复、完成或失败任务。
 
 ## 启动项目
 
-环境要求：Node.js 18+、pnpm 11.21.0。
+环境要求：Node.js 24.x、Yarn 4、Docker Desktop 或 Docker Engine。
 
 ```bash
-pnpm install
-pnpm dev
+corepack enable
+yarn install
+cp .env.example .env
+yarn db:up
+yarn db:migrate
+yarn dev
 ```
 
-启动后访问终端输出的本地地址，通常是 `http://localhost:5173`。
+启动后访问 `http://127.0.0.1:8900`。Cedar API 监听
+`http://127.0.0.1:8901`，PostgreSQL 仅绑定 `127.0.0.1:5433`。
 
-生产构建：
+页面需要登录后才能进入。首次启动时，如果数据库里还没有
+`AUTH_USERNAME` 对应用户，会用 `.env` 中的 `AUTH_PASSWORD` 创建账号，数据库只保存密码哈希。任务运行时 CLI 仍使用 `TASK_RUNTIME_WRITE_TOKEN`，不走登录会话。
+
+常用数据库命令：
 
 ```bash
-pnpm build
-pnpm preview
+yarn db:status
+yarn db:backup
+yarn db:down
 ```
 
 团队与插件校验：
 
 ```bash
-pnpm check-team
+yarn check-team
 ```
 
 仅检查 Agent 清单：
 
 ```bash
-pnpm check-agents
+yarn check-agents
 ```
+
+完整构建和浏览器端到端检查属于发布前高成本验证，按仓库确认门单独执行。
+
+## 任务运行时 CLI
+
+CLI 只通过 GraphQL 读写任务，不直接连接 PostgreSQL。写操作使用 `.env` 中的
+`TASK_RUNTIME_WRITE_TOKEN`：
+
+```bash
+yarn task-runtime start \
+  --title "实现实时任务面板" \
+  --platform codex \
+  --agent software-engineer-agent \
+  --stage EXECUTION \
+  --skills base-guidelines,typescript-pro \
+  --summary "开始执行 CedarJS 迁移"
+
+yarn task-runtime wait-confirmation <task-id> --summary "等待完整构建确认"
+yarn task-runtime resume <task-id> --summary "继续执行验证"
+yarn task-runtime complete <task-id> --summary "迁移完成"
+yarn task-runtime list
+yarn task-runtime show <task-id>
+yarn task-runtime health
+```
+
+未传 `--idempotency-key` 时，CLI 会根据命令和规范化输入生成稳定键，同一命令重试不会重复创建事件。可通过 `--json` 获取结构化输出。
+
+CLI 默认使用 `--telemetry auto` 从当前 Codex 会话 JSONL 或 DeepSeek Harness session 日志提取真实模型与增量 Token。`start` 只记录模型，后续事件按上一个任务事件时间切分增量；适配器不会提取、保存或上传 Prompt、消息正文与工具参数。
+
+需要覆盖自动值时，可在 `start`、`event`、`complete` 等写入命令中增加：
+
+```bash
+--model-id "<model-id>" \
+--input-tokens <incremental-input> \
+--output-tokens <incremental-output> \
+--cached-tokens <incremental-cached-input>
+```
+
+也可设置 `TASK_RUNTIME_MODEL_ID`、`TASK_RUNTIME_INPUT_TOKENS`、`TASK_RUNTIME_OUTPUT_TOKENS`、`TASK_RUNTIME_CACHED_TOKENS` 作为默认值。优先级为命令行参数、环境变量、自动遥测；使用 `--telemetry off` 或 `TASK_RUNTIME_TELEMETRY=off` 可关闭自动读取。拿不到真实数据时字段保持缺失，面板显示“未采集”，不会估算或写入 0。
+
+Agent 运行时接入规则位于 `agents/DELIVERY_PROTOCOL.md`。Main Agent 为一个用户任务创建唯一记录并传递 `taskRunId`，协作岗位只追加阶段事件。执行 `yarn sync-team` 后，同一 CLI 会自动分发到 Codex 插件的 `scripts/` 和 DeepSeek Harness 的 `dsh/scripts/`，两个平台均通过 GraphQL 写入，不直接访问数据库。
 
 ## 目录结构
 
@@ -53,11 +104,12 @@ pnpm check-agents
 │   └── personal-digital-team/ # 插件导出副本（岗位规则）
 ├── .agents/
 │   └── plugins/marketplace.json # 仓库级插件市场
-├── src/
-│   ├── main.jsx             # 应用入口，展示数据来自 Agent 清单
-│   └── styles.css           # 页面样式与响应式布局
-├── index.html               # HTML 入口
-├── vite.config.js           # Vite 配置
+├── api/                     # Cedar API、GraphQL、Services 与 Prisma
+├── web/                     # Cedar React 前端与实时任务面板
+├── docker/postgres/init/    # PostgreSQL 初始化脚本
+├── scripts/task-runtime.mjs # Codex/Harness 统一任务写入 CLI
+├── compose.yml              # 本机 PostgreSQL 18
+├── cedar.toml               # Cedar 双 side 配置
 ├── package.json             # 项目脚本和依赖
 └── AGENTS.md                # 团队公共规则
 ```
@@ -68,10 +120,48 @@ pnpm check-agents
 
 `agents/manifest.json` 是岗位元数据的唯一清单，统一维护岗位标识、目录、分组、展示信息、触发条件、Skill 摘要和路由矩阵。前端与插件同步脚本均读取此文件；清单中的岗位目录必须与实际 `agents/*/AGENTS.md` 一一对应。
 
+每个岗位还通过 `capabilityRequirements` 声明跨平台运行依赖：
+
+- `requiredSkills`：缺失时岗位只能部分运行的必需 Skill。
+- `optionalSkills`：缺失时不阻断岗位，但会出现在健康检查提示中。
+- `requiredTools`：岗位运行依赖的命令行工具。
+- `platforms`：当前支持的平台，现为 `codex` 和 `deepseek-harness`。
+- `assessment`：可选的人工评估说明，用于记录待补绑定或可移植性风险。
+
 - `agents/ROUTING_MATRIX.md` 由清单自动生成，用于职责重叠和多岗位协作时确定当前主责、协作岗位、边界与交接顺序。
 - `agents/DELIVERY_PROTOCOL.md` 是团队统一交付协议，规定任务状态、最小交付字段、验证证据、风险、待确认项和下一责任方。
 
 Skill 入口保持软链接，不复制 Skill 文件。换设备后，如果软链接目标不存在，按团队规则提示并在用户确认后安装。
+
+## 能力依赖与健康检查
+
+运行全部能力测试，并严格检查 Codex 与 DeepSeek Harness：
+
+```bash
+yarn check-capabilities
+```
+
+也可以单独检查某个平台：
+
+```bash
+node scripts/capability-health.mjs --platform codex
+node scripts/capability-health.mjs --platform deepseek-harness
+```
+
+检查结果包含三种岗位状态：
+
+- `complete`：岗位 Skill 已安装，必需 Skill 和工具均可用。
+- `partial`：岗位已安装，但缺少必需 Skill 或工具。
+- `not-installed`：该平台未找到岗位 Skill。
+
+可选 Skill 缺失不会把岗位降级为 `partial`。已全局安装但没有建立岗位级软链接的必需 Skill 会单独提示，作为可移植性风险；检查脚本只读运行，不会自动安装 Skill 或修改软链接。
+
+CI 或其他工具需要结构化结果时使用 JSON 输出；需要在岗位不完整时返回非零退出码时增加 `--strict`：
+
+```bash
+node scripts/capability-health.mjs --platform codex --format json
+node scripts/capability-health.mjs --platform deepseek-harness --strict
+```
 
 ## 插件使用
 
@@ -93,13 +183,13 @@ node plugins/personal-digital-team/scripts/check-installation.mjs
 修改任意 `agents/*/AGENTS.md` 或 `agents/manifest.json` 后，优先运行团队级同步：
 
 ```bash
-pnpm sync-team
+yarn sync-team
 ```
 
 该命令会校验清单、刷新自动生成的岗位索引与路由矩阵，再同步插件。插件中的 Main Agent 会携带路由矩阵，全部岗位会携带统一交付协议。仅需重新导出插件时可以单独运行：
 
 ```bash
-pnpm sync-plugin
+yarn sync-plugin
 ```
 
 脚本会自动生成插件岗位规则、清理已删除岗位、校验插件，并在内容变化时更新 `plugin.json` 的 cachebuster。
@@ -107,14 +197,14 @@ pnpm sync-plugin
 如果插件校验脚本不在默认的 `~/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py`，可通过 `PLUGIN_VALIDATOR_PATH` 指定：
 
 ```bash
-PLUGIN_VALIDATOR_PATH=/path/to/validate_plugin.py pnpm sync-plugin
+PLUGIN_VALIDATOR_PATH=/path/to/validate_plugin.py yarn sync-plugin
 ```
 
 同步前可先预览变更，或在 CI 中只检查是否同步：
 
 ```bash
-pnpm sync-plugin --dry-run
-pnpm sync-plugin --check
+yarn sync-plugin --dry-run
+yarn sync-plugin --check
 ```
 
 ### 安装
@@ -124,7 +214,7 @@ codex plugin marketplace add <repo-root>
 codex plugin add personal-digital-team@personal-digital-team
 ```
 
-本仓库使用本地 marketplace，修改并执行 `pnpm sync-plugin` 后，通过重新执行安装命令刷新插件缓存：
+本仓库使用本地 marketplace，修改并执行 `yarn sync-plugin` 后，通过重新执行安装命令刷新插件缓存：
 
 ```bash
 codex plugin add personal-digital-team@personal-digital-team
@@ -167,13 +257,13 @@ Harness bundle 只内置团队的岗位 Skill、路由矩阵和统一交付协�
 拉取项目后，先检查 Skill 软链接。该检查同时验证已有软链接是否有效，以及岗位规则引用的已安装 Skill 是否已建立岗位级绑定：
 
 ```bash
-pnpm check-skills
+yarn check-skills
 ```
 
 如果本机的 Skill 管理器路径不同，可设置 `SKILLS_MANAGER_ROOT` 后修复链接：
 
 ```bash
-SKILLS_MANAGER_ROOT="$HOME/.skills-manager" pnpm bootstrap-team
+SKILLS_MANAGER_ROOT="$HOME/.skills-manager" yarn bootstrap-team
 ```
 
 脚本会优先复用本机已有 Skill；缺失 Skill 时会逐项询问是否全局安装，确认后才调用 Skills Manager。项目侧始终保持软链接形式。
@@ -185,14 +275,14 @@ SKILLS_MANAGER_ROOT="$HOME/.skills-manager" pnpm bootstrap-team
 1. 对应岗位目录的 `AGENTS.md`。
 2. `agents/manifest.json` 中的唯一岗位清单。
 
-`pnpm sync-team` 会自动更新根目录 `AGENTS.md` 的岗位索引、Main Agent 的岗位总览、前端使用的岗位数据和插件导出。若新增岗位需要专门的路由判断或交付方式，仍需补充 `agents/main-agent/AGENTS.md` 中对应的路由规则。
+`yarn sync-team` 会自动更新根目录 `AGENTS.md` 的岗位索引、Main Agent 的岗位总览、前端使用的岗位数据和插件导出。若新增岗位需要专门的路由判断或交付方式，仍需补充 `agents/main-agent/AGENTS.md` 中对应的路由规则。
 
 ## 新增 Agent 后同步插件
 
 新增岗位后，先完成“源目录同步”，然后运行同步脚本：
 
 ```bash
-pnpm sync-team
+yarn sync-team
 ```
 
 脚本会完成以下工作：
@@ -217,4 +307,4 @@ codex plugin add personal-digital-team@personal-digital-team
 
 不要手工编辑 `.agents/plugins/marketplace.json`；marketplace 条目由插件工作流维护。
 
-当前“协作流程”和“运行记录”使用本地演示数据，不代表已接入真实 Codex 执行日志。后续可以再接入真实的 Agent 文档解析、Skill 状态检测、项目切换和运行记录。
+任务运行时只保存状态元数据、短摘要和证据路径，不保存完整 Prompt、凭证或敏感正文。浏览器保持只读，写入令牌不会进入 `web` bundle。
