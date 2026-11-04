@@ -141,6 +141,13 @@ export const schema = gql`
   type TaskRunConnection {
     edges: [TaskRunEdge!]!
     pageInfo: TaskRunPageInfo!
+    totalCount: Int!
+    statusCounts: [TaskRunStatusCount!]!
+  }
+
+  type TaskRunStatusCount {
+    status: TaskRunStatus!
+    count: Int!
   }
 
   type RuntimeComponentHealth {
@@ -163,6 +170,7 @@ export const schema = gql`
     statuses: [TaskRunStatus!]
     platform: String
     primaryAgent: String
+    search: String
   }
 
   input CreateTaskRunInput {
@@ -208,6 +216,7 @@ export const schema = gql`
       filter: TaskRunFilter
       after: String
       first: Int = 20
+      skip: Int = 0
     ): TaskRunConnection! @requireAuth
     taskRun(id: ID!): TaskRun @requireAuth
     runtimeHealth: RuntimeHealth! @requireAuth

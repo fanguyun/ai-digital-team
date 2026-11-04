@@ -29,6 +29,14 @@ const summaryFor = (snapshot: DeepSeekSessionSnapshot) => {
   return snapshot.cwdName ? `${platform} · ${snapshot.cwdName}` : platform
 }
 
+const sameInstant = (
+  left: Date | null | undefined,
+  right: Date | null | undefined
+) => {
+  if (left == null || right == null) return left == null && right == null
+  return left.getTime() === right.getTime()
+}
+
 export const upsertDeepSeekSession = async (
   snapshot: DeepSeekSessionSnapshot,
   pubSub?: TaskRuntimePubSub
@@ -41,51 +49,68 @@ export const upsertDeepSeekSession = async (
     include: { taskRun: true },
   })
   const summary = summaryFor(snapshot)
+  const completedAt =
+    snapshot.status === 'COMPLETED' ? snapshot.updatedAt : null
+  const taskRunData = {
+    title: snapshot.title,
+    status: snapshot.status,
+    currentStage: snapshot.stage,
+    summary,
+    completedAt,
+  }
   const tokens = {
-    inputTokens: bounded(snapshot.inputTokens),
-    outputTokens: bounded(snapshot.outputTokens),
-    cachedTokens: bounded(snapshot.cachedTokens),
-    modelId: snapshot.modelId,
+    inputTokens: bounded(snapshot.inputTokens) ?? null,
+    outputTokens: bounded(snapshot.outputTokens) ?? null,
+    cachedTokens: bounded(snapshot.cachedTokens) ?? null,
+    modelId: snapshot.modelId ?? null,
   }
 
-  const taskRun = existingEvent
-    ? await db.taskRun.update({
-        where: { id: existingEvent.taskRunId },
-        data: {
-          title: snapshot.title,
-          status: snapshot.status,
-          currentStage: snapshot.stage,
-          summary,
-          completedAt: snapshot.status === 'COMPLETED' ? snapshot.updatedAt : null,
-        },
-      })
-    : await db.taskRun.create({
-        data: {
-          title: snapshot.title,
-          platform: snapshot.platform,
-          externalReference,
-          primaryAgent: snapshot.primaryAgent,
-          status: snapshot.status,
-          currentStage: snapshot.stage,
-          summary,
-          startedAt: snapshot.startedAt,
-          completedAt: snapshot.status === 'COMPLETED' ? snapshot.updatedAt : null,
-          events: {
-            create: {
-              sequence: 1,
-              eventType: 'task.created',
-              status: snapshot.status,
-              stage: snapshot.stage,
-              agent: snapshot.primaryAgent,
-              skills: [],
-              summary,
-              idempotencyKey: createdKey,
-            },
+  let taskRun
+  let taskRunChanged = false
+  if (!existingEvent) {
+    taskRun = await db.taskRun.create({
+      data: {
+        ...taskRunData,
+        platform: snapshot.platform,
+        externalReference,
+        primaryAgent: snapshot.primaryAgent,
+        startedAt: snapshot.startedAt,
+        events: {
+          create: {
+            sequence: 1,
+            eventType: 'task.created',
+            status: snapshot.status,
+            stage: snapshot.stage,
+            agent: snapshot.primaryAgent,
+            skills: [],
+            summary,
+            idempotencyKey: createdKey,
           },
         },
-      })
+      },
+    })
+    taskRunChanged = true
+  } else {
+    const current = existingEvent.taskRun
+    // 只有快照字段真的变化时才 update；否则 @updatedAt 会被每 20 秒的同步
+    // 刷新一次，导致 updatedAt 排序漂移和订阅风暴。
+    taskRunChanged =
+      current.title !== taskRunData.title ||
+      current.status !== taskRunData.status ||
+      current.currentStage !== taskRunData.currentStage ||
+      current.summary !== taskRunData.summary ||
+      !sameInstant(current.completedAt, taskRunData.completedAt)
+    taskRun = taskRunChanged
+      ? await db.taskRun.update({
+          where: { id: current.id },
+          data: taskRunData,
+        })
+      : current
+  }
 
-  const usage = await db.taskEvent.findUnique({ where: { idempotencyKey: usageKey } })
+  const usage = await db.taskEvent.findUnique({
+    where: { idempotencyKey: usageKey },
+  })
   const usageData = {
     status: snapshot.status,
     stage: snapshot.stage,
@@ -93,14 +118,26 @@ export const upsertDeepSeekSession = async (
     summary: '已同步模型与 Token',
     ...tokens,
   }
+  const hasTokenData =
+    tokens.modelId !== null ||
+    tokens.inputTokens !== null ||
+    tokens.outputTokens !== null ||
+    tokens.cachedTokens !== null
+  let usageChanged = false
   if (usage) {
-    await db.taskEvent.update({ where: { id: usage.id }, data: usageData })
-  } else if (
-    tokens.modelId ||
-    tokens.inputTokens !== undefined ||
-    tokens.outputTokens !== undefined ||
-    tokens.cachedTokens !== undefined
-  ) {
+    usageChanged =
+      usage.status !== usageData.status ||
+      usage.stage !== usageData.stage ||
+      usage.agent !== usageData.agent ||
+      usage.summary !== usageData.summary ||
+      usage.modelId !== usageData.modelId ||
+      usage.inputTokens !== usageData.inputTokens ||
+      usage.outputTokens !== usageData.outputTokens ||
+      usage.cachedTokens !== usageData.cachedTokens
+    if (usageChanged) {
+      await db.taskEvent.update({ where: { id: usage.id }, data: usageData })
+    }
+  } else if (hasTokenData) {
     await db.taskEvent.create({
       data: {
         taskRunId: taskRun.id,
@@ -111,9 +148,12 @@ export const upsertDeepSeekSession = async (
         ...usageData,
       },
     })
+    usageChanged = true
   }
 
-  await publishTaskRun(pubSub, taskRun)
+  if (taskRunChanged || usageChanged) {
+    await publishTaskRun(pubSub, taskRun)
+  }
   return taskRun
 }
 

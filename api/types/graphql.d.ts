@@ -247,6 +247,7 @@ export type QuerytaskRunsArgs = {
   after?: InputMaybe<Scalars['String']['input']>;
   filter?: InputMaybe<TaskRunFilter>;
   first?: InputMaybe<Scalars['Int']['input']>;
+  skip?: InputMaybe<Scalars['Int']['input']>;
 };
 
 
@@ -355,6 +356,8 @@ export type TaskRunConnection = {
   __typename?: 'TaskRunConnection';
   edges: Array<TaskRunEdge>;
   pageInfo: TaskRunPageInfo;
+  statusCounts: Array<TaskRunStatusCount>;
+  totalCount: Scalars['Int']['output'];
 };
 
 export type TaskRunEdge = {
@@ -366,6 +369,7 @@ export type TaskRunEdge = {
 export type TaskRunFilter = {
   platform?: InputMaybe<Scalars['String']['input']>;
   primaryAgent?: InputMaybe<Scalars['String']['input']>;
+  search?: InputMaybe<Scalars['String']['input']>;
   statuses?: InputMaybe<Array<TaskRunStatus>>;
 };
 
@@ -389,6 +393,12 @@ export type TaskRunStatus =
   | 'QUEUED'
   | 'RUNNING'
   | 'WAITING_CONFIRMATION';
+
+export type TaskRunStatusCount = {
+  __typename?: 'TaskRunStatusCount';
+  count: Scalars['Int']['output'];
+  status: TaskRunStatus;
+};
 
 export type TeamRuntimeOverview = {
   __typename?: 'TeamRuntimeOverview';
@@ -559,6 +569,7 @@ export type ResolversTypes = {
   TaskRunPageInfo: ResolverTypeWrapper<TaskRunPageInfo>;
   TaskRunStage: TaskRunStage;
   TaskRunStatus: TaskRunStatus;
+  TaskRunStatusCount: ResolverTypeWrapper<TaskRunStatusCount>;
   TeamRuntimeOverview: ResolverTypeWrapper<TeamRuntimeOverview>;
   TeamWeeklyReport: ResolverTypeWrapper<TeamWeeklyReport>;
   Time: ResolverTypeWrapper<Scalars['Time']['output']>;
@@ -607,6 +618,7 @@ export type ResolversParentTypes = {
   TaskRunEdge: Omit<TaskRunEdge, 'node'> & { node: ResolversParentTypes['TaskRun'] };
   TaskRunFilter: TaskRunFilter;
   TaskRunPageInfo: TaskRunPageInfo;
+  TaskRunStatusCount: TaskRunStatusCount;
   TeamRuntimeOverview: TeamRuntimeOverview;
   TeamWeeklyReport: TeamWeeklyReport;
   Time: Scalars['Time']['output'];
@@ -876,7 +888,7 @@ export type QueryResolvers<ContextType = CedarGraphQLContext, ParentType extends
   redwood?: OptArgsResolverFn<Maybe<ResolversTypes['Redwood']>, ParentType, ContextType>;
   runtimeHealth?: OptArgsResolverFn<ResolversTypes['RuntimeHealth'], ParentType, ContextType>;
   taskRun?: Resolver<Maybe<ResolversTypes['TaskRun']>, ParentType, ContextType, RequireFields<QuerytaskRunArgs, 'id'>>;
-  taskRuns?: Resolver<ResolversTypes['TaskRunConnection'], ParentType, ContextType, RequireFields<QuerytaskRunsArgs, 'first'>>;
+  taskRuns?: Resolver<ResolversTypes['TaskRunConnection'], ParentType, ContextType, RequireFields<QuerytaskRunsArgs, 'first' | 'skip'>>;
   teamRuntimeOverview?: Resolver<ResolversTypes['TeamRuntimeOverview'], ParentType, ContextType, Partial<QueryteamRuntimeOverviewArgs>>;
   teamWeeklyReport?: Resolver<ResolversTypes['TeamWeeklyReport'], ParentType, ContextType, RequireFields<QueryteamWeeklyReportArgs, 'range'>>;
 };
@@ -888,7 +900,7 @@ export type QueryRelationResolvers<ContextType = CedarGraphQLContext, ParentType
   redwood?: RequiredResolverFn<Maybe<ResolversTypes['Redwood']>, ParentType, ContextType>;
   runtimeHealth?: RequiredResolverFn<ResolversTypes['RuntimeHealth'], ParentType, ContextType>;
   taskRun?: RequiredResolverFn<Maybe<ResolversTypes['TaskRun']>, ParentType, ContextType, RequireFields<QuerytaskRunArgs, 'id'>>;
-  taskRuns?: RequiredResolverFn<ResolversTypes['TaskRunConnection'], ParentType, ContextType, RequireFields<QuerytaskRunsArgs, 'first'>>;
+  taskRuns?: RequiredResolverFn<ResolversTypes['TaskRunConnection'], ParentType, ContextType, RequireFields<QuerytaskRunsArgs, 'first' | 'skip'>>;
   teamRuntimeOverview?: RequiredResolverFn<ResolversTypes['TeamRuntimeOverview'], ParentType, ContextType, Partial<QueryteamRuntimeOverviewArgs>>;
   teamWeeklyReport?: RequiredResolverFn<ResolversTypes['TeamWeeklyReport'], ParentType, ContextType, RequireFields<QueryteamWeeklyReportArgs, 'range'>>;
 };
@@ -1010,11 +1022,15 @@ export type TaskRunRelationResolvers<ContextType = CedarGraphQLContext, ParentTy
 export type TaskRunConnectionResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TaskRunConnection'] = ResolversParentTypes['TaskRunConnection']> = {
   edges: OptArgsResolverFn<Array<ResolversTypes['TaskRunEdge']>, ParentType, ContextType>;
   pageInfo: OptArgsResolverFn<ResolversTypes['TaskRunPageInfo'], ParentType, ContextType>;
+  statusCounts: OptArgsResolverFn<Array<ResolversTypes['TaskRunStatusCount']>, ParentType, ContextType>;
+  totalCount: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
 };
 
 export type TaskRunConnectionRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TaskRunConnection'] = ResolversParentTypes['TaskRunConnection']> = {
   edges?: RequiredResolverFn<Array<ResolversTypes['TaskRunEdge']>, ParentType, ContextType>;
   pageInfo?: RequiredResolverFn<ResolversTypes['TaskRunPageInfo'], ParentType, ContextType>;
+  statusCounts?: RequiredResolverFn<Array<ResolversTypes['TaskRunStatusCount']>, ParentType, ContextType>;
+  totalCount?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
 };
 
 export type TaskRunEdgeResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TaskRunEdge'] = ResolversParentTypes['TaskRunEdge']> = {
@@ -1035,6 +1051,16 @@ export type TaskRunPageInfoResolvers<ContextType = CedarGraphQLContext, ParentTy
 export type TaskRunPageInfoRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TaskRunPageInfo'] = ResolversParentTypes['TaskRunPageInfo']> = {
   endCursor?: RequiredResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   hasNextPage?: RequiredResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+};
+
+export type TaskRunStatusCountResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TaskRunStatusCount'] = ResolversParentTypes['TaskRunStatusCount']> = {
+  count: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  status: OptArgsResolverFn<ResolversTypes['TaskRunStatus'], ParentType, ContextType>;
+};
+
+export type TaskRunStatusCountRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TaskRunStatusCount'] = ResolversParentTypes['TaskRunStatusCount']> = {
+  count?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  status?: RequiredResolverFn<ResolversTypes['TaskRunStatus'], ParentType, ContextType>;
 };
 
 export type TeamRuntimeOverviewResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TeamRuntimeOverview'] = ResolversParentTypes['TeamRuntimeOverview']> = {
@@ -1189,6 +1215,7 @@ export type Resolvers<ContextType = CedarGraphQLContext> = {
   TaskRunConnection: TaskRunConnectionResolvers<ContextType>;
   TaskRunEdge: TaskRunEdgeResolvers<ContextType>;
   TaskRunPageInfo: TaskRunPageInfoResolvers<ContextType>;
+  TaskRunStatusCount: TaskRunStatusCountResolvers<ContextType>;
   TeamRuntimeOverview: TeamRuntimeOverviewResolvers<ContextType>;
   TeamWeeklyReport: TeamWeeklyReportResolvers<ContextType>;
   Time: GraphQLScalarType;

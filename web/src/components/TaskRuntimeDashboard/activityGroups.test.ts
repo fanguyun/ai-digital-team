@@ -71,4 +71,28 @@ describe('activity groups', () => {
       'running'
     )
   })
+
+  it('preserves the server order instead of re-sorting groups by updatedAt', () => {
+    const groups = groupTaskRuns([
+      task(
+        'newest-start',
+        '最新开始的任务',
+        'COMPLETED',
+        '2026-10-15T01:00:00Z',
+        'codex-task:a:1'
+      ),
+      task(
+        'older-start',
+        '较早开始的任务',
+        'COMPLETED',
+        '2026-10-15T09:00:00Z',
+        'codex-task:b:1'
+      ),
+    ])
+
+    expect(groups.map((group) => group.task.id)).toEqual([
+      'newest-start',
+      'older-start',
+    ])
+  })
 })

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Pagination } from 'antd'
 import {
@@ -16,7 +16,7 @@ import {
   XCircle,
 } from 'lucide-react'
 
-import { useSubscription } from '@cedarjs/web'
+import { useQuery, useSubscription } from '@cedarjs/web'
 
 import {
   TaskDetail,
@@ -27,12 +27,8 @@ import { groupTaskRuns } from './activityGroups'
 import { describeWorkflowStage, WORKFLOW_STAGES } from './workflowFlow'
 
 export const QUERY = gql`
-  query TaskRuntimeDashboard(
-    $filter: TaskRunFilter
-    $after: String
-    $first: Int
-  ) {
-    taskRuns(filter: $filter, after: $after, first: $first) {
+  query TaskRuntimeDashboard($filter: TaskRunFilter, $first: Int, $skip: Int) {
+    taskRuns(filter: $filter, first: $first, skip: $skip) {
       edges {
         cursor
         node {
@@ -69,6 +65,11 @@ export const QUERY = gql`
       pageInfo {
         endCursor
         hasNextPage
+      }
+      totalCount
+      statusCounts {
+        status
+        count
       }
     }
     runtimeHealth {
@@ -153,7 +154,7 @@ type RuntimeHealth = {
   serverTime: string
 }
 
-type CellProps = {
+type TaskRuntimeDashboardProps = {
   onSystemState?: (state: SystemState) => void
   onOpenSidebar?: () => void
 }
@@ -164,24 +165,29 @@ type SystemState = {
 }
 
 type DashboardVariables = {
-  filter: null
-  after: string | null
+  filter: { statuses?: TaskStatus[]; search?: string } | null
   first: number
+  skip: number
 }
 
-type SuccessProps = CellProps & {
+type StatusCount = {
+  status: TaskStatus
+  count: number
+}
+
+type DashboardData = {
   taskRuns: {
     edges: Array<{ cursor: string; node: TaskRun }>
     pageInfo: { endCursor?: string | null; hasNextPage: boolean }
+    totalCount: number
+    statusCounts: StatusCount[]
   }
   runtimeHealth: RuntimeHealth
-  queryResult: {
-    refetch: (variables?: DashboardVariables) => Promise<unknown>
-  }
-  updating?: boolean
 }
 
 const PAGE_SIZE = 20
+const SEARCH_DEBOUNCE_MS = 300
+const SUBSCRIPTION_DEBOUNCE_MS = 700
 
 const STATUS_OPTIONS: Array<{ value: TaskStatus | 'ALL'; label: string }> = [
   { value: 'ALL', label: '全部' },
@@ -228,10 +234,10 @@ const evidenceLabel = (evidence: unknown) => {
 }
 
 const calculateSystemState = (
-  health: RuntimeHealth,
+  health: RuntimeHealth | undefined,
   taskRuns: TaskRun[]
 ): SystemState => {
-  if (health.database.status !== 'UP') {
+  if (!health || health.database.status !== 'UP') {
     return { tone: 'danger', label: '数据库异常' }
   }
   if (taskRuns.some((task) => task.status === 'FAILED')) {
@@ -246,13 +252,7 @@ const calculateSystemState = (
   return { tone: 'idle', label: '系统空闲' }
 }
 
-export const beforeQuery = () => ({
-  variables: { filter: null, after: null, first: PAGE_SIZE },
-  fetchPolicy: 'cache-and-network' as const,
-  nextFetchPolicy: 'cache-first' as const,
-})
-
-export const Loading = () => (
+const Loading = () => (
   <section className="workspace-view runtime-state-panel" aria-busy="true">
     <RefreshCw className="spin" size={22} />
     <h1>正在加载运行记录</h1>
@@ -260,28 +260,14 @@ export const Loading = () => (
   </section>
 )
 
-export const Failure = ({
-  error,
-  queryResult,
-}: CellProps & {
-  error: Error
-  queryResult: { refetch: () => Promise<unknown> }
-}) => (
+const Failure = ({ error, onRetry }: { error: Error; onRetry: () => void }) => (
   <section className="workspace-view runtime-state-panel failure">
     <ServerCrash size={24} />
     <h1>任务运行时暂不可用</h1>
     <p>{error.message}</p>
-    <button type="button" onClick={() => queryResult.refetch()}>
+    <button type="button" onClick={onRetry}>
       <RotateCcw size={15} /> 重试连接
     </button>
-  </section>
-)
-
-export const Empty = () => (
-  <section className="workspace-view runtime-state-panel">
-    <Database size={24} />
-    <h1>还没有真实任务记录</h1>
-    <p>使用 task-runtime CLI 创建任务后，记录会自动出现在这里。</p>
   </section>
 )
 
@@ -304,40 +290,34 @@ const stageLabel = (stage: TaskStage) =>
 const ActivityView = ({
   taskRuns,
   page,
-  pageCount,
+  pendingPage,
+  totalCount,
+  statusCounts,
   pageLoading,
+  status,
+  searchInput,
+  onStatusChange,
+  onSearchInputChange,
   onPageChange,
 }: {
   taskRuns: TaskRun[]
   page: number
-  pageCount: number
+  pendingPage: number | null
+  totalCount: number
+  statusCounts: Record<TaskStatus, number>
   pageLoading: boolean
+  status: TaskStatus | 'ALL'
+  searchInput: string
+  onStatusChange: (status: TaskStatus | 'ALL') => void
+  onSearchInputChange: (value: string) => void
   onPageChange: (page: number) => void
 }) => {
-  const [status, setStatus] = useState<TaskStatus | 'ALL'>('ALL')
-  const [query, setQuery] = useState('')
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  // 分组只在当前页内进行；筛选/搜索已由服务端完成。
   const groupedTasks = useMemo(() => groupTaskRuns(taskRuns), [taskRuns])
-  const visibleGroups = useMemo(() => {
-    const keyword = query.trim().toLowerCase()
-    return groupedTasks.filter((group) => {
-      const task = group.task
-      const searchable = [
-        task.title,
-        task.summary,
-        task.primaryAgent,
-        task.platform,
-        stageLabel(task.currentStage),
-        STATUS_META[task.status].label,
-      ]
-        .join(' ')
-        .toLowerCase()
-      return (
-        (status === 'ALL' || task.status === status) &&
-        (!keyword || searchable.includes(keyword))
-      )
-    })
-  }, [groupedTasks, query, status])
+
+  const countFor = (option: TaskStatus | 'ALL') =>
+    option === 'ALL' ? totalCount : (statusCounts[option] ?? 0)
 
   const selectedTask = taskRuns.find((task) => task.id === selectedTaskId)
 
@@ -356,8 +336,8 @@ const ActivityView = ({
         <input
           aria-label="搜索运行记录"
           placeholder="搜索任务、岗位或阶段"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          value={searchInput}
+          onChange={(event) => onSearchInputChange(event.target.value)}
         />
       </label>
       <div className="runtime-filter" aria-label="运行状态筛选">
@@ -366,22 +346,16 @@ const ActivityView = ({
             type="button"
             key={option.value}
             className={status === option.value ? 'active' : ''}
-            onClick={() => setStatus(option.value)}
+            onClick={() => onStatusChange(option.value)}
           >
             {option.label}
-            <span>
-              {option.value === 'ALL'
-                ? groupedTasks.length
-                : groupedTasks.filter(
-                    (group) => group.task.status === option.value
-                  ).length}
-            </span>
+            <span>{countFor(option.value)}</span>
           </button>
         ))}
       </div>
-      {visibleGroups.length ? (
+      {groupedTasks.length ? (
         <div className="runtime-list">
-          {visibleGroups.map((group) => {
+          {groupedTasks.map((group) => {
             const task = group.task
             const statusMeta = STATUS_META[task.status]
             const StatusIcon = statusMeta.icon
@@ -473,7 +447,12 @@ const ActivityView = ({
                     <span className={`runtime-status ${statusMeta.tone}`}>
                       {statusMeta.label}
                     </span>
-                    <time>{formatDate(task.updatedAt)}</time>
+                    <time
+                      dateTime={task.startedAt}
+                      title={`开始时间 ${formatDate(task.startedAt)}`}
+                    >
+                      {formatDate(task.startedAt)}
+                    </time>
                   </span>
                 </button>
               </article>
@@ -487,94 +466,128 @@ const ActivityView = ({
           <span>换个关键词，或切换状态筛选。</span>
         </div>
       )}
-      <nav className="runtime-pagination" aria-label="运行记录分页">
-        <span className="runtime-pagination-summary">
-          第 {page + 1} 页 · 每页 {PAGE_SIZE} 条
-        </span>
-        <Pagination
-          current={page + 1}
-          pageSize={PAGE_SIZE}
-          total={pageCount * PAGE_SIZE}
-          disabled={pageLoading}
-          responsive
-          showLessItems
-          showSizeChanger={false}
-          showTitle={false}
-          onChange={onPageChange}
-        />
-      </nav>
+      {totalCount > PAGE_SIZE && (
+        <nav className="runtime-pagination" aria-label="运行记录分页">
+          <span className="runtime-pagination-summary">
+            {pendingPage === null
+              ? `共 ${totalCount} 条 · 每页 ${PAGE_SIZE} 条`
+              : `正在加载第 ${pendingPage + 1} 页…`}
+          </span>
+          <Pagination
+            current={page + 1}
+            pageSize={PAGE_SIZE}
+            total={totalCount}
+            disabled={pageLoading}
+            responsive
+            showLessItems
+            showSizeChanger={false}
+            showTitle={false}
+            onChange={onPageChange}
+          />
+        </nav>
+      )}
     </>
   )
 }
 
-export const Success = ({
+const TaskRuntimeDashboard = ({
   onSystemState,
   onOpenSidebar,
-  taskRuns,
-  runtimeHealth,
-  queryResult,
-  updating,
-}: SuccessProps) => {
-  const tasks = taskRuns.edges.map((edge) => edge.node)
+}: TaskRuntimeDashboardProps) => {
+  const [requestedPage, setRequestedPage] = useState(0)
+  const [displayedPage, setDisplayedPage] = useState(0)
+  const [view, setView] = useState<DashboardData | null>(null)
+  const [status, setStatus] = useState<TaskStatus | 'ALL'>('ALL')
+  const [searchInput, setSearchInput] = useState('')
+  const [searchKeyword, setSearchKeyword] = useState('')
   const [subscriptionFailed, setSubscriptionFailed] = useState(false)
-  const [page, setPage] = useState(0)
-  const [pageLoading, setPageLoading] = useState(false)
-  const [pageCursors, setPageCursors] = useState<Array<string | null>>([null])
-  const systemState = calculateSystemState(runtimeHealth, tasks)
-  const systemLabel = systemState.label
-  const systemTone = systemState.tone
 
-  const loadPage = useCallback(
-    async (after: string | null, nextPage: number) => {
-      setPageLoading(true)
-      try {
-        await queryResult.refetch({ filter: null, after, first: PAGE_SIZE })
-        setPage(nextPage)
-      } finally {
-        setPageLoading(false)
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearchKeyword(searchInput.trim())
+    }, SEARCH_DEBOUNCE_MS)
+    return () => window.clearTimeout(timer)
+  }, [searchInput])
+
+  const variables = useMemo<DashboardVariables>(() => {
+    const filter: { statuses?: TaskStatus[]; search?: string } = {}
+    if (status !== 'ALL') filter.statuses = [status]
+    if (searchKeyword) filter.search = searchKeyword
+    return {
+      filter: Object.keys(filter).length ? filter : null,
+      first: PAGE_SIZE,
+      skip: requestedPage * PAGE_SIZE,
+    }
+  }, [requestedPage, searchKeyword, status])
+
+  const { data, error, loading, refetch } = useQuery<
+    DashboardData,
+    DashboardVariables
+  >(QUERY, {
+    variables,
+    fetchPolicy: 'cache-and-network',
+    notifyOnNetworkStatusChange: true,
+  })
+
+  // Apollo 在 variables 变化时可能继续暴露上一页的 data。只有目标页请求完成后
+  // 才同时提交页码和数据，避免出现“新页码 + 旧列表”的错位状态。
+  useEffect(() => {
+    if (loading || error || !data) return
+
+    const nextPageCount = Math.max(
+      1,
+      Math.ceil(data.taskRuns.totalCount / PAGE_SIZE)
+    )
+    if (requestedPage > nextPageCount - 1) {
+      setRequestedPage(nextPageCount - 1)
+      return
+    }
+
+    setView(data)
+    setDisplayedPage(requestedPage)
+  }, [data, error, loading, requestedPage])
+
+  useEffect(() => {
+    if (error && view && requestedPage !== displayedPage) {
+      setRequestedPage(displayedPage)
+    }
+  }, [displayedPage, error, requestedPage, view])
+
+  const variablesRef = useRef(variables)
+  variablesRef.current = variables
+
+  const refreshLatest = useCallback(() => {
+    if (requestedPage !== 0) {
+      setRequestedPage(0)
+      return
+    }
+    void refetch({ ...variablesRef.current, skip: 0 })
+  }, [refetch, requestedPage])
+
+  const refreshTimer = useRef<number | null>(null)
+  const scheduleRefresh = useCallback(() => {
+    if (refreshTimer.current !== null) {
+      window.clearTimeout(refreshTimer.current)
+    }
+    refreshTimer.current = window.setTimeout(() => {
+      refreshTimer.current = null
+      refreshLatest()
+    }, SUBSCRIPTION_DEBOUNCE_MS)
+  }, [refreshLatest])
+
+  useEffect(
+    () => () => {
+      if (refreshTimer.current !== null) {
+        window.clearTimeout(refreshTimer.current)
       }
     },
-    [queryResult]
-  )
-
-  const refreshCurrentPage = useCallback(
-    () => loadPage(pageCursors[page] ?? null, page),
-    [loadPage, page, pageCursors]
-  )
-
-  const changePage = (targetPage: number) => {
-    if (pageLoading) return
-
-    const targetIndex = targetPage - 1
-    if (targetIndex < 0 || targetIndex === page) return
-
-    if (targetIndex < pageCursors.length) {
-      void loadPage(pageCursors[targetIndex] ?? null, targetIndex)
-      return
-    }
-
-    const nextCursor = taskRuns.pageInfo.endCursor
-    if (
-      targetIndex !== page + 1 ||
-      !taskRuns.pageInfo.hasNextPage ||
-      !nextCursor
-    ) {
-      return
-    }
-
-    setPageCursors((current) => [...current.slice(0, targetIndex), nextCursor])
-    void loadPage(nextCursor, targetIndex)
-  }
-
-  const pageCount = Math.max(
-    pageCursors.length,
-    page + 1 + (taskRuns.pageInfo.hasNextPage ? 1 : 0)
+    []
   )
 
   useSubscription(TASK_RUNS_CHANGED, {
     onData: () => {
       setSubscriptionFailed(false)
-      void refreshCurrentPage()
+      scheduleRefresh()
     },
     onError: () => setSubscriptionFailed(true),
   })
@@ -582,15 +595,62 @@ export const Success = ({
   useEffect(() => {
     const reconnect = () => {
       setSubscriptionFailed(false)
-      void refreshCurrentPage()
+      scheduleRefresh()
     }
     window.addEventListener('online', reconnect)
     return () => window.removeEventListener('online', reconnect)
-  }, [refreshCurrentPage])
+  }, [scheduleRefresh])
+
+  const tasks = useMemo(
+    () => view?.taskRuns.edges.map((edge) => edge.node) ?? [],
+    [view]
+  )
+  const totalCount = view?.taskRuns.totalCount ?? 0
+  const statusCounts = useMemo(() => {
+    const counts = Object.fromEntries(
+      Object.keys(STATUS_META).map((status) => [status, 0])
+    ) as Record<TaskStatus, number>
+    for (const entry of view?.taskRuns.statusCounts ?? []) {
+      counts[entry.status] = entry.count
+    }
+    return counts
+  }, [view])
+  const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+  const systemState = calculateSystemState(view?.runtimeHealth, tasks)
 
   useEffect(() => {
-    onSystemState?.({ label: systemLabel, tone: systemTone })
-  }, [onSystemState, systemLabel, systemTone])
+    onSystemState?.({ label: systemState.label, tone: systemState.tone })
+  }, [onSystemState, systemState.label, systemState.tone])
+
+  const changeStatus = (nextStatus: TaskStatus | 'ALL') => {
+    setStatus(nextStatus)
+    setRequestedPage(0)
+  }
+
+  const changeSearchInput = (value: string) => {
+    setSearchInput(value)
+    setRequestedPage(0)
+  }
+
+  const changePage = (targetPage: number) => {
+    const targetIndex = targetPage - 1
+    if (
+      targetIndex < 0 ||
+      targetIndex >= pageCount ||
+      targetIndex === requestedPage
+    ) {
+      return
+    }
+    setRequestedPage(targetIndex)
+  }
+
+  if (!view) {
+    if (error) return <Failure error={error} onRetry={refreshLatest} />
+    if (loading) return <Loading />
+    return null
+  }
+
+  const { runtimeHealth } = view
 
   return (
     <section className="workspace-view task-runtime-view">
@@ -621,25 +681,32 @@ export const Success = ({
           <button
             type="button"
             className="runtime-refresh"
-            onClick={() => void refreshCurrentPage()}
-            disabled={updating || pageLoading}
+            onClick={refreshLatest}
+            disabled={loading}
             aria-label="刷新任务状态"
             title="刷新任务状态"
           >
-            <RefreshCw
-              className={updating || pageLoading ? 'spin' : ''}
-              size={17}
-            />
+            <RefreshCw className={loading ? 'spin' : ''} size={17} />
           </button>
         </div>
       </div>
       <ActivityView
         taskRuns={tasks}
-        page={page}
-        pageCount={pageCount}
-        pageLoading={pageLoading}
+        page={displayedPage}
+        pendingPage={
+          loading && requestedPage !== displayedPage ? requestedPage : null
+        }
+        totalCount={totalCount}
+        statusCounts={statusCounts}
+        pageLoading={loading}
+        status={status}
+        searchInput={searchInput}
+        onStatusChange={changeStatus}
+        onSearchInputChange={changeSearchInput}
         onPageChange={changePage}
       />
     </section>
   )
 }
+
+export default TaskRuntimeDashboard

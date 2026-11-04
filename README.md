@@ -252,6 +252,46 @@ dsh --profile web --dump-config
 
 Harness bundle 只内置团队的岗位 Skill、路由矩阵和统一交付协议。岗位文档引用的 `research`、`xlsx`、`agently-mail` 等外部专项 Skill 不会被复制进本仓库；需要这些能力时，将对应 Skill 单独安装到 Harness 支持的 `.dsh/skills` 或 `.agents/skills` 目录。
 
+### 新设备初始化（DSH）
+
+插件不随 DeepSeek 账号同步。安装记录保存在每台设备本机的
+`~/.dsh/profiles/<profile>/package.json`，登录同一账号只会带回会话历史与
+偏好设置，不会带回插件。换设备时按以下清单操作：
+
+1. 安装 DSH 本体并登录同一 DeepSeek 账号（会话与用量自动恢复）。
+2. 逐 profile 重装插件（Electron 桌面端使用 `desktop` profile）：
+
+```bash
+dsh plugin --profile desktop add github:fanguyun/ai-digital-team#main
+dsh plugin --profile web add github:fanguyun/ai-digital-team#main
+dsh plugin --profile tui add github:fanguyun/ai-digital-team#main
+```
+
+3. 验证组合配置包含 `personal-digital-team` bundle：
+
+```bash
+dsh --profile web --dump-config
+```
+
+4. 补齐外部专项 Skill（Harness bundle 不复制这些文件，缺失时岗位只能部分运行）：
+
+```bash
+yarn check-skills
+SKILLS_MANAGER_ROOT="$HOME/.skills-manager" yarn bootstrap-team
+```
+
+5. 检查各平台岗位健康状态：
+
+```bash
+node scripts/capability-health.mjs --platform deepseek-harness
+```
+
+6. 开新会话，让 Harness 重新加载 skills 与岗位元数据。
+
+注意：`desktop` profile 由 Electron 应用独占管理，CLI 无法 dump 其配置；桌面端
+也可在 GUI 插件管理器中完成安装。不建议直接拷贝 `~/.dsh/profiles/` 目录迁移：
+`node_modules` 含平台相关二进制，且容易带入旧缓存。
+
 ## 换设备初始化
 
 拉取项目后，先检查 Skill 软链接。该检查同时验证已有软链接是否有效，以及岗位规则引用的已安装 Skill 是否已建立岗位级绑定：

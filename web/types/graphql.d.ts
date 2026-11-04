@@ -228,6 +228,7 @@ export type QuerytaskRunsArgs = {
   after?: InputMaybe<Scalars['String']['input']>;
   filter?: InputMaybe<TaskRunFilter>;
   first?: InputMaybe<Scalars['Int']['input']>;
+  skip?: InputMaybe<Scalars['Int']['input']>;
 };
 
 
@@ -336,6 +337,8 @@ export type TaskRunConnection = {
   __typename?: 'TaskRunConnection';
   edges: Array<TaskRunEdge>;
   pageInfo: TaskRunPageInfo;
+  statusCounts: Array<TaskRunStatusCount>;
+  totalCount: Scalars['Int']['output'];
 };
 
 export type TaskRunEdge = {
@@ -347,6 +350,7 @@ export type TaskRunEdge = {
 export type TaskRunFilter = {
   platform?: InputMaybe<Scalars['String']['input']>;
   primaryAgent?: InputMaybe<Scalars['String']['input']>;
+  search?: InputMaybe<Scalars['String']['input']>;
   statuses?: InputMaybe<Array<TaskRunStatus>>;
 };
 
@@ -370,6 +374,12 @@ export type TaskRunStatus =
   | 'QUEUED'
   | 'RUNNING'
   | 'WAITING_CONFIRMATION';
+
+export type TaskRunStatusCount = {
+  __typename?: 'TaskRunStatusCount';
+  count: Scalars['Int']['output'];
+  status: TaskRunStatus;
+};
 
 export type TeamRuntimeOverview = {
   __typename?: 'TeamRuntimeOverview';
@@ -454,12 +464,12 @@ export type UpdateInstalledSkill = { __typename?: 'Mutation', updateInstalledSki
 
 export type TaskRuntimeDashboardVariables = Exact<{
   filter?: InputMaybe<TaskRunFilter>;
-  after?: InputMaybe<Scalars['String']['input']>;
   first?: InputMaybe<Scalars['Int']['input']>;
+  skip?: InputMaybe<Scalars['Int']['input']>;
 }>;
 
 
-export type TaskRuntimeDashboard = { __typename?: 'Query', taskRuns: { __typename?: 'TaskRunConnection', edges: Array<{ __typename?: 'TaskRunEdge', cursor: string, node: { __typename?: 'TaskRun', id: string, title: string, platform: string, externalReference?: string | null, primaryAgent: string, status: TaskRunStatus, currentStage: TaskRunStage, summary?: string | null, version: number, startedAt: string, updatedAt: string, completedAt?: string | null, events: Array<{ __typename?: 'TaskEvent', id: string, sequence: number, eventType: string, status?: TaskRunStatus | null, stage: TaskRunStage, agent: string, skills: Array<string>, summary: string, evidence?: Prisma.JsonValue | null, inputTokens?: number | null, outputTokens?: number | null, cachedTokens?: number | null, modelId?: string | null, createdAt: string }> } }>, pageInfo: { __typename?: 'TaskRunPageInfo', endCursor?: string | null, hasNextPage: boolean } }, runtimeHealth: { __typename?: 'RuntimeHealth', serverTime: string, database: { __typename?: 'RuntimeComponentHealth', status: string, message?: string | null }, realtime: { __typename?: 'RuntimeComponentHealth', status: string, message?: string | null } } };
+export type TaskRuntimeDashboard = { __typename?: 'Query', taskRuns: { __typename?: 'TaskRunConnection', totalCount: number, edges: Array<{ __typename?: 'TaskRunEdge', cursor: string, node: { __typename?: 'TaskRun', id: string, title: string, platform: string, externalReference?: string | null, primaryAgent: string, status: TaskRunStatus, currentStage: TaskRunStage, summary?: string | null, version: number, startedAt: string, updatedAt: string, completedAt?: string | null, events: Array<{ __typename?: 'TaskEvent', id: string, sequence: number, eventType: string, status?: TaskRunStatus | null, stage: TaskRunStage, agent: string, skills: Array<string>, summary: string, evidence?: Prisma.JsonValue | null, inputTokens?: number | null, outputTokens?: number | null, cachedTokens?: number | null, modelId?: string | null, createdAt: string }> } }>, pageInfo: { __typename?: 'TaskRunPageInfo', endCursor?: string | null, hasNextPage: boolean }, statusCounts: Array<{ __typename?: 'TaskRunStatusCount', status: TaskRunStatus, count: number }> }, runtimeHealth: { __typename?: 'RuntimeHealth', serverTime: string, database: { __typename?: 'RuntimeComponentHealth', status: string, message?: string | null }, realtime: { __typename?: 'RuntimeComponentHealth', status: string, message?: string | null } } };
 
 export type TaskRunsChangedVariables = Exact<{ [key: string]: never; }>;
 

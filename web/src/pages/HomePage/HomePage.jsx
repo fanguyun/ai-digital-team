@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import {
   Activity,
@@ -38,9 +38,14 @@ import AgentMetricsOverview, {
   formatJoinedAt,
 } from 'src/components/AgentMetricsOverview/AgentMetricsOverview'
 import CapabilityHealthCenter from 'src/components/CapabilityHealthCenter/CapabilityHealthCenter'
+import OfficeStatGrid from 'src/components/OfficeStatGrid/OfficeStatGrid'
+import {
+  RUNTIME_FILTER_LABELS,
+  filterAgentsByRuntime,
+} from 'src/components/OfficeStatGrid/runtimeFilter'
 import SkillMarket from 'src/components/SkillMarket/SkillMarket'
 import { resolveMetricsRange } from 'src/components/AgentMetricsOverview/metricsTimeRange'
-import TaskRuntimeCell from 'src/components/TaskRuntimeCell/TaskRuntimeCell'
+import TaskRuntimeCell from 'src/components/TaskRuntimeDashboard/TaskRuntimeDashboard'
 import WeeklyReport from 'src/components/WeeklyReport/WeeklyReport'
 
 import agentManifest from '../../../../agents/manifest.json'
@@ -199,6 +204,7 @@ function App() {
   const [directoryMode, setDirectoryMode] = useState('office')
   const [activeGroup, setActiveGroup] = useState('全部岗位')
   const [query, setQuery] = useState('')
+  const [runtimeFilter, setRuntimeFilter] = useState('all')
   const [selectedId, setSelectedId] = useState('main')
   const [detailOpen, setDetailOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -308,12 +314,15 @@ function App() {
     return activeTasks
   }, [runtimeData])
 
-  const runtimeStateFor = (agent) =>
-    getAgentRuntimeState({
-      activeTask: activeTasksByAgent.get(agent.slug),
-      loading: runtimeLoading && !runtimeData,
-      error: runtimeError && !runtimeData,
-    })
+  const runtimeStateFor = useCallback(
+    (agent) =>
+      getAgentRuntimeState({
+        activeTask: activeTasksByAgent.get(agent.slug),
+        loading: runtimeLoading && !runtimeData,
+        error: runtimeError && !runtimeData,
+      }),
+    [activeTasksByAgent, runtimeData, runtimeError, runtimeLoading]
+  )
 
   useEffect(() => {
     if (workspaceView !== 'overview') return
@@ -344,14 +353,18 @@ function App() {
 
   const filtered = useMemo(
     () =>
-      agents.filter((agent) => {
-        const inGroup =
-          activeGroup === '全部岗位' || agent.group === activeGroup
-        const text =
-          `${agent.name} ${agent.en} ${agent.role} ${agent.skills.join(' ')}`.toLowerCase()
-        return inGroup && text.includes(query.toLowerCase())
-      }),
-    [activeGroup, query]
+      filterAgentsByRuntime(
+        agents.filter((agent) => {
+          const inGroup =
+            activeGroup === '全部岗位' || agent.group === activeGroup
+          const text =
+            `${agent.name} ${agent.en} ${agent.role} ${agent.skills.join(' ')}`.toLowerCase()
+          return inGroup && text.includes(query.toLowerCase())
+        }),
+        runtimeFilter,
+        runtimeStateFor
+      ),
+    [activeGroup, query, runtimeFilter, runtimeStateFor]
   )
 
   const selected = agents.find((agent) => agent.id === selectedId) || agents[0]
@@ -585,24 +598,15 @@ function App() {
                     </a>
                   </figcaption>
                 </figure>
-                <div className="office-stat-grid" aria-label="团队状态统计">
-                  <div>
-                    <span>员工总数</span>
-                    <strong>{teamStats.total}</strong>
-                  </div>
-                  <div className="working">
-                    <span>工作中</span>
-                    <strong>{teamStats.working}</strong>
-                  </div>
-                  <div className="waiting">
-                    <span>待确认</span>
-                    <strong>{teamStats.waiting}</strong>
-                  </div>
-                  <div className="idle">
-                    <span>空闲</span>
-                    <strong>{teamStats.idle}</strong>
-                  </div>
-                </div>
+                <OfficeStatGrid
+                  stats={teamStats}
+                  active={runtimeFilter}
+                  onSelect={(key) =>
+                    setRuntimeFilter((current) =>
+                      current === key ? 'all' : key
+                    )
+                  }
+                />
               </div>
               <div className="section-heading">
                 <div>
@@ -654,6 +658,17 @@ function App() {
                   )}
                 </div>
               </div>
+              {runtimeFilter !== 'all' && (
+                <div className="directory-filter-hint" role="status">
+                  <span>
+                    已筛选：<b>{RUNTIME_FILTER_LABELS[runtimeFilter]}</b> ·{' '}
+                    {filtered.length} 人
+                  </span>
+                  <button type="button" onClick={() => setRuntimeFilter('all')}>
+                    清除筛选
+                  </button>
+                </div>
+              )}
               <div className="filter-row">
                 {groups.map((group) => (
                   <button
@@ -764,6 +779,7 @@ function App() {
                     onClick={() => {
                       setQuery('')
                       setActiveGroup('全部岗位')
+                      setRuntimeFilter('all')
                     }}
                   >
                     清除筛选

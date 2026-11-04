@@ -60,22 +60,18 @@ export const groupTaskRuns = <Task extends GroupableTask>(tasks: Task[]) => {
     else groups.set(key, [task])
   }
 
-  return [...groups.entries()]
-    .map(([key, items]): ActivityGroup<Task> => {
-      const ordered = [...items].sort(compareTasks)
-      return {
-        key,
-        task: ordered[0],
-        items: [...items].sort(
-          (left, right) =>
-            new Date(right.updatedAt).getTime() -
-            new Date(left.updatedAt).getTime()
-        ),
-      }
-    })
-    .sort(
-      (left, right) =>
-        new Date(right.task.updatedAt).getTime() -
-        new Date(left.task.updatedAt).getTime()
-    )
+  // 保持服务端返回顺序（startedAt desc）：分组只合并同标题的重复任务，
+  // 不再按 updatedAt 重排，否则翻页后的列表时间和分页顺序会对不上。
+  return [...groups.entries()].map(([key, items]): ActivityGroup<Task> => {
+    const ordered = [...items].sort(compareTasks)
+    return {
+      key,
+      task: ordered[0],
+      items: [...items].sort(
+        (left, right) =>
+          new Date(right.updatedAt).getTime() -
+          new Date(left.updatedAt).getTime()
+      ),
+    }
+  })
 }

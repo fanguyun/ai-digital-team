@@ -183,6 +183,204 @@ describe('taskRuns service', () => {
     expect(page.pageInfo.hasNextPage).toBe(true)
   })
 
+  it('supports skip-based pagination with a stable totalCount', async () => {
+    await Promise.all(
+      Array.from({ length: 5 }, (_, index) =>
+        createTaskRun({ input: createInput(`offset-page-${index}`) }, context)
+      )
+    )
+
+    const firstPage = await taskRuns({ first: 2, skip: 0 })
+    const secondPage = await taskRuns({ first: 2, skip: 2 })
+    const lastPage = await taskRuns({ first: 2, skip: 4 })
+
+    expect(firstPage.totalCount).toBe(5)
+    expect(secondPage.totalCount).toBe(5)
+    expect(lastPage.totalCount).toBe(5)
+    expect(firstPage.edges).toHaveLength(2)
+    expect(secondPage.edges).toHaveLength(2)
+    expect(lastPage.edges).toHaveLength(1)
+    expect(firstPage.pageInfo.hasNextPage).toBe(true)
+    expect(secondPage.pageInfo.hasNextPage).toBe(true)
+    expect(lastPage.pageInfo.hasNextPage).toBe(false)
+    expect(
+      new Set([
+        ...firstPage.edges.map(({ node }) => node.id),
+        ...secondPage.edges.map(({ node }) => node.id),
+        ...lastPage.edges.map(({ node }) => node.id),
+      ]).size
+    ).toBe(5)
+
+    // after 与 skip 同时传时以 after 为准，且游标页与 skip 页等价。
+    const cursorPage = await taskRuns({
+      first: 2,
+      after: firstPage.pageInfo.endCursor,
+      skip: 100,
+    })
+    expect(cursorPage.edges.map(({ node }) => node.id)).toEqual(
+      secondPage.edges.map(({ node }) => node.id)
+    )
+  })
+
+  it('searches title, summary, primaryAgent and platform case-insensitively', async () => {
+    await createTaskRun(
+      { input: { ...createInput('search-title'), title: 'Alpha LOGIN page' } },
+      context
+    )
+    await createTaskRun(
+      {
+        input: {
+          ...createInput('search-summary'),
+          title: 'Beta',
+          summary: '关于 login 的说明',
+        },
+      },
+      context
+    )
+    await createTaskRun(
+      {
+        input: {
+          ...createInput('search-agent'),
+          title: 'Gamma',
+          summary: 'plain',
+          primaryAgent: 'design-engineer-agent',
+        },
+      },
+      context
+    )
+    await createTaskRun(
+      {
+        input: {
+          ...createInput('search-platform'),
+          title: 'Delta',
+          summary: 'plain',
+          platform: 'deepseek-harness',
+        },
+      },
+      context
+    )
+
+    const login = await taskRuns({ filter: { search: 'login' } })
+    expect(login.totalCount).toBe(2)
+    expect(login.edges.map(({ node }) => node.title).sort()).toEqual([
+      'Alpha LOGIN page',
+      'Beta',
+    ])
+    expect(
+      login.statusCounts.find((entry) => entry.status === 'RUNNING')?.count
+    ).toBe(2)
+
+    const byAgent = await taskRuns({ filter: { search: 'DESIGN-ENGINEER' } })
+    expect(byAgent.totalCount).toBe(1)
+
+    const byPlatform = await taskRuns({
+      filter: { search: 'deepseek-harness' },
+    })
+    expect(byPlatform.totalCount).toBe(1)
+    expect(byPlatform.edges[0].node.title).toBe('Delta')
+
+    const combined = await taskRuns({
+      filter: { search: 'login', platform: 'missing-platform' },
+    })
+    expect(combined.totalCount).toBe(0)
+    expect(combined.edges).toHaveLength(0)
+  })
+
+  it('returns global statusCounts for all six statuses regardless of statuses filter', async () => {
+    await createTaskRun(
+      { input: { ...createInput('status-running'), status: 'RUNNING' } },
+      context
+    )
+    await createTaskRun(
+      {
+        input: {
+          ...createInput('status-queued'),
+          status: 'QUEUED',
+          stage: 'INTAKE',
+        },
+      },
+      context
+    )
+    const completed = await createTaskRun(
+      { input: createInput('status-completed') },
+      context
+    )
+    await appendTaskEvent(
+      {
+        taskRunId: completed.id,
+        input: {
+          eventType: 'task.completed',
+          status: 'COMPLETED',
+          stage: 'EXECUTION',
+          agent: 'qa-security-engineer-agent',
+          skills: [],
+          summary: '完成',
+          idempotencyKey: 'status-completed-event',
+        },
+      },
+      context
+    )
+
+    const all = await taskRuns({})
+    expect(all.totalCount).toBe(3)
+    expect(all.statusCounts.map((entry) => entry.status)).toEqual([
+      'QUEUED',
+      'RUNNING',
+      'WAITING_CONFIRMATION',
+      'COMPLETED',
+      'FAILED',
+      'CANCELLED',
+    ])
+    const counts = Object.fromEntries(
+      all.statusCounts.map((entry) => [entry.status, entry.count])
+    )
+    expect(counts).toEqual({
+      QUEUED: 1,
+      RUNNING: 1,
+      WAITING_CONFIRMATION: 0,
+      COMPLETED: 1,
+      FAILED: 0,
+      CANCELLED: 0,
+    })
+
+    const onlyRunning = await taskRuns({ filter: { statuses: ['RUNNING'] } })
+    expect(onlyRunning.totalCount).toBe(1)
+    expect(onlyRunning.edges).toHaveLength(1)
+    // chips 的数字是全局口径：不随 statuses 过滤收缩。
+    expect(onlyRunning.statusCounts).toEqual(all.statusCounts)
+  })
+
+  it('keeps startedAt ordering stable when updatedAt is refreshed', async () => {
+    for (let index = 0; index < 3; index += 1) {
+      await createTaskRun({ input: createInput(`stable-${index}`) }, context)
+    }
+
+    const before = await taskRuns({ first: 10 })
+    const beforeIds = before.edges.map(({ node }) => node.id)
+    expect(beforeIds).toHaveLength(3)
+
+    // 模拟会话同步直接刷新 updatedAt（旧实现每 20 秒对全部会话执行一次）。
+    await db.taskRun.update({
+      where: { id: beforeIds.at(-1) as string },
+      data: { updatedAt: new Date(Date.now() + 60_000) },
+    })
+
+    const after = await taskRuns({ first: 10 })
+    expect(after.edges.map(({ node }) => node.id)).toEqual(beforeIds)
+
+    const firstPage = await taskRuns({ first: 2 })
+    const secondPage = await taskRuns({
+      first: 2,
+      after: firstPage.pageInfo.endCursor,
+    })
+    expect(
+      new Set([
+        ...firstPage.edges.map(({ node }) => node.id),
+        ...secondPage.edges.map(({ node }) => node.id),
+      ]).size
+    ).toBe(3)
+  })
+
   it('aggregates work, token usage, and latest model by agent', async () => {
     const created = await createTaskRun(
       {

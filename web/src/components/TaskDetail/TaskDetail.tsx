@@ -17,7 +17,7 @@ import {
   WORKFLOW_STAGES,
   type WorkflowStageName,
   type WorkflowStatus,
-} from 'src/components/TaskRuntimeCell/workflowFlow'
+} from 'src/components/TaskRuntimeDashboard/workflowFlow'
 
 import {
   formatTokenValue,

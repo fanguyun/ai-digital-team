@@ -28,9 +28,18 @@ type ServiceContext = {
 }
 
 type TaskRunCursor = {
-  updatedAt: string
+  startedAt: string
   id: string
 }
+
+const TASK_RUN_STATUSES: TaskRunStatusValue[] = [
+  'QUEUED',
+  'RUNNING',
+  'WAITING_CONFIRMATION',
+  'COMPLETED',
+  'FAILED',
+  'CANCELLED',
+]
 
 const encodeCursor = (cursor: TaskRunCursor) =>
   Buffer.from(JSON.stringify(cursor)).toString('base64url')
@@ -39,15 +48,15 @@ const decodeCursor = (cursor: string): TaskRunCursor => {
   try {
     const parsed = JSON.parse(
       Buffer.from(cursor, 'base64url').toString('utf8')
-    ) as TaskRunCursor
+    ) as Partial<TaskRunCursor>
     if (
-      !parsed.updatedAt ||
+      !parsed.startedAt ||
       !parsed.id ||
-      Number.isNaN(Date.parse(parsed.updatedAt))
+      Number.isNaN(Date.parse(parsed.startedAt))
     ) {
       throw new Error('invalid cursor')
     }
-    return parsed
+    return { startedAt: parsed.startedAt, id: parsed.id }
   } catch {
     throw new UserInputError('Invalid task run cursor')
   }
@@ -80,10 +89,12 @@ export const taskRuns = async (
     filter,
     after,
     first = DEFAULT_PAGE_SIZE,
+    skip = 0,
   }: {
     filter?: TaskRunFilter | null
     after?: string | null
     first?: number | null
+    skip?: number | null
   },
   { context }: ServiceContext = {}
 ) => {
@@ -95,39 +106,78 @@ export const taskRuns = async (
   const cursor = after ? decodeCursor(after) : undefined
   const platform = normalizeFilterText(filter?.platform)
   const primaryAgent = normalizeFilterText(filter?.primaryAgent)
+  const search = normalizeFilterText(filter?.search)
+  const statuses = filter?.statuses?.length
+    ? (filter.statuses as TaskRunStatusValue[])
+    : undefined
 
-  const where: Prisma.TaskRunWhereInput = {
-    ...(filter?.statuses?.length
-      ? { status: { in: filter.statuses as TaskRunStatusValue[] } }
-      : {}),
+  const searchWhere: Prisma.TaskRunWhereInput = search
+    ? {
+        OR: [
+          { title: { contains: search, mode: 'insensitive' } },
+          { summary: { contains: search, mode: 'insensitive' } },
+          { primaryAgent: { contains: search, mode: 'insensitive' } },
+          { platform: { contains: search, mode: 'insensitive' } },
+        ],
+      }
+    : {}
+
+  // statusCounts 的统计口径：与 search/platform/primaryAgent 一致，但不按
+  // statuses 过滤，这样切换状态时 chips 上的数字始终是「全局」计数。
+  const facetWhere: Prisma.TaskRunWhereInput = {
     ...(platform ? { platform } : {}),
     ...(primaryAgent ? { primaryAgent } : {}),
-    ...(cursor
-      ? {
-          OR: [
-            { updatedAt: { lt: new Date(cursor.updatedAt) } },
-            {
-              updatedAt: new Date(cursor.updatedAt),
-              id: { lt: cursor.id },
-            },
-          ],
-        }
-      : {}),
+    ...searchWhere,
   }
 
-  const rows = await db.taskRun.findMany({
-    where,
-    orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-    take: pageSize + 1,
-  })
+  // totalCount 的口径：全部过滤条件（含 statuses 与 search）。
+  const filteredWhere: Prisma.TaskRunWhereInput = {
+    ...facetWhere,
+    ...(statuses ? { status: { in: statuses } } : {}),
+  }
+
+  // 游标条件独占一个 OR，和 search 的 OR 通过 AND 组合，避免互相覆盖。
+  const cursorWhere: Prisma.TaskRunWhereInput | undefined = cursor
+    ? {
+        OR: [
+          { startedAt: { lt: new Date(cursor.startedAt) } },
+          { startedAt: new Date(cursor.startedAt), id: { lt: cursor.id } },
+        ],
+      }
+    : undefined
+
+  const where: Prisma.TaskRunWhereInput = cursorWhere
+    ? { AND: [filteredWhere, cursorWhere] }
+    : filteredWhere
+  // after 与 skip 同时传时，以 after 为准。
+  const offset = cursor ? 0 : Math.max(skip ?? 0, 0)
+
+  const [rows, totalCount, statusGroups] = await Promise.all([
+    db.taskRun.findMany({
+      where,
+      // 稳定排序：startedAt 不会被会话同步刷新，offset 分页不会漂移。
+      orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+      skip: offset,
+      take: pageSize + 1,
+    }),
+    db.taskRun.count({ where: filteredWhere }),
+    db.taskRun.groupBy({
+      by: ['status'],
+      where: facetWhere,
+      _count: { _all: true },
+    }),
+  ])
   const hasNextPage = rows.length > pageSize
   const nodes = hasNextPage ? rows.slice(0, pageSize) : rows
   const lastNode = nodes.at(-1)
+  const statusCountLookup = new Map(
+    statusGroups.map((group) => [group.status, group._count._all])
+  )
 
   return {
     edges: nodes.map((node) => ({
       cursor: encodeCursor({
-        updatedAt: node.updatedAt.toISOString(),
+        startedAt: node.startedAt.toISOString(),
         id: node.id,
       }),
       node,
@@ -136,11 +186,16 @@ export const taskRuns = async (
       hasNextPage,
       endCursor: lastNode
         ? encodeCursor({
-            updatedAt: lastNode.updatedAt.toISOString(),
+            startedAt: lastNode.startedAt.toISOString(),
             id: lastNode.id,
           })
         : null,
     },
+    totalCount,
+    statusCounts: TASK_RUN_STATUSES.map((status) => ({
+      status,
+      count: statusCountLookup.get(status) ?? 0,
+    })),
   }
 }
 
