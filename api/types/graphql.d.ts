@@ -163,6 +163,12 @@ export type Cedar = {
   version?: Maybe<Scalars['String']['output']>;
 };
 
+export type CreateRemoteAppInput = {
+  icon?: InputMaybe<Scalars['String']['input']>;
+  name: Scalars['String']['input'];
+  url: Scalars['String']['input'];
+};
+
 export type CreateTaskRunInput = {
   cachedTokens?: InputMaybe<Scalars['Int']['input']>;
   evidence?: InputMaybe<Scalars['JSON']['input']>;
@@ -183,7 +189,9 @@ export type CreateTaskRunInput = {
 export type InstalledSkill = {
   __typename?: 'InstalledSkill';
   body: Scalars['String']['output'];
+  codexEnabled: Scalars['Boolean']['output'];
   description: Scalars['String']['output'];
+  dshEnabled: Scalars['Boolean']['output'];
   id: Scalars['ID']['output'];
   name: Scalars['String']['output'];
   path: Scalars['String']['output'];
@@ -196,8 +204,11 @@ export type InstalledSkill = {
 export type Mutation = {
   __typename?: 'Mutation';
   appendTaskEvent: AppendTaskEventResult;
+  createRemoteApp: RemoteApp;
   createTaskRun: TaskRun;
+  deleteRemoteApp: RemoteApp;
   updateInstalledSkill: UpdateInstalledSkillResult;
+  updateRemoteApp: RemoteApp;
 };
 
 
@@ -207,13 +218,29 @@ export type MutationappendTaskEventArgs = {
 };
 
 
+export type MutationcreateRemoteAppArgs = {
+  input: CreateRemoteAppInput;
+};
+
+
 export type MutationcreateTaskRunArgs = {
   input: CreateTaskRunInput;
 };
 
 
+export type MutationdeleteRemoteAppArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
 export type MutationupdateInstalledSkillArgs = {
   id: Scalars['ID']['input'];
+};
+
+
+export type MutationupdateRemoteAppArgs = {
+  id: Scalars['ID']['input'];
+  input: UpdateRemoteAppInput;
 };
 
 /** About the Cedar queries. */
@@ -228,11 +255,19 @@ export type Query = {
    * @deprecated Use 'cedar' instead.
    */
   redwood?: Maybe<Redwood>;
+  remoteApp?: Maybe<RemoteApp>;
+  remoteApps: Array<RemoteApp>;
   runtimeHealth: RuntimeHealth;
   taskRun?: Maybe<TaskRun>;
   taskRuns: TaskRunConnection;
   teamRuntimeOverview: TeamRuntimeOverview;
   teamWeeklyReport: TeamWeeklyReport;
+};
+
+
+/** About the Cedar queries. */
+export type QueryremoteAppArgs = {
+  id: Scalars['ID']['input'];
 };
 
 
@@ -279,6 +314,16 @@ export type Redwood = {
    * @deprecated Use the Cedar type instead.
    */
   version?: Maybe<Scalars['String']['output']>;
+};
+
+export type RemoteApp = {
+  __typename?: 'RemoteApp';
+  createdAt: Scalars['DateTime']['output'];
+  icon: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  name: Scalars['String']['output'];
+  updatedAt: Scalars['DateTime']['output'];
+  url: Scalars['String']['output'];
 };
 
 export type RuntimeComponentHealth = {
@@ -444,6 +489,12 @@ export type UpdateInstalledSkillResult = {
   skill: InstalledSkill;
 };
 
+export type UpdateRemoteAppInput = {
+  icon?: InputMaybe<Scalars['String']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  url?: InputMaybe<Scalars['String']['input']>;
+};
+
 export type WeeklyAgentContribution = {
   __typename?: 'WeeklyAgentContribution';
   agent: Scalars['String']['output'];
@@ -542,6 +593,7 @@ export type ResolversTypes = {
   CapabilitySummary: ResolverTypeWrapper<CapabilitySummary>;
   CapabilityToolCheck: ResolverTypeWrapper<CapabilityToolCheck>;
   Cedar: ResolverTypeWrapper<Cedar>;
+  CreateRemoteAppInput: CreateRemoteAppInput;
   CreateTaskRunInput: CreateTaskRunInput;
   Date: ResolverTypeWrapper<Scalars['Date']['output']>;
   DateTime: ResolverTypeWrapper<Scalars['DateTime']['output']>;
@@ -555,6 +607,7 @@ export type ResolversTypes = {
   Mutation: ResolverTypeWrapper<Record<PropertyKey, never>>;
   Query: ResolverTypeWrapper<Record<PropertyKey, never>>;
   Redwood: ResolverTypeWrapper<Redwood>;
+  RemoteApp: ResolverTypeWrapper<RemoteApp>;
   RuntimeComponentHealth: ResolverTypeWrapper<RuntimeComponentHealth>;
   RuntimeHealth: ResolverTypeWrapper<RuntimeHealth>;
   RuntimeMetricCoverage: RuntimeMetricCoverage;
@@ -574,6 +627,7 @@ export type ResolversTypes = {
   TeamWeeklyReport: ResolverTypeWrapper<TeamWeeklyReport>;
   Time: ResolverTypeWrapper<Scalars['Time']['output']>;
   UpdateInstalledSkillResult: ResolverTypeWrapper<UpdateInstalledSkillResult>;
+  UpdateRemoteAppInput: UpdateRemoteAppInput;
   WeeklyAgentContribution: ResolverTypeWrapper<WeeklyAgentContribution>;
   WeeklyTaskItem: ResolverTypeWrapper<WeeklyTaskItem>;
 };
@@ -594,6 +648,7 @@ export type ResolversParentTypes = {
   CapabilitySummary: CapabilitySummary;
   CapabilityToolCheck: CapabilityToolCheck;
   Cedar: Cedar;
+  CreateRemoteAppInput: CreateRemoteAppInput;
   CreateTaskRunInput: CreateTaskRunInput;
   Date: Scalars['Date']['output'];
   DateTime: Scalars['DateTime']['output'];
@@ -607,6 +662,7 @@ export type ResolversParentTypes = {
   Mutation: Record<PropertyKey, never>;
   Query: Record<PropertyKey, never>;
   Redwood: Redwood;
+  RemoteApp: RemoteApp;
   RuntimeComponentHealth: RuntimeComponentHealth;
   RuntimeHealth: RuntimeHealth;
   RuntimeTimeRange: RuntimeTimeRange;
@@ -623,6 +679,7 @@ export type ResolversParentTypes = {
   TeamWeeklyReport: TeamWeeklyReport;
   Time: Scalars['Time']['output'];
   UpdateInstalledSkillResult: UpdateInstalledSkillResult;
+  UpdateRemoteAppInput: UpdateRemoteAppInput;
   WeeklyAgentContribution: WeeklyAgentContribution;
   WeeklyTaskItem: WeeklyTaskItem;
 };
@@ -636,6 +693,10 @@ export type requireAuthDirectiveResolver<Result, Parent, ContextType = CedarGrap
 export type requireRuntimeWriterDirectiveArgs = { };
 
 export type requireRuntimeWriterDirectiveResolver<Result, Parent, ContextType = CedarGraphQLContext, Args = requireRuntimeWriterDirectiveArgs> = DirectiveResolverFn<Result, Parent, ContextType, Args>;
+
+export type requireSessionOrRuntimeWriterDirectiveArgs = { };
+
+export type requireSessionOrRuntimeWriterDirectiveResolver<Result, Parent, ContextType = CedarGraphQLContext, Args = requireSessionOrRuntimeWriterDirectiveArgs> = DirectiveResolverFn<Result, Parent, ContextType, Args>;
 
 export type skipAuthDirectiveArgs = { };
 
@@ -839,7 +900,9 @@ export interface FileScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes
 
 export type InstalledSkillResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['InstalledSkill'] = ResolversParentTypes['InstalledSkill']> = {
   body: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  codexEnabled: OptArgsResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
   description: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  dshEnabled: OptArgsResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
   id: OptArgsResolverFn<ResolversTypes['ID'], ParentType, ContextType>;
   name: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
   path: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
@@ -851,7 +914,9 @@ export type InstalledSkillResolvers<ContextType = CedarGraphQLContext, ParentTyp
 
 export type InstalledSkillRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['InstalledSkill'] = ResolversParentTypes['InstalledSkill']> = {
   body?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  codexEnabled?: RequiredResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
   description?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  dshEnabled?: RequiredResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
   id?: RequiredResolverFn<ResolversTypes['ID'], ParentType, ContextType>;
   name?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
   path?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
@@ -871,14 +936,20 @@ export interface JSONObjectScalarConfig extends GraphQLScalarTypeConfig<Resolver
 
 export type MutationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['Mutation'] = ResolversParentTypes['Mutation']> = {
   appendTaskEvent?: Resolver<ResolversTypes['AppendTaskEventResult'], ParentType, ContextType, RequireFields<MutationappendTaskEventArgs, 'input' | 'taskRunId'>>;
+  createRemoteApp?: Resolver<ResolversTypes['RemoteApp'], ParentType, ContextType, RequireFields<MutationcreateRemoteAppArgs, 'input'>>;
   createTaskRun?: Resolver<ResolversTypes['TaskRun'], ParentType, ContextType, RequireFields<MutationcreateTaskRunArgs, 'input'>>;
+  deleteRemoteApp?: Resolver<ResolversTypes['RemoteApp'], ParentType, ContextType, RequireFields<MutationdeleteRemoteAppArgs, 'id'>>;
   updateInstalledSkill?: Resolver<ResolversTypes['UpdateInstalledSkillResult'], ParentType, ContextType, RequireFields<MutationupdateInstalledSkillArgs, 'id'>>;
+  updateRemoteApp?: Resolver<ResolversTypes['RemoteApp'], ParentType, ContextType, RequireFields<MutationupdateRemoteAppArgs, 'id' | 'input'>>;
 };
 
 export type MutationRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['Mutation'] = ResolversParentTypes['Mutation']> = {
   appendTaskEvent?: RequiredResolverFn<ResolversTypes['AppendTaskEventResult'], ParentType, ContextType, RequireFields<MutationappendTaskEventArgs, 'input' | 'taskRunId'>>;
+  createRemoteApp?: RequiredResolverFn<ResolversTypes['RemoteApp'], ParentType, ContextType, RequireFields<MutationcreateRemoteAppArgs, 'input'>>;
   createTaskRun?: RequiredResolverFn<ResolversTypes['TaskRun'], ParentType, ContextType, RequireFields<MutationcreateTaskRunArgs, 'input'>>;
+  deleteRemoteApp?: RequiredResolverFn<ResolversTypes['RemoteApp'], ParentType, ContextType, RequireFields<MutationdeleteRemoteAppArgs, 'id'>>;
   updateInstalledSkill?: RequiredResolverFn<ResolversTypes['UpdateInstalledSkillResult'], ParentType, ContextType, RequireFields<MutationupdateInstalledSkillArgs, 'id'>>;
+  updateRemoteApp?: RequiredResolverFn<ResolversTypes['RemoteApp'], ParentType, ContextType, RequireFields<MutationupdateRemoteAppArgs, 'id' | 'input'>>;
 };
 
 export type QueryResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['Query'] = ResolversParentTypes['Query']> = {
@@ -886,6 +957,8 @@ export type QueryResolvers<ContextType = CedarGraphQLContext, ParentType extends
   cedar?: OptArgsResolverFn<Maybe<ResolversTypes['Cedar']>, ParentType, ContextType>;
   installedSkills?: OptArgsResolverFn<Array<ResolversTypes['InstalledSkill']>, ParentType, ContextType>;
   redwood?: OptArgsResolverFn<Maybe<ResolversTypes['Redwood']>, ParentType, ContextType>;
+  remoteApp?: Resolver<Maybe<ResolversTypes['RemoteApp']>, ParentType, ContextType, RequireFields<QueryremoteAppArgs, 'id'>>;
+  remoteApps?: OptArgsResolverFn<Array<ResolversTypes['RemoteApp']>, ParentType, ContextType>;
   runtimeHealth?: OptArgsResolverFn<ResolversTypes['RuntimeHealth'], ParentType, ContextType>;
   taskRun?: Resolver<Maybe<ResolversTypes['TaskRun']>, ParentType, ContextType, RequireFields<QuerytaskRunArgs, 'id'>>;
   taskRuns?: Resolver<ResolversTypes['TaskRunConnection'], ParentType, ContextType, RequireFields<QuerytaskRunsArgs, 'first' | 'skip'>>;
@@ -898,6 +971,8 @@ export type QueryRelationResolvers<ContextType = CedarGraphQLContext, ParentType
   cedar?: RequiredResolverFn<Maybe<ResolversTypes['Cedar']>, ParentType, ContextType>;
   installedSkills?: RequiredResolverFn<Array<ResolversTypes['InstalledSkill']>, ParentType, ContextType>;
   redwood?: RequiredResolverFn<Maybe<ResolversTypes['Redwood']>, ParentType, ContextType>;
+  remoteApp?: RequiredResolverFn<Maybe<ResolversTypes['RemoteApp']>, ParentType, ContextType, RequireFields<QueryremoteAppArgs, 'id'>>;
+  remoteApps?: RequiredResolverFn<Array<ResolversTypes['RemoteApp']>, ParentType, ContextType>;
   runtimeHealth?: RequiredResolverFn<ResolversTypes['RuntimeHealth'], ParentType, ContextType>;
   taskRun?: RequiredResolverFn<Maybe<ResolversTypes['TaskRun']>, ParentType, ContextType, RequireFields<QuerytaskRunArgs, 'id'>>;
   taskRuns?: RequiredResolverFn<ResolversTypes['TaskRunConnection'], ParentType, ContextType, RequireFields<QuerytaskRunsArgs, 'first' | 'skip'>>;
@@ -915,6 +990,24 @@ export type RedwoodRelationResolvers<ContextType = CedarGraphQLContext, ParentTy
   currentUser?: RequiredResolverFn<Maybe<ResolversTypes['JSON']>, ParentType, ContextType>;
   prismaVersion?: RequiredResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   version?: RequiredResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+};
+
+export type RemoteAppResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['RemoteApp'] = ResolversParentTypes['RemoteApp']> = {
+  createdAt: OptArgsResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
+  icon: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  id: OptArgsResolverFn<ResolversTypes['ID'], ParentType, ContextType>;
+  name: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  updatedAt: OptArgsResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
+  url: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+};
+
+export type RemoteAppRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['RemoteApp'] = ResolversParentTypes['RemoteApp']> = {
+  createdAt?: RequiredResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
+  icon?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  id?: RequiredResolverFn<ResolversTypes['ID'], ParentType, ContextType>;
+  name?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  updatedAt?: RequiredResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
+  url?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
 };
 
 export type RuntimeComponentHealthResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['RuntimeComponentHealth'] = ResolversParentTypes['RuntimeComponentHealth']> = {
@@ -1207,6 +1300,7 @@ export type Resolvers<ContextType = CedarGraphQLContext> = {
   Mutation: MutationResolvers<ContextType>;
   Query: QueryResolvers<ContextType>;
   Redwood: RedwoodResolvers<ContextType>;
+  RemoteApp: RemoteAppResolvers<ContextType>;
   RuntimeComponentHealth: RuntimeComponentHealthResolvers<ContextType>;
   RuntimeHealth: RuntimeHealthResolvers<ContextType>;
   Subscription: SubscriptionResolvers<ContextType>;
@@ -1227,5 +1321,6 @@ export type Resolvers<ContextType = CedarGraphQLContext> = {
 export type DirectiveResolvers<ContextType = CedarGraphQLContext> = {
   requireAuth: requireAuthDirectiveResolver<any, any, ContextType>;
   requireRuntimeWriter: requireRuntimeWriterDirectiveResolver<any, any, ContextType>;
+  requireSessionOrRuntimeWriter: requireSessionOrRuntimeWriterDirectiveResolver<any, any, ContextType>;
   skipAuth: skipAuthDirectiveResolver<any, any, ContextType>;
 };

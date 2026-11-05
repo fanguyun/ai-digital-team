@@ -41,6 +41,21 @@ yarn db:backup
 yarn db:down
 ```
 
+### 同步到 NAS 数据库
+
+本地开发库始终是唯一写入源，NAS 上的库作为异地只读副本。同步脚本会先在
+`<库名>__staging` 还原并校验行数，一致后才切换，失败不影响现有库。
+
+```bash
+cp scripts/db-sync.env.example scripts/db-sync.env   # 填 NAS_SSH=用户@NAS地址
+yarn db:sync-status      # 对比两边表数与行数
+yarn db:push             # 本地 → NAS
+yarn db:pull             # NAS → 本地（异地改过数据时拉回）
+```
+
+前置条件：SSH 免密到 NAS，且 NAS 上 `sudo` 对 `docker` 免密（脚本会在前置检查中提示具体命令）。
+
+
 团队与插件校验：
 
 ```bash

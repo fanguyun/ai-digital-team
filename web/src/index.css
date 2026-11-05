@@ -3440,6 +3440,31 @@ body {
     max-width: 220px;
   }
 }
+.skill-market-tabs {
+  margin-top: 20px;
+}
+.skill-market-tabs .ant-tabs-nav {
+  margin-bottom: 0;
+}
+.skill-market-tabs .ant-tabs-nav::before {
+  border-bottom: 1px solid var(--border);
+}
+.skill-market-tabs .ant-tabs-tab {
+  padding: 10px 4px;
+  font-size: 13px;
+}
+@media (max-width: 600px) {
+  .skill-market-tabs .ant-tabs-nav-wrap {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .skill-market-tabs .ant-tabs-nav-wrap::-webkit-scrollbar {
+    display: none;
+  }
+  .skill-market-tabs .ant-tabs-tab {
+    flex: 0 0 auto;
+  }
+}
 .skill-market-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -5398,5 +5423,82 @@ body {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+}
+.remote-apps .page-intro {
+  align-items: flex-start;
+}
+.remote-apps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  margin: 20px 0;
+}
+.remote-app-card.ant-card .ant-card-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+}
+.remote-app-link {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+.remote-app-icon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: var(--subtle);
+}
+.remote-app-icon.is-text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1;
+}
+.remote-app-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+.remote-app-meta strong {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.remote-app-meta span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.remote-app-actions {
+  flex: 0 0 auto;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.remote-app-card:hover .remote-app-actions,
+.remote-app-card:focus-within .remote-app-actions {
+  opacity: 1;
+}
+@media (max-width: 600px) {
+  .remote-apps-grid {
+    grid-template-columns: 1fr;
+  }
+  .remote-app-actions {
+    opacity: 1;
   }
 }

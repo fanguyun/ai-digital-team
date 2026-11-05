@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "RemoteApp" ALTER COLUMN "icon" SET DATA TYPE TEXT;

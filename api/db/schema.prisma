@@ -99,3 +99,14 @@ model TaskEvent {
   @@index([taskRunId, createdAt])
   @@index([agent, createdAt(sort: Desc)])
 }
+
+model RemoteApp {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(120)
+  url       String   @db.VarChar(500)
+  icon      String   @default("") @db.Text
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([createdAt])
+}

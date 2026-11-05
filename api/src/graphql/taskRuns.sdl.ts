@@ -217,10 +217,11 @@ export const schema = gql`
       after: String
       first: Int = 20
       skip: Int = 0
-    ): TaskRunConnection! @requireAuth
-    taskRun(id: ID!): TaskRun @requireAuth
+    ): TaskRunConnection! @requireSessionOrRuntimeWriter
+    taskRun(id: ID!): TaskRun @requireSessionOrRuntimeWriter
     runtimeHealth: RuntimeHealth! @requireAuth
-    teamRuntimeOverview(range: RuntimeTimeRange): TeamRuntimeOverview! @requireAuth
+    teamRuntimeOverview(range: RuntimeTimeRange): TeamRuntimeOverview!
+      @requireAuth
     teamWeeklyReport(range: RuntimeTimeRange!): TeamWeeklyReport! @requireAuth
   }
 

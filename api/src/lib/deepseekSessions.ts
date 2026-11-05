@@ -142,6 +142,7 @@ type OpenTurn = {
   title?: string
   primaryAgent?: string
   usedSkill: boolean
+  ended?: boolean
   startedAt?: number
   updatedAt?: number
   modelId?: string
@@ -216,6 +217,14 @@ export const summarizeDeepSeekLines = (
       continue
     }
 
+    if (record.type === 'turn/end') {
+      if (current) {
+        current.ended = true
+        if (timestamp !== undefined) current.updatedAt = timestamp
+      }
+      continue
+    }
+
     if (
       !current &&
       (record.type === 'user/message' || record.type === 'tool/call')
@@ -272,7 +281,8 @@ export const summarizeDeepSeekLines = (
     .map((turn) => {
       const started = new Date(turn.startedAt ?? now)
       const updated = new Date(turn.updatedAt ?? turn.startedAt ?? now)
-      const running = now - updated.getTime() < ACTIVE_WINDOW_MS
+      // turn/end 是明确的收尾信号；没有它时退回"最近活动窗口"判断
+      const running = !turn.ended && now - updated.getTime() < ACTIVE_WINDOW_MS
       return {
         sessionId: `${sessionId}:${turn.turn}`,
         platform: 'deepseek-harness' as const,

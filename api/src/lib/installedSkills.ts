@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 
@@ -17,20 +18,34 @@ export type InstalledSkill = {
   updatedAt: Date
   updatable: boolean
   body: string
+  /** 是否已部署到 Codex（~/.codex/skills 下存在同名条目） */
+  codexEnabled: boolean
+  /** 是否已部署到 DeepSeek Harness（~/.dsh/skills 下存在同名条目） */
+  dshEnabled: boolean
 }
 
-export type SkillRoot = {
-  source: string
-  dir: string
+export type SkillScanConfig = {
+  libraryRoot: string
+  codexRoot: string
+  dshRoot: string
 }
 
-const SOURCE_ORDER = ['用户', '插件', '系统']
+/** 技能库来源的统一标记 */
+export const LIBRARY_SOURCE = '技能库'
 
-export const installedSkillRoots = (codexHome: string): SkillRoot[] => [
-  { source: '用户', dir: path.join(codexHome, 'skills') },
-  { source: '插件', dir: path.join(codexHome, 'plugins', 'cache') },
-  { source: '系统', dir: path.join(codexHome, 'skills', '.system') },
-]
+/** 技能库里不是技能的历史/元数据目录 */
+const IGNORED_ENTRIES = new Set(['.git', '.skills-manager', 'node_modules'])
+
+export const defaultSkillScanConfig = (
+  homeDir = os.homedir()
+): SkillScanConfig => ({
+  libraryRoot:
+    process.env.SKILLS_MANAGER_SKILLS_DIR ||
+    path.join(homeDir, '.skills-manager', 'skills'),
+  codexRoot:
+    process.env.CODEX_SKILLS_DIR || path.join(homeDir, '.codex', 'skills'),
+  dshRoot: process.env.DSH_SKILLS_DIR || path.join(homeDir, '.dsh', 'skills'),
+})
 
 const readScalar = (frontmatter: string, key: string) => {
   const match = new RegExp(`^${key}:\\s*(.*)$`, 'm').exec(frontmatter)
@@ -78,7 +93,12 @@ const readTags = (frontmatter: string) => {
 export const parseSkillDocument = (markdown: string) => {
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(markdown)
   if (!match) {
-    return { name: '', description: '', tags: [] as string[], body: markdown.trim() }
+    return {
+      name: '',
+      description: '',
+      tags: [] as string[],
+      body: markdown.trim(),
+    }
   }
   const frontmatter = match[1]
   return {
@@ -89,99 +109,87 @@ export const parseSkillDocument = (markdown: string) => {
   }
 }
 
-const isInside = (root: string, target: string) => {
-  const relative = path.relative(root, target)
-  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))
+const exists = (target: string) => {
+  try {
+    // 断链会返回 false，等价于「未启用」，不会抛错
+    return fs.existsSync(target)
+  } catch {
+    return false
+  }
 }
 
-const walkSkillDirectories = (dir: string, depth: number): string[] => {
-  if (depth > 8 || !fs.existsSync(dir)) return []
-  let entries: fs.Dirent[]
+const readDirectory = (dir: string): fs.Dirent[] => {
   try {
-    entries = fs.readdirSync(dir, { withFileTypes: true })
+    return fs.readdirSync(dir, { withFileTypes: true })
   } catch {
     return []
   }
-  const found: string[] = []
-  for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name === 'node_modules' || entry.name === '.git') {
-      continue
-    }
-    if (dir.endsWith(`${path.sep}skills`) && entry.name === '.system') continue
-    const fullPath = path.join(dir, entry.name)
-    if (fs.existsSync(path.join(fullPath, 'SKILL.md'))) {
-      found.push(fullPath)
-      continue
-    }
-    found.push(...walkSkillDirectories(fullPath, depth + 1))
-  }
-  return found
 }
 
-export const collectInstalledSkills = (roots: SkillRoot[]): InstalledSkill[] => {
-  const seen = new Set<string>()
+/**
+ * 只扫描技能库（skills-manager 的 central 目录），
+ * 并探测每个技能在 Codex / DSH 的 skills 目录里是否有部署条目。
+ */
+export const collectInstalledSkills = (
+  config: SkillScanConfig = defaultSkillScanConfig()
+): InstalledSkill[] => {
+  if (!exists(config.libraryRoot)) return []
+
   const skills: InstalledSkill[] = []
-  const ordered = [...roots].sort(
-    (left, right) => SOURCE_ORDER.indexOf(left.source) - SOURCE_ORDER.indexOf(right.source)
-  )
 
-  for (const root of ordered) {
-    const rootReal = fs.existsSync(root.dir) ? fs.realpathSync(root.dir) : root.dir
-    for (const directory of walkSkillDirectories(root.dir, 0)) {
-      const skillFile = path.join(directory, 'SKILL.md')
-      let realDirectory = directory
-      try {
-        realDirectory = fs.realpathSync(directory)
-      } catch {
-        continue
-      }
-      if (!isInside(rootReal, realDirectory) && root.source !== '用户') continue
-      if (seen.has(realDirectory)) continue
-      seen.add(realDirectory)
+  for (const entry of readDirectory(config.libraryRoot)) {
+    if (IGNORED_ENTRIES.has(entry.name)) continue
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue
 
-      let markdown = ''
-      let updatedAt = new Date(0)
-      try {
-        markdown = fs.readFileSync(skillFile, 'utf8')
-        updatedAt = fs.statSync(skillFile).mtime
-      } catch {
-        continue
-      }
-      const parsed = parseSkillDocument(markdown)
-      const folderName = path.basename(realDirectory)
-      const updatable =
-        root.source === '用户' && fs.existsSync(path.join(realDirectory, '.git'))
-      skills.push({
-        id: `${root.source}:${path.relative(root.dir, directory)}`,
-        name: parsed.name || folderName,
-        description: parsed.description || '这个技能没有填写简介。',
-        source: root.source,
-        tags: parsed.tags.length ? parsed.tags : ['未标记'],
-        path: realDirectory,
-        updatedAt,
-        updatable,
-        body: parsed.body.slice(0, 12000),
-      })
+    const directory = path.join(config.libraryRoot, entry.name)
+    const skillFile = path.join(directory, 'SKILL.md')
+    if (!exists(skillFile)) continue
+
+    let markdown = ''
+    let updatedAt = new Date(0)
+    try {
+      markdown = fs.readFileSync(skillFile, 'utf8')
+      updatedAt = fs.statSync(skillFile).mtime
+    } catch {
+      continue
     }
+
+    const parsed = parseSkillDocument(markdown)
+
+    skills.push({
+      id: `${LIBRARY_SOURCE}:${entry.name}`,
+      name: parsed.name || entry.name,
+      description: parsed.description || '这个技能没有填写简介。',
+      source: LIBRARY_SOURCE,
+      tags: parsed.tags.length ? parsed.tags : ['未标记'],
+      path: directory,
+      updatedAt,
+      updatable: exists(path.join(directory, '.git')),
+      body: parsed.body.slice(0, 12000),
+      codexEnabled: exists(path.join(config.codexRoot, entry.name)),
+      dshEnabled: exists(path.join(config.dshRoot, entry.name)),
+    })
   }
 
-  return skills.sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
+  return skills.sort((left, right) =>
+    left.name.localeCompare(right.name, 'zh-CN')
+  )
 }
 
 export const updateSkillDirectory = async (skill: InstalledSkill) => {
   if (!skill.updatable) {
     throw new UserInputError(
-      skill.source === '系统'
-        ? '系统技能由 Codex 维护，不能在这里更新。'
-        : skill.source === '插件'
-          ? '插件技能跟随插件缓存，请升级对应插件。'
-          : '这个技能没有 Git 来源，不能自动更新。'
+      '技能库里的技能不支持单独更新，请用 skills-manager 更新技能库。'
     )
   }
   try {
-    const result = await execFileAsync('git', ['-C', skill.path, 'pull', '--ff-only'], {
-      timeout: 30000,
-    })
+    const result = await execFileAsync(
+      'git',
+      ['-C', skill.path, 'pull', '--ff-only'],
+      {
+        timeout: 30000,
+      }
+    )
     const output = `${result.stdout || ''}${result.stderr || ''}`.trim()
     return output || '技能已更新。'
   } catch (error) {

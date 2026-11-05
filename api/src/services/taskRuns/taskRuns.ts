@@ -4,6 +4,7 @@ import type {
   CreateTaskRunInput,
   TaskRunFilter,
 } from 'types/graphql'
+
 import { UserInputError } from '@cedarjs/graphql-server'
 
 import { db } from 'src/lib/db'
@@ -569,6 +570,76 @@ export const teamWeeklyReport = async (
   }
 }
 
+const ACTIVE_TASK_STATUSES = [
+  'QUEUED',
+  'RUNNING',
+  'WAITING_CONFIRMATION',
+] as const
+
+const SUPERSEDED_SUMMARY = '同一会话已开始新任务，自动结束上一轮运行'
+
+/**
+ * 同一个会话（platform + externalReference）里只允许有一个活跃运行。
+ * 新一轮任务创建时，把上一轮仍停留在活跃状态的运行收尾，
+ * 避免"已经结束的对话一直显示执行中"。
+ */
+const supersedePreviousActiveRuns = async (
+  tx: Prisma.TransactionClient,
+  normalized: {
+    platform: string
+    externalReference: string | null | undefined
+  },
+  keepId: string
+) => {
+  if (!normalized.externalReference) return []
+
+  const activeRuns = await tx.taskRun.findMany({
+    where: {
+      platform: normalized.platform,
+      externalReference: normalized.externalReference,
+      status: { in: [...ACTIVE_TASK_STATUSES] },
+      id: { not: keepId },
+    },
+    select: {
+      id: true,
+      primaryAgent: true,
+      _count: { select: { events: true } },
+    },
+  })
+
+  const closed: Awaited<ReturnType<typeof tx.taskRun.update>>[] = []
+
+  for (const run of activeRuns) {
+    const updated = await tx.taskRun.update({
+      where: { id: run.id },
+      data: {
+        status: 'COMPLETED',
+        currentStage: 'DELIVERY',
+        completedAt: new Date(),
+        summary: SUPERSEDED_SUMMARY,
+        version: { increment: 1 },
+      },
+    })
+
+    await tx.taskEvent.create({
+      data: {
+        taskRunId: run.id,
+        sequence: run._count.events + 1,
+        eventType: 'task.completed',
+        status: 'COMPLETED',
+        stage: 'DELIVERY',
+        agent: run.primaryAgent,
+        summary: SUPERSEDED_SUMMARY,
+        idempotencyKey: `supersede:${run.id}:${keepId}`,
+      },
+    })
+
+    closed.push(updated)
+  }
+
+  return closed
+}
+
 export const createTaskRun = async (
   { input }: { input: CreateTaskRunInput },
   { context }: ServiceContext
@@ -618,11 +689,20 @@ export const createTaskRun = async (
           idempotencyKey: normalized.idempotencyKey,
         },
       })
-      return createdTaskRun
+      const superseded = await supersedePreviousActiveRuns(
+        tx,
+        normalized,
+        createdTaskRun.id
+      )
+
+      return { createdTaskRun, superseded }
     })
 
-    await publishTaskRun(context?.pubSub, result)
-    return result
+    await publishTaskRun(context?.pubSub, result.createdTaskRun)
+    for (const run of result.superseded) {
+      await publishTaskRun(context?.pubSub, run)
+    }
+    return result.createdTaskRun
   } catch (error) {
     if (isUniqueConstraintError(error)) {
       const duplicate = await db.taskEvent.findUnique({

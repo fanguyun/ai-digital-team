@@ -9,3 +9,4 @@ backups/database/
 api/db/generated/
 web/dist/
 api/dist/
+scripts/db-sync.env

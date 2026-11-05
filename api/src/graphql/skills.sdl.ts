@@ -9,6 +9,8 @@ export const schema = gql`
     updatedAt: DateTime!
     updatable: Boolean!
     body: String!
+    codexEnabled: Boolean!
+    dshEnabled: Boolean!
   }
 
   type UpdateInstalledSkillResult {

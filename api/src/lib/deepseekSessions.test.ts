@@ -92,6 +92,27 @@ describe('DeepSeek task summary', () => {
     expect(tasks.map((task) => task.status)).toEqual(['COMPLETED', 'RUNNING'])
   })
 
+  it('marks a turn completed as soon as it has a turn/end record', () => {
+    const tasks = summarizeDeepSeekLines(
+      [
+        sessionLine,
+        turn(1, '2026-10-15T01:01:00.000Z'),
+        user('第一项', '2026-10-15T01:01:00.000Z'),
+        skillLine,
+        {
+          type: 'turn/end',
+          time: Date.parse('2026-10-15T01:02:00.000Z'),
+          data: { turn: 1 },
+        },
+      ].map((line) => JSON.stringify(line)),
+      sessionLine.id,
+      Date.parse('2026-10-15T01:02:10.000Z'),
+      teamSlugs
+    )
+
+    expect(tasks.map((task) => task.status)).toEqual(['COMPLETED'])
+  })
+
   it('ignores turns that never call a digital-team skill outside the team project', () => {
     const tasks = summarizeDeepSeekLines(
       [

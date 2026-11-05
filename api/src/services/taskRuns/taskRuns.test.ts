@@ -58,6 +58,52 @@ describe('taskRuns service', () => {
     expect(publish).toHaveBeenCalledTimes(2)
   })
 
+  it('同一会话的新任务会自动结束上一轮仍活跃的运行', async () => {
+    const first = await createTaskRun(
+      {
+        input: {
+          ...createInput('session-first'),
+          externalReference: 'dsh-task:session-1',
+        },
+      },
+      context
+    )
+    const second = await createTaskRun(
+      {
+        input: {
+          ...createInput('session-second'),
+          externalReference: 'dsh-task:session-1',
+        },
+      },
+      context
+    )
+
+    const stored = await taskRun({ id: first.id })
+    expect(stored).toMatchObject({ status: 'COMPLETED' })
+    expect(stored?.completedAt).toBeInstanceOf(Date)
+    expect(stored?.events.at(-1)).toMatchObject({
+      eventType: 'task.completed',
+      status: 'COMPLETED',
+    })
+
+    const latest = await taskRun({ id: second.id })
+    expect(latest?.status).toBe('RUNNING')
+  })
+
+  it('没有 externalReference 时不同任务互不影响', async () => {
+    const first = await createTaskRun(
+      { input: createInput('no-ref-a') },
+      context
+    )
+    const second = await createTaskRun(
+      { input: createInput('no-ref-b') },
+      context
+    )
+
+    expect((await taskRun({ id: first.id }))?.status).toBe('RUNNING')
+    expect((await taskRun({ id: second.id }))?.status).toBe('RUNNING')
+  })
+
   it('returns the original task when create is retried', async () => {
     const first = await createTaskRun({ input: createInput('retry') }, context)
     const second = await createTaskRun({ input: createInput('retry') }, context)

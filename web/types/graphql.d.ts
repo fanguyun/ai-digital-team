@@ -164,7 +164,9 @@ export type CreateTaskRunInput = {
 export type InstalledSkill = {
   __typename?: 'InstalledSkill';
   body: Scalars['String']['output'];
+  codexEnabled: Scalars['Boolean']['output'];
   description: Scalars['String']['output'];
+  dshEnabled: Scalars['Boolean']['output'];
   id: Scalars['ID']['output'];
   name: Scalars['String']['output'];
   path: Scalars['String']['output'];
@@ -453,14 +455,14 @@ export type CapabilityHealthCenter = { __typename?: 'Query', capabilityHealth: {
 export type InstalledSkillsVariables = Exact<{ [key: string]: never; }>;
 
 
-export type InstalledSkills = { __typename?: 'Query', installedSkills: Array<{ __typename?: 'InstalledSkill', id: string, name: string, description: string, source: string, tags: Array<string>, path: string, updatedAt: string, updatable: boolean, body: string }> };
+export type InstalledSkills = { __typename?: 'Query', installedSkills: Array<{ __typename?: 'InstalledSkill', id: string, name: string, description: string, source: string, tags: Array<string>, path: string, updatedAt: string, updatable: boolean, body: string, codexEnabled: boolean, dshEnabled: boolean }> };
 
 export type UpdateInstalledSkillVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type UpdateInstalledSkill = { __typename?: 'Mutation', updateInstalledSkill: { __typename?: 'UpdateInstalledSkillResult', message: string, skill: { __typename?: 'InstalledSkill', id: string, name: string, description: string, source: string, tags: Array<string>, path: string, updatedAt: string, updatable: boolean, body: string } } };
+export type UpdateInstalledSkill = { __typename?: 'Mutation', updateInstalledSkill: { __typename?: 'UpdateInstalledSkillResult', message: string, skill: { __typename?: 'InstalledSkill', id: string, name: string, description: string, source: string, tags: Array<string>, path: string, updatedAt: string, updatable: boolean, body: string, codexEnabled: boolean, dshEnabled: boolean } } };
 
 export type TaskRuntimeDashboardVariables = Exact<{
   filter?: InputMaybe<TaskRunFilter>;

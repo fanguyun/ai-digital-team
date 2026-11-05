@@ -11,6 +11,7 @@ import {
   FileText,
   FolderGit2,
   GitBranch,
+  Globe,
   Inbox,
   LayoutGrid,
   List,
@@ -43,6 +44,7 @@ import {
   RUNTIME_FILTER_LABELS,
   filterAgentsByRuntime,
 } from 'src/components/OfficeStatGrid/runtimeFilter'
+import RemoteApps from 'src/components/RemoteApps/RemoteApps'
 import SkillMarket from 'src/components/SkillMarket/SkillMarket'
 import { resolveMetricsRange } from 'src/components/AgentMetricsOverview/metricsTimeRange'
 import TaskRuntimeCell from 'src/components/TaskRuntimeDashboard/TaskRuntimeDashboard'
@@ -260,6 +262,9 @@ function App() {
     skip: workspaceView !== 'overview',
     fetchPolicy: 'cache-and-network',
     nextFetchPolicy: 'cache-first',
+    // 后端每 20s 才会把"已结束但仍标 RUNNING"的轮次同步成 COMPLETED，
+    // 这里同频轮询，避免卡片一直停在"工作中"直到手动刷新。
+    pollInterval: 20000,
     variables: { overviewRange },
   })
   const {
@@ -493,6 +498,16 @@ function App() {
             }}
           >
             <Store size={16} /> 插件市场
+          </button>
+          <button
+            className={`nav-item ${workspaceView === 'apps' ? 'active' : ''}`}
+            onClick={() => {
+              setWorkspaceView('apps')
+              setSidebarOpen(false)
+              setDetailOpen(false)
+            }}
+          >
+            <Globe size={16} /> 应用中心
           </button>
           <div className="nav-caption separated">管理</div>
           <button className="nav-item" disabled title="开发中">
@@ -798,6 +813,8 @@ function App() {
           />
         ) : workspaceView === 'market' ? (
           <SkillMarket onOpenSidebar={() => setSidebarOpen(true)} />
+        ) : workspaceView === 'apps' ? (
+          <RemoteApps onOpenSidebar={() => setSidebarOpen(true)} />
         ) : workspaceView === 'health' ? (
           <CapabilityHealthCenter onOpenSidebar={() => setSidebarOpen(true)} />
         ) : workspaceView === 'report' ? (

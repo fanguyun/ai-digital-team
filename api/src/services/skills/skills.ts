@@ -1,17 +1,11 @@
-import os from 'node:os'
-import path from 'node:path'
-
 import { UserInputError } from '@cedarjs/graphql-server'
 
 import {
   collectInstalledSkills,
-  installedSkillRoots,
   updateSkillDirectory,
 } from 'src/lib/installedSkills'
 
-const codexHome = () => process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
-
-const listSkills = () => collectInstalledSkills(installedSkillRoots(codexHome()))
+const listSkills = () => collectInstalledSkills()
 
 export const installedSkills = () => listSkills()
 
