@@ -21,11 +21,11 @@
       "icon": "✦",
       "role": "默认入口、任务路由、跨岗位协作与结果整合。",
       "scope": "默认入口、任务路由、跨岗位协作、结果整合",
-      "skills": ["路由协调", "任务拆解", "结果整合"],
+      "skills": ["路由协调", "任务拆解", "结果整合", "writing-plans"],
       "status": "在线",
       "trigger": "所有未指定岗位的复杂任务",
       "capabilityRequirements": {
-        "requiredSkills": ["base-guidelines"],
+        "requiredSkills": ["base-guidelines", "writing-plans"],
         "optionalSkills": [],
         "requiredTools": [],
         "platforms": ["codex", "deepseek-harness"]

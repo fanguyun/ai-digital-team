@@ -146,6 +146,10 @@ Agent 运行时接入规则位于 `agents/DELIVERY_PROTOCOL.md`。Main Agent 为
 - `agents/ROUTING_MATRIX.md` 由清单自动生成，用于职责重叠和多岗位协作时确定当前主责、协作岗位、边界与交接顺序。
 - `agents/DELIVERY_PROTOCOL.md` 是团队统一交付协议，规定任务状态、最小交付字段、验证证据、风险、待确认项和下一责任方。
 
+Codex 与 DeepSeek Harness 共用变更确认规则：文件或已保存内容的变更，先展示计划并获得明确确认后执行；未使用工具原生 Plan 模式时，在对话中给出目标、影响范围、执行步骤和验证方式。保存计划文件也需先确认，跨岗位交接沿用已批准的计划与授权范围。
+
+复杂任务由 Main Agent 使用 `writing-plans` 编写实施计划，简单修改可直接给出简短计划。计划标题、章节、步骤、说明、验证标准和交接文字使用中文，路径、命令和代码保留原样。`writing-plans` 是外部 Skill，需在当前平台可读取，并保持岗位级软链接；插件不会复制其内容。
+
 Skill 入口保持软链接，不复制 Skill 文件。换设备后，如果软链接目标不存在，按团队规则提示并在用户确认后安装。
 
 ## 能力依赖与健康检查
@@ -195,16 +199,17 @@ node plugins/personal-digital-team/scripts/check-installation.mjs
 
 ### 同步插件
 
-修改任意 `agents/*/AGENTS.md` 或 `agents/manifest.json` 后，优先运行团队级同步：
+修改任意 `agents/*/AGENTS.md`、`agents/manifest.json` 或 `agents/DELIVERY_PROTOCOL.md` 后，优先运行团队级同步：
 
 ```bash
 yarn sync-team
 ```
 
-该命令会校验清单、刷新自动生成的岗位索引与路由矩阵，再同步插件。插件中的 Main Agent 会携带路由矩阵，全部岗位会携带统一交付协议。仅需重新导出插件时可以单独运行：
+该命令会校验清单、刷新自动生成的岗位索引与路由矩阵，再同步 Codex 插件与 DSH 能力包。插件中的 Main Agent 会携带路由矩阵，全部岗位会携带统一交付协议。仅需重新导出时可以按以下顺序运行：
 
 ```bash
 yarn sync-plugin
+yarn sync-deepseek-harness
 ```
 
 脚本会自动生成插件岗位规则、清理已删除岗位、校验插件，并在内容变化时更新 `plugin.json` 的 cachebuster。
@@ -229,13 +234,20 @@ codex plugin marketplace add <repo-root>
 codex plugin add personal-digital-team@personal-digital-team
 ```
 
-本仓库使用本地 marketplace，修改并执行 `yarn sync-plugin` 后，通过重新执行安装命令刷新插件缓存：
+更新方式取决于 marketplace 的安装来源，可通过 `codex plugin marketplace list` 核对。使用本地 marketplace 时，执行 `yarn sync-team` 后重新安装以刷新插件缓存：
 
 ```bash
 codex plugin add personal-digital-team@personal-digital-team
 ```
 
-`codex plugin marketplace upgrade` 仅用于 Git marketplace，不适用于当前 `source: local` 配置。
+使用 Git marketplace 时，先将源规则与两端导出提交、推送到安装所引用的分支，再刷新该 marketplace 并重新安装插件：
+
+```bash
+codex plugin marketplace upgrade personal-digital-team
+codex plugin add personal-digital-team@personal-digital-team
+```
+
+`codex plugin marketplace upgrade` 仅用于 Git marketplace；本地来源直接读取已同步的仓库文件。
 
 安装后建议开启新线程，让 Codex 重新加载插件中的 skills 和 agent 元数据。
 
@@ -264,6 +276,15 @@ dsh --profile web --dump-config
 ```
 
 输出中应包含 `personal-digital-team-skills`。进入 Harness 后使用 `/main-agent` 调用默认入口，或使用 `/personal-executive-assistant-agent` 等岗位命令。
+
+更新已安装的 Git 版本时，先提交并推送 `yarn sync-team` 生成的内容，再更新对应 profile；例如桌面端使用 `desktop`：
+
+```bash
+dsh plugin --profile desktop add github:fanguyun/ai-digital-team#main
+dsh --profile desktop --dump-config
+```
+
+更新后重新加载 DSH 实例并开启新会话。仅同步仓库中的 `dsh/skills/` 不会自动更新已安装的 Git 包，也不会改写已有会话的上下文。
 
 Harness bundle 只内置团队的岗位 Skill、路由矩阵和统一交付协议。岗位文档引用的 `research`、`xlsx`、`agently-mail` 等外部专项 Skill 不会被复制进本仓库；需要这些能力时，将对应 Skill 单独安装到 Harness 支持的 `.dsh/skills` 或 `.agents/skills` 目录。
 
