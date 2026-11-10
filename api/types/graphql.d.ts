@@ -1,6 +1,6 @@
 import { Prisma } from "src/lib/db"
 import { MergePrismaWithSdlTypes, MakeRelationsOptional } from '@cedarjs/api'
-import { TaskRun as PrismaTaskRun, User as PrismaUser, AuthSession as PrismaAuthSession, TaskEvent as PrismaTaskEvent } from 'src/lib/db'
+import { TaskRun as PrismaTaskRun, User as PrismaUser, AuthSession as PrismaAuthSession, TaskEvent as PrismaTaskEvent, RemoteApp as PrismaRemoteApp } from 'src/lib/db'
 import { GraphQLResolveInfo, GraphQLScalarType, GraphQLScalarTypeConfig } from 'graphql';
 import { CedarGraphQLContext } from '@cedarjs/graphql-server/dist/types';
 export type Maybe<T> = T | null;
@@ -186,6 +186,11 @@ export type CreateTaskRunInput = {
   title: Scalars['String']['input'];
 };
 
+export type DispatchRoleEvaluationInput = {
+  agentSlug: Scalars['String']['input'];
+  tool: Scalars['String']['input'];
+};
+
 export type InstalledSkill = {
   __typename?: 'InstalledSkill';
   body: Scalars['String']['output'];
@@ -207,6 +212,7 @@ export type Mutation = {
   createRemoteApp: RemoteApp;
   createTaskRun: TaskRun;
   deleteRemoteApp: RemoteApp;
+  dispatchRoleEvaluation: RoleEvaluationDispatch;
   updateInstalledSkill: UpdateInstalledSkillResult;
   updateRemoteApp: RemoteApp;
 };
@@ -230,6 +236,11 @@ export type MutationcreateTaskRunArgs = {
 
 export type MutationdeleteRemoteAppArgs = {
   id: Scalars['ID']['input'];
+};
+
+
+export type MutationdispatchRoleEvaluationArgs = {
+  input: DispatchRoleEvaluationInput;
 };
 
 
@@ -257,6 +268,7 @@ export type Query = {
   redwood?: Maybe<Redwood>;
   remoteApp?: Maybe<RemoteApp>;
   remoteApps: Array<RemoteApp>;
+  roleEvaluationTools: Array<RoleEvaluationTool>;
   runtimeHealth: RuntimeHealth;
   taskRun?: Maybe<TaskRun>;
   taskRuns: TaskRunConnection;
@@ -324,6 +336,29 @@ export type RemoteApp = {
   name: Scalars['String']['output'];
   updatedAt: Scalars['DateTime']['output'];
   url: Scalars['String']['output'];
+};
+
+export type RoleEvaluationDispatch = {
+  __typename?: 'RoleEvaluationDispatch';
+  agentName: Scalars['String']['output'];
+  agentSlug: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  logPath: Scalars['String']['output'];
+  pid?: Maybe<Scalars['Int']['output']>;
+  prompt: Scalars['String']['output'];
+  reportPath: Scalars['String']['output'];
+  resultPath: Scalars['String']['output'];
+  startedAt: Scalars['DateTime']['output'];
+  tool: Scalars['String']['output'];
+};
+
+export type RoleEvaluationTool = {
+  __typename?: 'RoleEvaluationTool';
+  available: Scalars['Boolean']['output'];
+  id: Scalars['ID']['output'];
+  name: Scalars['String']['output'];
+  reason?: Maybe<Scalars['String']['output']>;
+  version?: Maybe<Scalars['String']['output']>;
 };
 
 export type RuntimeComponentHealth = {
@@ -516,7 +551,7 @@ export type WeeklyTaskItem = {
 };
 
 type MaybeOrArrayOfMaybe<T> = T | Maybe<T> | Maybe<T>[];
-type AllMappedModels = MaybeOrArrayOfMaybe<TaskEvent | TaskRun>
+type AllMappedModels = MaybeOrArrayOfMaybe<RemoteApp | TaskEvent | TaskRun>
 
 
 export type ResolverTypeWrapper<T> = Promise<T> | T;
@@ -597,6 +632,7 @@ export type ResolversTypes = {
   CreateTaskRunInput: CreateTaskRunInput;
   Date: ResolverTypeWrapper<Scalars['Date']['output']>;
   DateTime: ResolverTypeWrapper<Scalars['DateTime']['output']>;
+  DispatchRoleEvaluationInput: DispatchRoleEvaluationInput;
   File: ResolverTypeWrapper<Scalars['File']['output']>;
   Float: ResolverTypeWrapper<Scalars['Float']['output']>;
   ID: ResolverTypeWrapper<Scalars['ID']['output']>;
@@ -607,7 +643,9 @@ export type ResolversTypes = {
   Mutation: ResolverTypeWrapper<Record<PropertyKey, never>>;
   Query: ResolverTypeWrapper<Record<PropertyKey, never>>;
   Redwood: ResolverTypeWrapper<Redwood>;
-  RemoteApp: ResolverTypeWrapper<RemoteApp>;
+  RemoteApp: ResolverTypeWrapper<MergePrismaWithSdlTypes<PrismaRemoteApp, MakeRelationsOptional<RemoteApp, AllMappedModels>, AllMappedModels>>;
+  RoleEvaluationDispatch: ResolverTypeWrapper<RoleEvaluationDispatch>;
+  RoleEvaluationTool: ResolverTypeWrapper<RoleEvaluationTool>;
   RuntimeComponentHealth: ResolverTypeWrapper<RuntimeComponentHealth>;
   RuntimeHealth: ResolverTypeWrapper<RuntimeHealth>;
   RuntimeMetricCoverage: RuntimeMetricCoverage;
@@ -652,6 +690,7 @@ export type ResolversParentTypes = {
   CreateTaskRunInput: CreateTaskRunInput;
   Date: Scalars['Date']['output'];
   DateTime: Scalars['DateTime']['output'];
+  DispatchRoleEvaluationInput: DispatchRoleEvaluationInput;
   File: Scalars['File']['output'];
   Float: Scalars['Float']['output'];
   ID: Scalars['ID']['output'];
@@ -662,7 +701,9 @@ export type ResolversParentTypes = {
   Mutation: Record<PropertyKey, never>;
   Query: Record<PropertyKey, never>;
   Redwood: Redwood;
-  RemoteApp: RemoteApp;
+  RemoteApp: MergePrismaWithSdlTypes<PrismaRemoteApp, MakeRelationsOptional<RemoteApp, AllMappedModels>, AllMappedModels>;
+  RoleEvaluationDispatch: RoleEvaluationDispatch;
+  RoleEvaluationTool: RoleEvaluationTool;
   RuntimeComponentHealth: RuntimeComponentHealth;
   RuntimeHealth: RuntimeHealth;
   RuntimeTimeRange: RuntimeTimeRange;
@@ -939,6 +980,7 @@ export type MutationResolvers<ContextType = CedarGraphQLContext, ParentType exte
   createRemoteApp?: Resolver<ResolversTypes['RemoteApp'], ParentType, ContextType, RequireFields<MutationcreateRemoteAppArgs, 'input'>>;
   createTaskRun?: Resolver<ResolversTypes['TaskRun'], ParentType, ContextType, RequireFields<MutationcreateTaskRunArgs, 'input'>>;
   deleteRemoteApp?: Resolver<ResolversTypes['RemoteApp'], ParentType, ContextType, RequireFields<MutationdeleteRemoteAppArgs, 'id'>>;
+  dispatchRoleEvaluation?: Resolver<ResolversTypes['RoleEvaluationDispatch'], ParentType, ContextType, RequireFields<MutationdispatchRoleEvaluationArgs, 'input'>>;
   updateInstalledSkill?: Resolver<ResolversTypes['UpdateInstalledSkillResult'], ParentType, ContextType, RequireFields<MutationupdateInstalledSkillArgs, 'id'>>;
   updateRemoteApp?: Resolver<ResolversTypes['RemoteApp'], ParentType, ContextType, RequireFields<MutationupdateRemoteAppArgs, 'id' | 'input'>>;
 };
@@ -948,6 +990,7 @@ export type MutationRelationResolvers<ContextType = CedarGraphQLContext, ParentT
   createRemoteApp?: RequiredResolverFn<ResolversTypes['RemoteApp'], ParentType, ContextType, RequireFields<MutationcreateRemoteAppArgs, 'input'>>;
   createTaskRun?: RequiredResolverFn<ResolversTypes['TaskRun'], ParentType, ContextType, RequireFields<MutationcreateTaskRunArgs, 'input'>>;
   deleteRemoteApp?: RequiredResolverFn<ResolversTypes['RemoteApp'], ParentType, ContextType, RequireFields<MutationdeleteRemoteAppArgs, 'id'>>;
+  dispatchRoleEvaluation?: RequiredResolverFn<ResolversTypes['RoleEvaluationDispatch'], ParentType, ContextType, RequireFields<MutationdispatchRoleEvaluationArgs, 'input'>>;
   updateInstalledSkill?: RequiredResolverFn<ResolversTypes['UpdateInstalledSkillResult'], ParentType, ContextType, RequireFields<MutationupdateInstalledSkillArgs, 'id'>>;
   updateRemoteApp?: RequiredResolverFn<ResolversTypes['RemoteApp'], ParentType, ContextType, RequireFields<MutationupdateRemoteAppArgs, 'id' | 'input'>>;
 };
@@ -959,6 +1002,7 @@ export type QueryResolvers<ContextType = CedarGraphQLContext, ParentType extends
   redwood?: OptArgsResolverFn<Maybe<ResolversTypes['Redwood']>, ParentType, ContextType>;
   remoteApp?: Resolver<Maybe<ResolversTypes['RemoteApp']>, ParentType, ContextType, RequireFields<QueryremoteAppArgs, 'id'>>;
   remoteApps?: OptArgsResolverFn<Array<ResolversTypes['RemoteApp']>, ParentType, ContextType>;
+  roleEvaluationTools?: OptArgsResolverFn<Array<ResolversTypes['RoleEvaluationTool']>, ParentType, ContextType>;
   runtimeHealth?: OptArgsResolverFn<ResolversTypes['RuntimeHealth'], ParentType, ContextType>;
   taskRun?: Resolver<Maybe<ResolversTypes['TaskRun']>, ParentType, ContextType, RequireFields<QuerytaskRunArgs, 'id'>>;
   taskRuns?: Resolver<ResolversTypes['TaskRunConnection'], ParentType, ContextType, RequireFields<QuerytaskRunsArgs, 'first' | 'skip'>>;
@@ -973,6 +1017,7 @@ export type QueryRelationResolvers<ContextType = CedarGraphQLContext, ParentType
   redwood?: RequiredResolverFn<Maybe<ResolversTypes['Redwood']>, ParentType, ContextType>;
   remoteApp?: RequiredResolverFn<Maybe<ResolversTypes['RemoteApp']>, ParentType, ContextType, RequireFields<QueryremoteAppArgs, 'id'>>;
   remoteApps?: RequiredResolverFn<Array<ResolversTypes['RemoteApp']>, ParentType, ContextType>;
+  roleEvaluationTools?: RequiredResolverFn<Array<ResolversTypes['RoleEvaluationTool']>, ParentType, ContextType>;
   runtimeHealth?: RequiredResolverFn<ResolversTypes['RuntimeHealth'], ParentType, ContextType>;
   taskRun?: RequiredResolverFn<Maybe<ResolversTypes['TaskRun']>, ParentType, ContextType, RequireFields<QuerytaskRunArgs, 'id'>>;
   taskRuns?: RequiredResolverFn<ResolversTypes['TaskRunConnection'], ParentType, ContextType, RequireFields<QuerytaskRunsArgs, 'first' | 'skip'>>;
@@ -1008,6 +1053,48 @@ export type RemoteAppRelationResolvers<ContextType = CedarGraphQLContext, Parent
   name?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
   updatedAt?: RequiredResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
   url?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+};
+
+export type RoleEvaluationDispatchResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['RoleEvaluationDispatch'] = ResolversParentTypes['RoleEvaluationDispatch']> = {
+  agentName: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  agentSlug: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  id: OptArgsResolverFn<ResolversTypes['ID'], ParentType, ContextType>;
+  logPath: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  pid: OptArgsResolverFn<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+  prompt: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  reportPath: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  resultPath: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  startedAt: OptArgsResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
+  tool: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+};
+
+export type RoleEvaluationDispatchRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['RoleEvaluationDispatch'] = ResolversParentTypes['RoleEvaluationDispatch']> = {
+  agentName?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  agentSlug?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  id?: RequiredResolverFn<ResolversTypes['ID'], ParentType, ContextType>;
+  logPath?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  pid?: RequiredResolverFn<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+  prompt?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  reportPath?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  resultPath?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  startedAt?: RequiredResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
+  tool?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+};
+
+export type RoleEvaluationToolResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['RoleEvaluationTool'] = ResolversParentTypes['RoleEvaluationTool']> = {
+  available: OptArgsResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  id: OptArgsResolverFn<ResolversTypes['ID'], ParentType, ContextType>;
+  name: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  reason: OptArgsResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  version: OptArgsResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+};
+
+export type RoleEvaluationToolRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['RoleEvaluationTool'] = ResolversParentTypes['RoleEvaluationTool']> = {
+  available?: RequiredResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  id?: RequiredResolverFn<ResolversTypes['ID'], ParentType, ContextType>;
+  name?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  reason?: RequiredResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  version?: RequiredResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
 };
 
 export type RuntimeComponentHealthResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['RuntimeComponentHealth'] = ResolversParentTypes['RuntimeComponentHealth']> = {
@@ -1301,6 +1388,8 @@ export type Resolvers<ContextType = CedarGraphQLContext> = {
   Query: QueryResolvers<ContextType>;
   Redwood: RedwoodResolvers<ContextType>;
   RemoteApp: RemoteAppResolvers<ContextType>;
+  RoleEvaluationDispatch: RoleEvaluationDispatchResolvers<ContextType>;
+  RoleEvaluationTool: RoleEvaluationToolResolvers<ContextType>;
   RuntimeComponentHealth: RuntimeComponentHealthResolvers<ContextType>;
   RuntimeHealth: RuntimeHealthResolvers<ContextType>;
   Subscription: SubscriptionResolvers<ContextType>;

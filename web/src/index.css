@@ -730,6 +730,143 @@ input:focus-visible,
   float: right;
   font-size: 16px;
 }
+.open-agent + .open-agent {
+  margin-top: 8px;
+}
+.open-agent.secondary {
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+.open-agent.secondary:hover {
+  background: var(--chip);
+}
+.open-agent:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+.detail-dispatch {
+  margin: 10px 0 0;
+  color: var(--muted-light);
+  font-size: 10px;
+  line-height: 1.7;
+}
+.detail-dispatch.error {
+  color: var(--danger);
+}
+.dispatch-modal {
+  width: min(460px, 100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 24px 70px #00000030;
+}
+.dispatch-body {
+  display: grid;
+  gap: 18px;
+  padding: 22px 24px;
+}
+.dispatch-lead,
+.dispatch-hint {
+  margin: 0;
+  color: var(--muted-light);
+  font-size: 12px;
+  line-height: 1.8;
+}
+.dispatch-hint {
+  font-size: 10px;
+}
+.dispatch-lead code,
+.dispatch-hint code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--chip);
+  font-size: 11px;
+}
+.dispatch-tools {
+  display: grid;
+  gap: 8px;
+}
+.dispatch-tool {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.dispatch-tool.unavailable {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.dispatch-tool input {
+  margin-top: 2px;
+}
+.dispatch-tool span {
+  display: grid;
+  gap: 3px;
+}
+.dispatch-tool strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 550;
+}
+.dispatch-tool em {
+  color: var(--muted-light);
+  font-size: 10px;
+  font-style: normal;
+  line-height: 1.6;
+}
+.dispatch-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-light);
+  font-size: 11px;
+}
+.dispatch-error {
+  color: var(--danger);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.dispatch-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--subtle);
+}
+.dispatch-cancel,
+.dispatch-submit {
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.dispatch-cancel {
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+.dispatch-cancel:hover {
+  background: var(--chip);
+}
+.dispatch-submit {
+  color: var(--on-inverse);
+  background: var(--inverse);
+}
+.dispatch-submit:hover {
+  background: #333;
+}
+.dispatch-submit:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
 .detail-note {
   display: flex;
   gap: 8px;

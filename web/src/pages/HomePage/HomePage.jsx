@@ -25,7 +25,7 @@ import {
   X,
 } from 'lucide-react'
 
-import { useQuery, useSubscription } from '@cedarjs/web'
+import { useMutation, useQuery, useSubscription } from '@cedarjs/web'
 
 import { useAuth } from 'src/auth'
 import { useTheme } from 'src/theme'
@@ -158,6 +158,43 @@ const ACTION_CENTER_OVERVIEW = gql`
   }
 `
 
+const ROLE_EVALUATION_TOOLS = gql`
+  query RoleEvaluationTools {
+    roleEvaluationTools {
+      id
+      name
+      available
+      version
+      reason
+    }
+  }
+`
+
+const DISPATCH_ROLE_EVALUATION = gql`
+  mutation DispatchRoleEvaluation($input: DispatchRoleEvaluationInput!) {
+    dispatchRoleEvaluation(input: $input) {
+      id
+      agentSlug
+      agentName
+      tool
+      startedAt
+      reportPath
+      logPath
+      pid
+    }
+  }
+`
+
+const EVALUATION_TOOL_STORAGE_KEY = 'pdt.roleEvaluation.tool'
+
+const readEvaluationToolPreference = () => {
+  try {
+    return window.localStorage.getItem(EVALUATION_TOOL_STORAGE_KEY) || 'codex'
+  } catch {
+    return 'codex'
+  }
+}
+
 const ACTIVE_STATUS_PRIORITY = {
   WAITING_CONFIRMATION: 3,
   RUNNING: 2,
@@ -216,6 +253,13 @@ function App() {
     loading: false,
     content: '',
     error: '',
+  })
+  const [evaluation, setEvaluation] = useState({
+    open: false,
+    tool: 'codex',
+    submitting: false,
+    error: '',
+    notice: null,
   })
   const [systemState, setSystemState] = useState({
     tone: 'idle',
@@ -276,6 +320,16 @@ function App() {
     fetchPolicy: 'cache-and-network',
     nextFetchPolicy: 'cache-first',
   })
+  const {
+    data: evaluationToolsData,
+    loading: evaluationToolsLoading,
+    error: evaluationToolsError,
+  } = useQuery(ROLE_EVALUATION_TOOLS, {
+    skip: !evaluation.open,
+    fetchPolicy: 'cache-first',
+  })
+  const [dispatchRoleEvaluation] = useMutation(DISPATCH_ROLE_EVALUATION)
+  const evaluationTools = evaluationToolsData?.roleEvaluationTools || []
 
   const actionCenterModel = useMemo(
     () =>
@@ -296,6 +350,89 @@ function App() {
   useSubscription(AGENT_RUNTIME_CHANGED, {
     onData: () => void refetchActionCenter(),
   })
+
+  const evaluationToolId = evaluation.tool || 'codex'
+  const selectedEvaluationTool = evaluationTools.find(
+    (tool) => tool.id === evaluationToolId
+  )
+  const canDispatchEvaluation =
+    !evaluationToolsLoading &&
+    !evaluationToolsError &&
+    Boolean(selectedEvaluationTool?.available)
+
+  // 默认工具不可用时自动落到第一个可用工具，避免按钮点了没反应。
+  useEffect(() => {
+    if (!evaluation.open || evaluationToolsLoading || !evaluationTools.length) {
+      return
+    }
+    if (selectedEvaluationTool?.available) return
+    const fallback = evaluationTools.find((tool) => tool.available)
+    if (fallback) {
+      setEvaluation((state) => ({ ...state, tool: fallback.id }))
+    }
+  }, [evaluation.open, evaluationTools, evaluationToolsLoading, selectedEvaluationTool])
+
+  const openEvaluation = () => {
+    setEvaluation((state) => ({
+      ...state,
+      open: true,
+      tool: readEvaluationToolPreference(),
+      submitting: false,
+      error: '',
+    }))
+  }
+
+  const closeEvaluation = () => {
+    setEvaluation((state) => ({
+      ...state,
+      open: false,
+      submitting: false,
+      error: '',
+    }))
+  }
+
+  const selectEvaluationTool = (toolId) => {
+    setEvaluation((state) => ({ ...state, tool: toolId, error: '' }))
+  }
+
+  const submitEvaluation = async () => {
+    if (evaluation.submitting) return
+    setEvaluation((state) => ({ ...state, submitting: true, error: '' }))
+    try {
+      const { data } = await dispatchRoleEvaluation({
+        variables: {
+          input: { agentSlug: selected.slug, tool: evaluationToolId },
+        },
+      })
+      const dispatch = data?.dispatchRoleEvaluation
+      try {
+        window.localStorage.setItem(
+          EVALUATION_TOOL_STORAGE_KEY,
+          evaluationToolId
+        )
+      } catch {
+        // 隐私模式下写不了偏好，不影响派发结果
+      }
+      const toolName = selectedEvaluationTool?.name || evaluationToolId
+      setEvaluation({
+        open: false,
+        tool: evaluationToolId,
+        submitting: false,
+        error: '',
+        notice: {
+          tone: 'success',
+          text: `已派发到 ${toolName}（PID ${dispatch?.pid ?? '—'}）。报告将写入 ${dispatch?.reportPath || 'docs/role-evaluations/'}，约 20 秒后出现在任务看板。`,
+        },
+      })
+      await refetchRuntimeStatuses()
+    } catch (error) {
+      setEvaluation((state) => ({
+        ...state,
+        submitting: false,
+        error: error.message,
+      }))
+    }
+  }
 
   const activeTasksByAgent = useMemo(() => {
     const activeTasks = new Map()
@@ -391,6 +528,13 @@ function App() {
   const selectAgent = (agent) => {
     setSelectedId(agent.id)
     setDetailOpen(true)
+    setEvaluation((state) => ({
+      ...state,
+      open: false,
+      submitting: false,
+      error: '',
+      notice: null,
+    }))
   }
 
   const openAgentDocument = async () => {
@@ -911,6 +1055,18 @@ function App() {
         <button className="open-agent" onClick={openAgentDocument}>
           查看岗位规则 <span>↗</span>
         </button>
+        <button
+          className="open-agent secondary"
+          onClick={openEvaluation}
+          disabled={evaluation.submitting}
+        >
+          {evaluation.submitting ? '正在派发…' : '岗位评估更新'} <span>⌁</span>
+        </button>
+        {evaluation.notice && (
+          <p className={`detail-dispatch ${evaluation.notice.tone || ''}`}>
+            {evaluation.notice.text}
+          </p>
+        )}
         <div className="detail-note">
           <span>i</span> 所有岗位遵循团队公共边界与确认机制。
         </div>
@@ -957,6 +1113,103 @@ function App() {
                 <MarkdownDocument content={documentState.content} />
               )}
             </div>
+          </section>
+        </div>
+      )}
+      {evaluation.open && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) =>
+            event.target === event.currentTarget && closeEvaluation()
+          }
+        >
+          <section
+            className="dispatch-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="role-evaluation-title"
+          >
+            <header className="modal-header">
+              <div>
+                <span className="modal-kicker">ROLE EVALUATION</span>
+                <h2 id="role-evaluation-title">岗位评估更新</h2>
+                <p>
+                  {selected.name} · {selected.en}
+                </p>
+              </div>
+              <button
+                className="modal-close"
+                onClick={closeEvaluation}
+                aria-label="关闭"
+              >
+                ×
+              </button>
+            </header>
+            <div className="modal-body dispatch-body">
+              <p className="dispatch-lead">
+                将调用「岗位发展与能力评估」对「{selected.name}」做一次只读评估，报告写入{' '}
+                <code>docs/role-evaluations/</code>。不会修改岗位规则、不安装
+                Skill、不提交代码。
+              </p>
+              <div className="dispatch-tools">
+                <span className="detail-label">执行工具</span>
+                {evaluationToolsLoading ? (
+                  <div className="dispatch-loading">
+                    <span className="pulse" /> 正在探测本机工具…
+                  </div>
+                ) : evaluationToolsError ? (
+                  <div className="dispatch-error">
+                    无法探测执行工具（{evaluationToolsError.message}）
+                  </div>
+                ) : (
+                  evaluationTools.map((tool) => (
+                    <label
+                      key={tool.id}
+                      className={`dispatch-tool ${tool.available ? '' : 'unavailable'}`}
+                    >
+                      <input
+                        type="radio"
+                        name="role-evaluation-tool"
+                        value={tool.id}
+                        checked={evaluationToolId === tool.id}
+                        disabled={!tool.available}
+                        onChange={() => selectEvaluationTool(tool.id)}
+                      />
+                      <span>
+                        <strong>{tool.name}</strong>
+                        <em>
+                          {tool.available
+                            ? tool.version || '已就绪'
+                            : tool.reason}
+                        </em>
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
+              {evaluationToolId === 'deepseek-harness' && (
+                <p className="dispatch-hint">
+                  DeepSeek Harness 走 headless 配置，需要启动环境或{' '}
+                  <code>.env</code> 里存在 API Key。
+                </p>
+              )}
+              {evaluation.error && (
+                <div className="dispatch-error">{evaluation.error}</div>
+              )}
+            </div>
+            <footer className="dispatch-actions">
+              <button className="dispatch-cancel" onClick={closeEvaluation}>
+                取消
+              </button>
+              <button
+                className="dispatch-submit"
+                onClick={submitEvaluation}
+                disabled={!canDispatchEvaluation || evaluation.submitting}
+              >
+                {evaluation.submitting ? '正在派发…' : '开始评估'}
+              </button>
+            </footer>
           </section>
         </div>
       )}

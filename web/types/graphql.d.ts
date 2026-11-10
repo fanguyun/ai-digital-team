@@ -144,6 +144,12 @@ export type Cedar = {
   version?: Maybe<Scalars['String']['output']>;
 };
 
+export type CreateRemoteAppInput = {
+  icon?: InputMaybe<Scalars['String']['input']>;
+  name: Scalars['String']['input'];
+  url: Scalars['String']['input'];
+};
+
 export type CreateTaskRunInput = {
   cachedTokens?: InputMaybe<Scalars['Int']['input']>;
   evidence?: InputMaybe<Scalars['JSON']['input']>;
@@ -159,6 +165,11 @@ export type CreateTaskRunInput = {
   status?: InputMaybe<TaskRunStatus>;
   summary?: InputMaybe<Scalars['String']['input']>;
   title: Scalars['String']['input'];
+};
+
+export type DispatchRoleEvaluationInput = {
+  agentSlug: Scalars['String']['input'];
+  tool: Scalars['String']['input'];
 };
 
 export type InstalledSkill = {
@@ -179,8 +190,12 @@ export type InstalledSkill = {
 export type Mutation = {
   __typename?: 'Mutation';
   appendTaskEvent: AppendTaskEventResult;
+  createRemoteApp: RemoteApp;
   createTaskRun: TaskRun;
+  deleteRemoteApp: RemoteApp;
+  dispatchRoleEvaluation: RoleEvaluationDispatch;
   updateInstalledSkill: UpdateInstalledSkillResult;
+  updateRemoteApp: RemoteApp;
 };
 
 
@@ -190,13 +205,34 @@ export type MutationappendTaskEventArgs = {
 };
 
 
+export type MutationcreateRemoteAppArgs = {
+  input: CreateRemoteAppInput;
+};
+
+
 export type MutationcreateTaskRunArgs = {
   input: CreateTaskRunInput;
 };
 
 
+export type MutationdeleteRemoteAppArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type MutationdispatchRoleEvaluationArgs = {
+  input: DispatchRoleEvaluationInput;
+};
+
+
 export type MutationupdateInstalledSkillArgs = {
   id: Scalars['ID']['input'];
+};
+
+
+export type MutationupdateRemoteAppArgs = {
+  id: Scalars['ID']['input'];
+  input: UpdateRemoteAppInput;
 };
 
 /** About the Cedar queries. */
@@ -211,11 +247,20 @@ export type Query = {
    * @deprecated Use 'cedar' instead.
    */
   redwood?: Maybe<Redwood>;
+  remoteApp?: Maybe<RemoteApp>;
+  remoteApps: Array<RemoteApp>;
+  roleEvaluationTools: Array<RoleEvaluationTool>;
   runtimeHealth: RuntimeHealth;
   taskRun?: Maybe<TaskRun>;
   taskRuns: TaskRunConnection;
   teamRuntimeOverview: TeamRuntimeOverview;
   teamWeeklyReport: TeamWeeklyReport;
+};
+
+
+/** About the Cedar queries. */
+export type QueryremoteAppArgs = {
+  id: Scalars['ID']['input'];
 };
 
 
@@ -261,6 +306,39 @@ export type Redwood = {
    * The version of CedarJS.
    * @deprecated Use the Cedar type instead.
    */
+  version?: Maybe<Scalars['String']['output']>;
+};
+
+export type RemoteApp = {
+  __typename?: 'RemoteApp';
+  createdAt: Scalars['DateTime']['output'];
+  icon: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  name: Scalars['String']['output'];
+  updatedAt: Scalars['DateTime']['output'];
+  url: Scalars['String']['output'];
+};
+
+export type RoleEvaluationDispatch = {
+  __typename?: 'RoleEvaluationDispatch';
+  agentName: Scalars['String']['output'];
+  agentSlug: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  logPath: Scalars['String']['output'];
+  pid?: Maybe<Scalars['Int']['output']>;
+  prompt: Scalars['String']['output'];
+  reportPath: Scalars['String']['output'];
+  resultPath: Scalars['String']['output'];
+  startedAt: Scalars['DateTime']['output'];
+  tool: Scalars['String']['output'];
+};
+
+export type RoleEvaluationTool = {
+  __typename?: 'RoleEvaluationTool';
+  available: Scalars['Boolean']['output'];
+  id: Scalars['ID']['output'];
+  name: Scalars['String']['output'];
+  reason?: Maybe<Scalars['String']['output']>;
   version?: Maybe<Scalars['String']['output']>;
 };
 
@@ -427,6 +505,12 @@ export type UpdateInstalledSkillResult = {
   skill: InstalledSkill;
 };
 
+export type UpdateRemoteAppInput = {
+  icon?: InputMaybe<Scalars['String']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  url?: InputMaybe<Scalars['String']['input']>;
+};
+
 export type WeeklyAgentContribution = {
   __typename?: 'WeeklyAgentContribution';
   agent: Scalars['String']['output'];
@@ -451,6 +535,33 @@ export type CapabilityHealthCenterVariables = Exact<{ [key: string]: never; }>;
 
 
 export type CapabilityHealthCenter = { __typename?: 'Query', capabilityHealth: { __typename?: 'CapabilityHealth', generatedAt: string, cli: Array<{ __typename?: 'CapabilityCliCheck', id: string, name: string, status: string, path: string, message: string }>, reports: Array<{ __typename?: 'CapabilityPlatformReport', platform: string, generatedAt: string, summary: { __typename?: 'CapabilitySummary', total: number, complete: number, partial: number, notInstalled: number, unbound: number }, agents: Array<{ __typename?: 'AgentCapabilityHealth', slug: string, name: string, status: string, platformSupported: boolean, agentInstalled: boolean, missingRequiredSkills: Array<string>, missingOptionalSkills: Array<string>, missingRequiredTools: Array<string>, unboundRequiredSkills: Array<string>, suggestions: Array<string> }> }> }, runtimeHealth: { __typename?: 'RuntimeHealth', serverTime: string, database: { __typename?: 'RuntimeComponentHealth', status: string, message?: string | null }, realtime: { __typename?: 'RuntimeComponentHealth', status: string, message?: string | null } }, installedSkills: Array<{ __typename?: 'InstalledSkill', id: string, name: string, updatable: boolean }> };
+
+export type RemoteAppsVariables = Exact<{ [key: string]: never; }>;
+
+
+export type RemoteApps = { __typename?: 'Query', remoteApps: Array<{ __typename?: 'RemoteApp', id: string, name: string, url: string, icon: string, createdAt: string, updatedAt: string }> };
+
+export type CreateRemoteAppVariables = Exact<{
+  input: CreateRemoteAppInput;
+}>;
+
+
+export type CreateRemoteApp = { __typename?: 'Mutation', createRemoteApp: { __typename?: 'RemoteApp', id: string } };
+
+export type UpdateRemoteAppVariables = Exact<{
+  id: Scalars['ID']['input'];
+  input: UpdateRemoteAppInput;
+}>;
+
+
+export type UpdateRemoteApp = { __typename?: 'Mutation', updateRemoteApp: { __typename?: 'RemoteApp', id: string } };
+
+export type DeleteRemoteAppVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type DeleteRemoteApp = { __typename?: 'Mutation', deleteRemoteApp: { __typename?: 'RemoteApp', id: string } };
 
 export type InstalledSkillsVariables = Exact<{ [key: string]: never; }>;
 
@@ -508,3 +619,15 @@ export type ActionCenterOverviewVariables = Exact<{ [key: string]: never; }>;
 
 
 export type ActionCenterOverview = { __typename?: 'Query', taskRuns: { __typename?: 'TaskRunConnection', edges: Array<{ __typename?: 'TaskRunEdge', node: { __typename?: 'TaskRun', id: string, title: string, primaryAgent: string, status: TaskRunStatus, summary?: string | null, updatedAt: string } }> }, runtimeHealth: { __typename?: 'RuntimeHealth', database: { __typename?: 'RuntimeComponentHealth', status: string, message?: string | null }, realtime: { __typename?: 'RuntimeComponentHealth', status: string, message?: string | null } }, installedSkills: Array<{ __typename?: 'InstalledSkill', id: string, name: string, updatable: boolean }> };
+
+export type RoleEvaluationToolsVariables = Exact<{ [key: string]: never; }>;
+
+
+export type RoleEvaluationTools = { __typename?: 'Query', roleEvaluationTools: Array<{ __typename?: 'RoleEvaluationTool', id: string, name: string, available: boolean, version?: string | null, reason?: string | null }> };
+
+export type DispatchRoleEvaluationVariables = Exact<{
+  input: DispatchRoleEvaluationInput;
+}>;
+
+
+export type DispatchRoleEvaluation = { __typename?: 'Mutation', dispatchRoleEvaluation: { __typename?: 'RoleEvaluationDispatch', id: string, agentSlug: string, agentName: string, tool: string, startedAt: string, reportPath: string, logPath: string, pid?: number | null } };
