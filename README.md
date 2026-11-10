@@ -13,7 +13,6 @@
 - 查看由 PostgreSQL 保存的真实任务、五阶段协作流程和事件时间线。
 - 通过 GraphQL SSE 自动接收 Codex 与 DeepSeek Harness 的状态更新。
 - 使用统一 `task-runtime` CLI 创建任务、等待确认、恢复、完成或失败任务。
-- 在岗位档案抽屉点击「岗位评估更新」，把只读评估派发给 Codex 或 DeepSeek Harness，报告写入 `docs/role-evaluations/`。
 
 ## 启动项目
 
@@ -278,14 +277,16 @@ dsh --profile web --dump-config
 
 输出中应包含 `personal-digital-team-skills`。进入 Harness 后使用 `/main-agent` 调用默认入口，或使用 `/personal-executive-assistant-agent` 等岗位命令。
 
-更新已安装的 Git 版本时，先提交并推送 `yarn sync-team` 生成的内容，再更新对应 profile；例如桌面端使用 `desktop`：
+更新已安装的 Git 版本时，先提交并推送 `yarn sync-team` 生成的内容，再更新对应 profile。`web`、`tui`、`headless` 等 CLI 管理的 profile 可以重新添加 Git 来源，例如：
 
 ```bash
-dsh plugin --profile desktop add github:fanguyun/ai-digital-team#main
-dsh --profile desktop --dump-config
+dsh plugin --profile web add github:fanguyun/ai-digital-team#main
+dsh --profile web --dump-config
 ```
 
-更新后重新加载 DSH 实例并开启新会话。仅同步仓库中的 `dsh/skills/` 不会自动更新已安装的 Git 包，也不会改写已有会话的上下文。
+桌面端的 `desktop` profile 由 Electron 应用专属管理，CLI 会拒绝修改。请在桌面应用“插件”中查看 `personal-digital-team` 的更新入口；需要重新安装 Git 来源时，在“添加插件”中填写 `github:fanguyun/ai-digital-team#main`。第三方 Git 包的版本号未变化时，界面可能显示“已是最新版本”，仍需核对安装文件中的规则内容；如界面要求先卸载再安装，执行前确认影响范围。
+
+更新后按界面提示重新加载 DSH 实例并开启新会话。仅同步仓库中的 `dsh/skills/` 不会自动更新已安装的 Git 包，也不会改写已有会话的上下文。
 
 Harness bundle 只内置团队的岗位 Skill、路由矩阵和统一交付协议。岗位文档引用的 `research`、`xlsx`、`agently-mail` 等外部专项 Skill 不会被复制进本仓库；需要这些能力时，将对应 Skill 单独安装到 Harness 支持的 `.dsh/skills` 或 `.agents/skills` 目录。
 
