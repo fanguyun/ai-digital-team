@@ -1,6 +1,16 @@
 import { useMemo, useState } from 'react'
 
-import { Alert, Button, Card, Drawer, Flex, Input, Tabs, Tag, Typography } from 'antd'
+import {
+  Alert,
+  Button,
+  Card,
+  Drawer,
+  Flex,
+  Input,
+  Tabs,
+  Tag,
+  Typography,
+} from 'antd'
 import { Menu, RefreshCw } from 'lucide-react'
 
 import { useMutation, useQuery } from '@cedarjs/web'
@@ -128,7 +138,12 @@ const SkillMarket = ({ onOpenSidebar }) => {
   const visibleSkills = useMemo(() => {
     const keyword = query.trim().toLowerCase()
     return skills.filter((skill) => {
-      const searchable = [skill.name, skill.description, skill.source, ...skill.tags]
+      const searchable = [
+        skill.name,
+        skill.description,
+        skill.source,
+        ...skill.tags,
+      ]
         .join(' ')
         .toLowerCase()
       return (
@@ -137,8 +152,7 @@ const SkillMarket = ({ onOpenSidebar }) => {
       )
     })
   }, [category, categoryMap, query, skills])
-  const selected =
-    skills.find((skill) => skill.id === selectedId) || null
+  const selected = skills.find((skill) => skill.id === selectedId) || null
 
   const runRefresh = async () => {
     setRefreshing(true)
@@ -223,7 +237,9 @@ const SkillMarket = ({ onOpenSidebar }) => {
           onClose={() => setNotice(null)}
         />
       )}
-      {loading && !skills.length && <Typography.Text>正在读取已安装技能…</Typography.Text>}
+      {loading && !skills.length && (
+        <Typography.Text>正在读取已安装技能…</Typography.Text>
+      )}
       {error && !skills.length && (
         <Alert type="error" showIcon message="暂时无法读取已安装技能。" />
       )}
@@ -281,13 +297,15 @@ const SkillMarket = ({ onOpenSidebar }) => {
         })}
       </div>
       {!loading && !visibleSkills.length && (
-        <Typography.Text type="secondary">当前分类下没有符合筛选条件的技能。</Typography.Text>
+        <Typography.Text type="secondary">
+          当前分类下没有符合筛选条件的技能。
+        </Typography.Text>
       )}
 
       <Drawer
         title={selected?.name || '技能详情'}
         open={Boolean(selected)}
-        width={520}
+        size="var(--drawer-width)"
         onClose={() => setSelectedId(null)}
       >
         {selected && (

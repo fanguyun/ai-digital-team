@@ -13,6 +13,7 @@
 - 查看由 PostgreSQL 保存的真实任务、五阶段协作流程和事件时间线。
 - 通过 GraphQL SSE 自动接收 Codex 与 DeepSeek Harness 的状态更新。
 - 使用统一 `task-runtime` CLI 创建任务、等待确认、恢复、完成或失败任务。
+- 在岗位档案抽屉点击「岗位评估更新」，把只读评估派发给 Codex 或 DeepSeek Harness，报告写入 `docs/role-evaluations/`。
 
 ## 启动项目
 

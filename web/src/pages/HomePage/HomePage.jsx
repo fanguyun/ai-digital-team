@@ -15,6 +15,7 @@ import {
   Inbox,
   LayoutGrid,
   List,
+  ListChecks,
   Store,
   Sun,
   Menu,
@@ -44,8 +45,12 @@ import {
   RUNTIME_FILTER_LABELS,
   filterAgentsByRuntime,
 } from 'src/components/OfficeStatGrid/runtimeFilter'
+import MarkdownDocument from 'src/components/MarkdownDocument/MarkdownDocument'
 import RemoteApps from 'src/components/RemoteApps/RemoteApps'
+import RoleEvaluationHistory from 'src/components/RoleEvaluationHistory/RoleEvaluationHistory'
 import SkillMarket from 'src/components/SkillMarket/SkillMarket'
+import TaskBoard from 'src/components/TaskBoard/TaskBoard'
+import TaskPulse from 'src/components/TaskPulse/TaskPulse'
 import { resolveMetricsRange } from 'src/components/AgentMetricsOverview/metricsTimeRange'
 import TaskRuntimeCell from 'src/components/TaskRuntimeDashboard/TaskRuntimeDashboard'
 import WeeklyReport from 'src/components/WeeklyReport/WeeklyReport'
@@ -217,25 +222,6 @@ const getAgentRuntimeState = ({ activeTask, loading, error }) => {
   return { label: '工作中', tone: 'working', task: activeTask }
 }
 
-function MarkdownDocument({ content }) {
-  return (
-    <div className="markdown-document">
-      {content.split(/\r?\n/).map((line, index) => {
-        if (!line.trim()) return <div className="md-spacer" key={index} />
-        if (line.startsWith('# ')) return <h1 key={index}>{line.slice(2)}</h1>
-        if (line.startsWith('## ')) return <h2 key={index}>{line.slice(3)}</h2>
-        if (line.startsWith('### ')) return <h3 key={index}>{line.slice(4)}</h3>
-        if (line.startsWith('> '))
-          return <blockquote key={index}>{line.slice(2)}</blockquote>
-        if (line.startsWith('- ')) return <li key={index}>{line.slice(2)}</li>
-        if (/^\d+\. /.test(line))
-          return <li key={index}>{line.replace(/^\d+\. /, '')}</li>
-        return <p key={index}>{line}</p>
-      })}
-    </div>
-  )
-}
-
 function App() {
   const { theme, toggleTheme } = useTheme()
   const { user, logout } = useAuth()
@@ -370,7 +356,12 @@ function App() {
     if (fallback) {
       setEvaluation((state) => ({ ...state, tool: fallback.id }))
     }
-  }, [evaluation.open, evaluationTools, evaluationToolsLoading, selectedEvaluationTool])
+  }, [
+    evaluation.open,
+    evaluationTools,
+    evaluationToolsLoading,
+    selectedEvaluationTool,
+  ])
 
   const openEvaluation = () => {
     setEvaluation((state) => ({
@@ -599,6 +590,16 @@ function App() {
             <span className="nav-count">{agents.length}</span>
           </button>
           <button
+            className={`nav-item ${workspaceView === 'tasks' ? 'active' : ''}`}
+            onClick={() => {
+              setWorkspaceView('tasks')
+              setSidebarOpen(false)
+              setDetailOpen(false)
+            }}
+          >
+            <ListChecks size={16} /> 任务
+          </button>
+          <button
             className={`nav-item ${workspaceView === 'actions' ? 'active' : ''}`}
             onClick={() => {
               setWorkspaceView('actions')
@@ -682,7 +683,9 @@ function App() {
             <span className="pulse" /> {systemState.label}
           </div>
           <div className="profile">
-            <div className="avatar">{(user?.username || 'F').slice(0, 1).toUpperCase()}</div>
+            <div className="avatar">
+              {(user?.username || 'F').slice(0, 1).toUpperCase()}
+            </div>
             <div>
               <strong>{user?.username || 'Fan'}</strong>
               <small>团队所有者</small>
@@ -719,11 +722,21 @@ function App() {
                 <div className="status-chip">
                   <span className="pulse" /> 本地
                 </div>
-                <button className="round-action" aria-label="通知（开发中）" disabled title="开发中">
+                <button
+                  className="round-action"
+                  aria-label="通知（开发中）"
+                  disabled
+                  title="开发中"
+                >
                   <Bell size={17} />
                   <i />
                 </button>
-                <button className="round-action" aria-label="设置（开发中）" disabled title="开发中">
+                <button
+                  className="round-action"
+                  aria-label="设置（开发中）"
+                  disabled
+                  title="开发中"
+                >
                   <Settings size={17} />
                 </button>
               </div>
@@ -767,6 +780,7 @@ function App() {
                   }
                 />
               </div>
+              <TaskPulse onOpenTasks={() => setWorkspaceView('tasks')} />
               <div className="section-heading">
                 <div>
                   <div className="section-kicker">数字员工</div>
@@ -955,6 +969,8 @@ function App() {
             onRefresh={() => refetchActionCenter()}
             onOpenSidebar={() => setSidebarOpen(true)}
           />
+        ) : workspaceView === 'tasks' ? (
+          <TaskBoard onOpenSidebar={() => setSidebarOpen(true)} />
         ) : workspaceView === 'market' ? (
           <SkillMarket onOpenSidebar={() => setSidebarOpen(true)} />
         ) : workspaceView === 'apps' ? (
@@ -1067,6 +1083,7 @@ function App() {
             {evaluation.notice.text}
           </p>
         )}
+        <RoleEvaluationHistory agentSlug={selected.slug} />
         <div className="detail-note">
           <span>i</span> 所有岗位遵循团队公共边界与确认机制。
         </div>
@@ -1148,9 +1165,9 @@ function App() {
             </header>
             <div className="modal-body dispatch-body">
               <p className="dispatch-lead">
-                将调用「岗位发展与能力评估」对「{selected.name}」做一次只读评估，报告写入{' '}
-                <code>docs/role-evaluations/</code>。不会修改岗位规则、不安装
-                Skill、不提交代码。
+                将调用「岗位发展与能力评估」对「{selected.name}
+                」做一次只读评估，报告写入 <code>docs/role-evaluations/</code>
+                。不会修改岗位规则、不安装 Skill、不提交代码。
               </p>
               <div className="dispatch-tools">
                 <span className="detail-label">执行工具</span>

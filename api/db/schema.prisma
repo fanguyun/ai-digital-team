@@ -50,7 +50,18 @@ model TaskRun {
   updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
   completedAt       DateTime?     @db.Timestamptz(3)
   events            TaskEvent[]
+  taskId            String?       @db.Uuid
+  logPath           String?       @db.VarChar(300)
+  pid               Int?
+  mode              String        @default("auto") @db.VarChar(12)
+  inputTokens       Int?
+  outputTokens      Int?
+  cachedTokens      Int?
+  dirtyAtDispatch   Boolean       @default(false)
+  baselineFiles     Json?
+  task              Task?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
 
+  @@index([taskId, startedAt(sort: Desc)])
   @@index([status, updatedAt(sort: Desc)])
   @@index([platform, updatedAt(sort: Desc)])
   @@index([primaryAgent, updatedAt(sort: Desc)])
@@ -108,5 +119,89 @@ model RemoteApp {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
+  @@index([createdAt])
+}
+
+model RoleEvaluation {
+  id          String    @id @default(uuid()) @db.Uuid
+  agentSlug   String    @db.VarChar(120)
+  agentName   String    @db.VarChar(120)
+  projectKey  String    @default("digital-team") @db.VarChar(60)
+  projectRoot String    @db.VarChar(300)
+  tool        String    @db.VarChar(40)
+  status      String    @default("running") @db.VarChar(20)
+  sessionId   String?   @db.VarChar(200)
+  pid         Int?
+  reportPath  String    @db.VarChar(300)
+  logPath     String    @db.VarChar(300)
+  startedAt   DateTime  @default(now()) @db.Timestamptz(3)
+  finishedAt  DateTime? @db.Timestamptz(3)
+
+  @@index([projectKey, agentSlug, startedAt(sort: Desc)])
+  @@index([status, startedAt(sort: Desc)])
+}
+
+
+model Task {
+  id          String         @id @default(uuid()) @db.Uuid
+  title       String         @db.VarChar(120)
+  brief       String         @db.VarChar(4000)
+  acceptance  String         @db.VarChar(2000)
+  agentSlug   String         @db.VarChar(120)
+  priority    String         @default("P1") @db.VarChar(8)
+  status      String         @default("DRAFT") @db.VarChar(24)
+  readOnly    Boolean        @default(false)
+  mode        String         @default("auto") @db.VarChar(12)
+  planPath    String?        @db.VarChar(300)
+  planNote    String?        @db.VarChar(2000)
+  dueAt       DateTime?      @db.Timestamptz(3)
+  createdAt   DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime       @updatedAt @db.Timestamptz(3)
+  completedAt DateTime?      @db.Timestamptz(3)
+  reviewNote  String?        @db.VarChar(2000)
+  reviewedAt  DateTime?      @db.Timestamptz(3)
+  runs        TaskRun[]
+  artifacts   TaskArtifact[]
+
+  @@index([status, updatedAt(sort: Desc)])
+  @@index([agentSlug, updatedAt(sort: Desc)])
+}
+
+model TaskArtifact {
+  id        String   @id @default(uuid()) @db.Uuid
+  taskId    String   @db.Uuid
+  kind      String   @db.VarChar(16)
+  source    String   @default("item") @db.VarChar(20)
+  path      String   @db.VarChar(500)
+  label     String   @db.VarChar(200)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+}
+
+model TaskImage {
+  id        String   @id @default(uuid()) @db.Uuid
+  path      String   @db.VarChar(300)
+  label     String   @db.VarChar(200)
+  mime      String   @db.VarChar(60)
+  bytes     Int
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([createdAt])
+}
+
+model TaskTemplate {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String   @db.VarChar(60)
+  title      String   @db.VarChar(120)
+  brief      String   @db.VarChar(4000)
+  acceptance String   @db.VarChar(2000) @default("")
+  agentSlug  String   @db.VarChar(120)
+  priority   String   @default("P1") @db.VarChar(8)
+  readOnly   Boolean  @default(false)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([name])
   @@index([createdAt])
 }

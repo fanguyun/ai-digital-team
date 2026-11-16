@@ -5,13 +5,18 @@ import {
   existsSync,
   mkdirSync,
   openSync,
+  readFileSync,
+  statSync,
   writeFileSync,
 } from 'node:fs'
 import path from 'node:path'
 
 import { UserInputError } from '@cedarjs/graphql-server'
 
+import { db } from 'src/lib/db'
+import { logger } from 'src/lib/logger'
 import {
+  ROLE_EVAL_PROJECT_KEY,
   ROLE_EVAL_TOOLS,
   agentRulePath,
   buildDispatchCommand,
@@ -26,7 +31,12 @@ import {
   type RoleEvaluationToolId,
   type RoleEvaluationToolStatus,
 } from 'src/lib/roleEvaluationDispatch'
-import { logger } from 'src/lib/logger'
+import {
+  discoverSession,
+  readThreadMessages,
+  sessionIdFromLog,
+  type RoleEvaluationToolId as SessionToolId,
+} from 'src/lib/roleEvaluationSessions'
 
 const PROBE_TTL_MS = 60_000
 
@@ -38,9 +48,11 @@ type RunningDispatch = {
 
 const runningDispatches = new Map<string, RunningDispatch>()
 
-let probeCache:
-  | { key: string; at: number; tools: RoleEvaluationToolStatus[] }
-  | null = null
+let probeCache: {
+  key: string
+  at: number
+  tools: RoleEvaluationToolStatus[]
+} | null = null
 
 const probeCacheKey = () =>
   `${process.env.ROLE_EVAL_CODEX_BIN || ''}|${process.env.ROLE_EVAL_DSH_BIN || ''}`
@@ -48,17 +60,23 @@ const probeCacheKey = () =>
 export const roleEvaluationTools = (): RoleEvaluationToolStatus[] => {
   const key = probeCacheKey()
   const now = Date.now()
-  if (probeCache && probeCache.key === key && now - probeCache.at < PROBE_TTL_MS) {
+  if (
+    probeCache &&
+    probeCache.key === key &&
+    now - probeCache.at < PROBE_TTL_MS
+  ) {
     return probeCache.tools
   }
 
-  const tools: RoleEvaluationToolStatus[] = ROLE_EVAL_TOOLS.map(({ id, name }) => {
-    const probe = probeBinary(id)
-    if ('bin' in probe) {
-      return { id, name, available: true, version: probe.version }
+  const tools: RoleEvaluationToolStatus[] = ROLE_EVAL_TOOLS.map(
+    ({ id, name }) => {
+      const probe = probeBinary(id)
+      if ('bin' in probe) {
+        return { id, name, available: true, version: probe.version }
+      }
+      return { id, name, available: false, reason: probe.reason }
     }
-    return { id, name, available: false, reason: probe.reason }
-  })
+  )
 
   probeCache = { key, at: now, tools }
   return tools
@@ -132,7 +150,12 @@ export const dispatchRoleEvaluation = async ({
   const id = dispatchIdFor(agent.slug, startedAt)
   const reportPath = reportPathFor(agent.slug, startedAt)
   const paths = logPathsFor(agent.slug, startedAt)
-  const prompt = buildEvaluationPrompt({ agent, repoRoot, reportPath, startedAt })
+  const prompt = buildEvaluationPrompt({
+    agent,
+    repoRoot,
+    reportPath,
+    startedAt,
+  })
   const { command, args } = buildDispatchCommand({
     tool,
     bin: probe.bin,
@@ -160,18 +183,22 @@ export const dispatchRoleEvaluation = async ({
 
   child.on('error', (error) => {
     try {
-      appendFileSync(logAbsolutePath, `\n[dispatch] spawn error: ${error.message}\n`)
+      appendFileSync(
+        logAbsolutePath,
+        `\n[dispatch] spawn error: ${error.message}\n`
+      )
     } catch {
       // 日志写失败不覆盖主错误
     }
-    logger.error({ slug: agent.slug, tool, error: error.message }, 'role evaluation spawn failed')
+    logger.error(
+      { slug: agent.slug, tool, error: error.message },
+      'role evaluation spawn failed'
+    )
   })
 
   const pid = child.pid
   if (!pid) {
-    throw new UserInputError(
-      `执行进程未能启动，请查看日志：${paths.log}`
-    )
+    throw new UserInputError(`执行进程未能启动，请查看日志：${paths.log}`)
   }
   child.unref()
   runningDispatches.set(agent.slug, { pid, tool, startedAt })
@@ -199,6 +226,18 @@ export const dispatchRoleEvaluation = async ({
     logger.warn({ error }, 'failed to write role evaluation sidecar')
   }
 
+  const record = await persistEvaluation({
+    id,
+    agentSlug: agent.slug,
+    agentName: agent.name,
+    tool,
+    projectRoot: repoRoot,
+    pid,
+    reportPath,
+    logPath: paths.log,
+    startedAt,
+  })
+
   logger.info(
     { id, slug: agent.slug, tool, pid, version: probe.version },
     'role evaluation dispatched'
@@ -209,6 +248,9 @@ export const dispatchRoleEvaluation = async ({
     agentSlug: agent.slug,
     agentName: agent.name,
     tool,
+    projectKey: ROLE_EVAL_PROJECT_KEY,
+    projectRoot: repoRoot,
+    sessionId: record?.sessionId ?? null,
     startedAt,
     prompt,
     reportPath,
@@ -216,4 +258,284 @@ export const dispatchRoleEvaluation = async ({
     resultPath: paths.result,
     pid,
   }
+}
+
+const sleep = (ms: number) =>
+  new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms)
+    // 补会话的定时器不应拖住进程退出（测试与重启场景）
+    ;(timer as unknown as { unref?: () => void }).unref?.()
+  })
+
+const persistEvaluation = async (input: {
+  id: string
+  agentSlug: string
+  agentName: string
+  tool: RoleEvaluationToolId
+  projectRoot: string
+  pid: number
+  reportPath: string
+  logPath: string
+  startedAt: Date
+}) => {
+  try {
+    const record = await db.roleEvaluation.create({
+      data: {
+        agentSlug: input.agentSlug,
+        agentName: input.agentName,
+        projectKey: ROLE_EVAL_PROJECT_KEY,
+        projectRoot: input.projectRoot,
+        tool: input.tool,
+        status: 'running',
+        pid: input.pid,
+        reportPath: input.reportPath,
+        logPath: input.logPath,
+        startedAt: input.startedAt,
+      },
+    })
+    void captureSession(
+      record.id,
+      input.tool,
+      input.projectRoot,
+      input.startedAt,
+      input.logPath
+    )
+    return record
+  } catch (error) {
+    // 落库失败不能掩盖派发本身，日志里留痕即可
+    logger.error({ error, id: input.id }, 'failed to persist role evaluation')
+    return null
+  }
+}
+
+/** 派发后异步补齐会话 id：3s / 8s / 15s 三次机会 */
+/**
+ * 派发后异步补齐会话 id：
+ * 先读 --json 事件流的首个 session 事件（毫秒级），再退回扫描会话目录（秒级）。
+ */
+const captureSession = async (
+  recordId: string,
+  tool: RoleEvaluationToolId,
+  projectRoot: string,
+  startedAt: Date,
+  logPath: string
+) => {
+  const logAbsolute = path.join(projectRoot, logPath)
+
+  for (const delay of [500, 1_500, 3_000, 6_000, 12_000]) {
+    await sleep(delay)
+    try {
+      const fromLog = sessionIdFromLog(logAbsolute, tool)
+      if (fromLog) {
+        await db.roleEvaluation.update({
+          where: { id: recordId },
+          data: { sessionId: fromLog },
+        })
+        return
+      }
+
+      const found = await discoverSession({
+        tool,
+        projectRoot,
+        since: startedAt,
+      })
+      if (found) {
+        await db.roleEvaluation.update({
+          where: { id: recordId },
+          data: { sessionId: found.sessionId },
+        })
+        return
+      }
+    } catch (error) {
+      logger.warn(
+        { error, recordId },
+        'role evaluation session discovery failed'
+      )
+    }
+  }
+}
+
+/** 进程已结束时按报告是否生成来回收状态 */
+const reconcileStatus = async (
+  rows: Array<{
+    id: string
+    status: string
+    pid: number | null
+    projectRoot: string
+    reportPath: string
+  }>
+) => {
+  const updates = new Map<string, { status: string; finishedAt: Date }>()
+  for (const row of rows) {
+    if (row.status !== 'running') continue
+    if (row.pid && alive(row.pid)) continue
+    const reportAbsolute = path.join(row.projectRoot, row.reportPath)
+    const finishedAt = new Date()
+    updates.set(row.id, {
+      status: existsSync(reportAbsolute) ? 'completed' : 'failed',
+      finishedAt,
+    })
+  }
+
+  for (const [id, data] of updates) {
+    try {
+      await db.roleEvaluation.update({ where: { id }, data })
+    } catch (error) {
+      logger.warn({ error, id }, 'failed to reconcile role evaluation status')
+    }
+  }
+
+  return rows.map((row) => {
+    const update = updates.get(row.id)
+    return update ? { ...row, ...update } : row
+  })
+}
+
+export const roleEvaluations = async ({
+  agentSlug,
+}: {
+  agentSlug?: string | null
+} = {}) => {
+  const rows = await db.roleEvaluation.findMany({
+    where: agentSlug ? { agentSlug } : {},
+    orderBy: { startedAt: 'desc' },
+    take: 30,
+  })
+  return reconcileStatus(rows)
+}
+
+const loadEvaluation = async (id: string) => {
+  const row = await db.roleEvaluation.findUnique({ where: { id } })
+  if (!row) throw new UserInputError('评估记录不存在或已被清理')
+  return row
+}
+
+const REPORT_PREFIX = path.posix.join('docs', 'role-evaluations')
+
+/** 只允许读取项目内 docs/role-evaluations 下的文件 */
+export const resolveReportFile = (projectRoot: string, reportPath: string) => {
+  const absolute = path.resolve(projectRoot, reportPath)
+  const root = path.resolve(projectRoot)
+  const allowed = path.resolve(root, REPORT_PREFIX)
+  if (!absolute.startsWith(`${allowed}${path.sep}`) && absolute !== allowed) {
+    throw new UserInputError('报告路径不在允许的目录内')
+  }
+  return absolute
+}
+
+export const roleEvaluationReport = async ({ id }: { id: string }) => {
+  const row = await loadEvaluation(id)
+  const absolute = resolveReportFile(row.projectRoot, row.reportPath)
+  if (!existsSync(absolute)) {
+    throw new UserInputError('报告尚未生成，请等评估跑完再试')
+  }
+  if (statSync(absolute).size > 200_000) {
+    throw new UserInputError('报告超过 200KB，请在本地打开')
+  }
+  return readFileSync(absolute, 'utf8')
+}
+
+export const roleEvaluationMessages = async ({ id }: { id: string }) => {
+  const row = await loadEvaluation(id)
+  if (!row.sessionId) return []
+  return readThreadMessages({
+    tool: row.tool as SessionToolId,
+    sessionId: row.sessionId,
+    projectRoot: row.projectRoot,
+  })
+}
+
+const buildResumeCommand = ({
+  tool,
+  bin,
+  sessionId,
+  projectRoot,
+  message,
+}: {
+  tool: RoleEvaluationToolId
+  bin: string
+  sessionId: string
+  projectRoot: string
+  message: string
+}): { command: string; args: string[] } =>
+  tool === 'codex'
+    ? {
+        command: bin,
+        args: [
+          'exec',
+          'resume',
+          sessionId,
+          '--json',
+          '-C',
+          projectRoot,
+          '-s',
+          'workspace-write',
+          message,
+        ],
+      }
+    : {
+        command: bin,
+        args: [
+          '--profile',
+          'headless',
+          '--json',
+          '--session-id',
+          sessionId,
+          message,
+        ],
+      }
+
+export const sendRoleEvaluationMessage = async ({
+  id,
+  message,
+}: {
+  id: string
+  message: string
+}) => {
+  const text = (message || '').trim()
+  if (!text) throw new UserInputError('消息不能为空')
+  if (text.length > 4_000) throw new UserInputError('消息不能超过 4000 字')
+
+  const row = await loadEvaluation(id)
+  if (!row.sessionId) {
+    throw new UserInputError('这条评估还没有关联到本地会话，无法续聊')
+  }
+
+  const tool = row.tool as RoleEvaluationToolId
+  const probe = probeBinary(tool)
+  if (!('bin' in probe)) throw new UserInputError(probe.reason)
+
+  const { command, args } = buildResumeCommand({
+    tool,
+    bin: probe.bin,
+    sessionId: row.sessionId,
+    projectRoot: row.projectRoot,
+    message: text,
+  })
+
+  const logAbsolute = path.join(row.projectRoot, row.logPath)
+  mkdirSync(path.dirname(logAbsolute), { recursive: true })
+  appendFileSync(
+    logAbsolute,
+    `\n[resume] ${new Date().toISOString()} ${command} ${args.slice(0, -1).join(' ')}\n`
+  )
+
+  const logHandle = openSync(logAbsolute, 'a')
+  let child
+  try {
+    child = spawn(command, args, {
+      cwd: row.projectRoot,
+      detached: true,
+      stdio: ['ignore', logHandle, logHandle],
+      env: { ...process.env, ROLE_EVALUATION_AGENT: row.agentSlug },
+    })
+  } finally {
+    closeSync(logHandle)
+  }
+  child.on('error', (error) => {
+    logger.error({ error, id }, 'resume spawn failed')
+  })
+  child.unref()
+
+  return { ...row, status: 'running', pid: child.pid ?? row.pid }
 }

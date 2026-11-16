@@ -9,9 +9,13 @@ import {
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-import { UserInputError } from '@cedarjs/graphql-server'
-
-import { dispatchRoleEvaluation, roleEvaluationTools } from './roleEvaluations'
+import {
+  dispatchRoleEvaluation,
+  resolveReportFile,
+  roleEvaluationMessages,
+  roleEvaluationReport,
+  roleEvaluationTools,
+} from './roleEvaluations'
 
 const repoRoot = process.cwd()
 
@@ -95,7 +99,9 @@ describe('roleEvaluations service', () => {
       /^docs\/role-evaluations\/main-agent-\d{8}-\d{4}\.md$/
     )
     expect(typeof dispatch.pid).toBe('number')
-    expect(dispatch.prompt).toContain('My request: 岗位评估更新：数字总经理')
+    expect(dispatch.prompt).toContain(
+      'My request: 数字团队 · 岗位评估：数字总经理'
+    )
 
     createdFiles.push(dispatch.logPath, dispatch.resultPath)
     const sidecarPath = dispatch.logPath.replace(/\.log$/, '.json')
@@ -141,12 +147,18 @@ describe('roleEvaluations service', () => {
     try {
       await expect(
         dispatchRoleEvaluation({
-          input: { agentSlug: 'personal-executive-assistant-agent', tool: 'codex' },
+          input: {
+            agentSlug: 'personal-executive-assistant-agent',
+            tool: 'codex',
+          },
         })
       ).rejects.toThrow('仍在运行')
       await expect(
         dispatchRoleEvaluation({
-          input: { agentSlug: 'personal-executive-assistant-agent', tool: 'codex' },
+          input: {
+            agentSlug: 'personal-executive-assistant-agent',
+            tool: 'codex',
+          },
         })
       ).rejects.toThrow(String(first.pid))
     } finally {
@@ -178,5 +190,27 @@ describe('roleEvaluations service', () => {
         input: { agentSlug: 'main-agent', tool: 'codex' },
       })
     ).rejects.toThrow('ROLE_EVAL_ALLOW_DISPATCH=0')
+  })
+})
+
+describe('role evaluation reading APIs', () => {
+  it('only allows reports inside docs/role-evaluations', () => {
+    expect(resolveReportFile('/repo', 'docs/role-evaluations/a.md')).toBe(
+      '/repo/docs/role-evaluations/a.md'
+    )
+    expect(() => resolveReportFile('/repo', 'docs/../etc/passwd')).toThrow()
+    expect(() =>
+      resolveReportFile('/repo', 'agents/main-agent/AGENTS.md')
+    ).toThrow()
+  })
+
+  it('rejects unknown evaluation ids', async () => {
+    const missing = '00000000-0000-0000-0000-000000000000'
+    await expect(roleEvaluationReport({ id: missing })).rejects.toThrow(
+      '不存在'
+    )
+    await expect(roleEvaluationMessages({ id: missing })).rejects.toThrow(
+      '不存在'
+    )
   })
 })

@@ -25,6 +25,9 @@ export type RoleEvaluationToolStatus = {
 
 export type BinaryProbe = { bin: string; version?: string } | { reason: string }
 
+/** 所有从数字团队触发的会话都归到同一个 project。 */
+export const ROLE_EVAL_PROJECT_KEY = 'digital-team'
+
 export const ROLE_EVAL_TOOLS: ReadonlyArray<{
   id: RoleEvaluationToolId
   name: string
@@ -144,7 +147,7 @@ export const buildEvaluationPrompt = ({
 }) => {
   const skills = agent.skills.length ? agent.skills.join('、') : '无'
   return [
-    `My request: 岗位评估更新：${agent.name}`,
+    `My request: 数字团队 · 岗位评估：${agent.name}`,
     '你是个人数字团队的「岗位发展与能力评估」（Role Development Agent）。',
     '',
     `评估对象：${agent.name}（${agent.en}）`,
@@ -205,6 +208,7 @@ export const buildDispatchCommand = ({
         'workspace-write',
         '--color',
         'never',
+        '--json',
         '-o',
         resultPath,
         prompt,
@@ -219,7 +223,9 @@ export const buildDispatchCommand = ({
 
 const fnmVersions = (home: string): string[] => {
   try {
-    return readdirSync(path.join(home, '.local', 'share', 'fnm', 'node-versions'))
+    return readdirSync(
+      path.join(home, '.local', 'share', 'fnm', 'node-versions')
+    )
       .filter((entry) => /^v?\d/.test(entry))
       .sort((left, right) =>
         right.localeCompare(left, undefined, { numeric: true })
@@ -238,13 +244,24 @@ export const binaryCandidates = (
   }: { env?: NodeJS.ProcessEnv; home?: string; versions?: string[] } = {}
 ) => {
   const name = tool === 'codex' ? 'codex' : 'dsh'
-  const override = tool === 'codex' ? env.ROLE_EVAL_CODEX_BIN : env.ROLE_EVAL_DSH_BIN
+  const override =
+    tool === 'codex' ? env.ROLE_EVAL_CODEX_BIN : env.ROLE_EVAL_DSH_BIN
   const candidates: string[] = []
   if (override && override.trim()) candidates.push(override.trim())
   candidates.push(name)
   for (const version of versions) {
     candidates.push(
-      path.join(home, '.local', 'share', 'fnm', 'node-versions', version, 'installation', 'bin', name)
+      path.join(
+        home,
+        '.local',
+        'share',
+        'fnm',
+        'node-versions',
+        version,
+        'installation',
+        'bin',
+        name
+      )
     )
   }
   candidates.push(
@@ -261,7 +278,8 @@ const missingReason = (tool: RoleEvaluationToolId) => {
     tool === 'codex'
       ? 'npm install -g @openai/codex'
       : 'npm install -g @deepseek-ai/dsh'
-  const override = tool === 'codex' ? 'ROLE_EVAL_CODEX_BIN' : 'ROLE_EVAL_DSH_BIN'
+  const override =
+    tool === 'codex' ? 'ROLE_EVAL_CODEX_BIN' : 'ROLE_EVAL_DSH_BIN'
   return `未找到可用的 ${name}（${toolName(tool)}）。请先安装（${install}），或用环境变量 ${override} 指向可执行文件。`
 }
 

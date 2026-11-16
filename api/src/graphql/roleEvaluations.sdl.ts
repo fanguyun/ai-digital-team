@@ -12,12 +12,37 @@ export const schema = gql`
     agentSlug: String!
     agentName: String!
     tool: String!
+    projectKey: String!
+    projectRoot: String!
+    sessionId: String
     startedAt: DateTime!
     prompt: String!
     reportPath: String!
     logPath: String!
     resultPath: String!
     pid: Int
+  }
+
+  type RoleEvaluation {
+    id: ID!
+    agentSlug: String!
+    agentName: String!
+    projectKey: String!
+    projectRoot: String!
+    tool: String!
+    status: String!
+    sessionId: String
+    pid: Int
+    reportPath: String!
+    logPath: String!
+    startedAt: DateTime!
+    finishedAt: DateTime
+  }
+
+  type RoleEvaluationMessage {
+    role: String!
+    content: String!
+    createdAt: DateTime!
   }
 
   input DispatchRoleEvaluationInput {
@@ -27,11 +52,16 @@ export const schema = gql`
 
   type Query {
     roleEvaluationTools: [RoleEvaluationTool!]! @requireAuth
+    roleEvaluations(agentSlug: String): [RoleEvaluation!]! @requireAuth
+    roleEvaluationReport(id: ID!): String! @requireAuth
+    roleEvaluationMessages(id: ID!): [RoleEvaluationMessage!]! @requireAuth
   }
 
   type Mutation {
     dispatchRoleEvaluation(
       input: DispatchRoleEvaluationInput!
     ): RoleEvaluationDispatch! @requireAuth
+    sendRoleEvaluationMessage(id: ID!, message: String!): RoleEvaluation!
+      @requireAuth
   }
 `

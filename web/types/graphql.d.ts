@@ -23,6 +23,12 @@ export type Scalars = {
   Time: { input: string; output: string; }
 };
 
+export type AddTaskArtifactInput = {
+  kind?: InputMaybe<Scalars['String']['input']>;
+  label?: InputMaybe<Scalars['String']['input']>;
+  path: Scalars['String']['input'];
+};
+
 export type AgentCapabilityHealth = {
   __typename?: 'AgentCapabilityHealth';
   agentInstalled: Scalars['Boolean']['output'];
@@ -150,6 +156,17 @@ export type CreateRemoteAppInput = {
   url: Scalars['String']['input'];
 };
 
+export type CreateTaskInput = {
+  acceptance?: InputMaybe<Scalars['String']['input']>;
+  agentSlug: Scalars['String']['input'];
+  brief: Scalars['String']['input'];
+  dueAt?: InputMaybe<Scalars['DateTime']['input']>;
+  mode?: InputMaybe<Scalars['String']['input']>;
+  priority?: InputMaybe<Scalars['String']['input']>;
+  readOnly?: InputMaybe<Scalars['Boolean']['input']>;
+  title: Scalars['String']['input'];
+};
+
 export type CreateTaskRunInput = {
   cachedTokens?: InputMaybe<Scalars['Int']['input']>;
   evidence?: InputMaybe<Scalars['JSON']['input']>;
@@ -164,6 +181,16 @@ export type CreateTaskRunInput = {
   stage?: InputMaybe<TaskRunStage>;
   status?: InputMaybe<TaskRunStatus>;
   summary?: InputMaybe<Scalars['String']['input']>;
+  title: Scalars['String']['input'];
+};
+
+export type CreateTaskTemplateInput = {
+  acceptance?: InputMaybe<Scalars['String']['input']>;
+  agentSlug: Scalars['String']['input'];
+  brief: Scalars['String']['input'];
+  name: Scalars['String']['input'];
+  priority?: InputMaybe<Scalars['String']['input']>;
+  readOnly?: InputMaybe<Scalars['Boolean']['input']>;
   title: Scalars['String']['input'];
 };
 
@@ -189,13 +216,34 @@ export type InstalledSkill = {
 
 export type Mutation = {
   __typename?: 'Mutation';
+  addTaskArtifact: Task;
   appendTaskEvent: AppendTaskEventResult;
+  cancelTask: Task;
   createRemoteApp: RemoteApp;
+  createTask: Task;
   createTaskRun: TaskRun;
+  createTaskTemplate: TaskTemplate;
   deleteRemoteApp: RemoteApp;
+  deleteTaskTemplate: TaskTemplate;
   dispatchRoleEvaluation: RoleEvaluationDispatch;
+  dispatchTask: Task;
+  dispatchTasks: Array<Task>;
+  executeTaskPlan: Task;
+  removeTaskArtifact: Task;
+  reviewTask: Task;
+  reviseTaskPlan: Task;
+  sendRoleEvaluationMessage: RoleEvaluation;
   updateInstalledSkill: UpdateInstalledSkillResult;
   updateRemoteApp: RemoteApp;
+  updateTask: Task;
+  updateTaskTemplate: TaskTemplate;
+  uploadTaskImage: TaskImage;
+};
+
+
+export type MutationaddTaskArtifactArgs = {
+  input: AddTaskArtifactInput;
+  taskId: Scalars['ID']['input'];
 };
 
 
@@ -205,8 +253,18 @@ export type MutationappendTaskEventArgs = {
 };
 
 
+export type MutationcancelTaskArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
 export type MutationcreateRemoteAppArgs = {
   input: CreateRemoteAppInput;
+};
+
+
+export type MutationcreateTaskArgs = {
+  input: CreateTaskInput;
 };
 
 
@@ -215,13 +273,66 @@ export type MutationcreateTaskRunArgs = {
 };
 
 
+export type MutationcreateTaskTemplateArgs = {
+  input: CreateTaskTemplateInput;
+};
+
+
 export type MutationdeleteRemoteAppArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type MutationdeleteTaskTemplateArgs = {
   id: Scalars['ID']['input'];
 };
 
 
 export type MutationdispatchRoleEvaluationArgs = {
   input: DispatchRoleEvaluationInput;
+};
+
+
+export type MutationdispatchTaskArgs = {
+  id: Scalars['ID']['input'];
+  tool?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type MutationdispatchTasksArgs = {
+  ids: Array<Scalars['ID']['input']>;
+  tool?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type MutationexecuteTaskPlanArgs = {
+  id: Scalars['ID']['input'];
+  tool?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type MutationremoveTaskArtifactArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type MutationreviewTaskArgs = {
+  decision: Scalars['String']['input'];
+  id: Scalars['ID']['input'];
+  note?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type MutationreviseTaskPlanArgs = {
+  id: Scalars['ID']['input'];
+  note: Scalars['String']['input'];
+  tool?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type MutationsendRoleEvaluationMessageArgs = {
+  id: Scalars['ID']['input'];
+  message: Scalars['String']['input'];
 };
 
 
@@ -233,6 +344,23 @@ export type MutationupdateInstalledSkillArgs = {
 export type MutationupdateRemoteAppArgs = {
   id: Scalars['ID']['input'];
   input: UpdateRemoteAppInput;
+};
+
+
+export type MutationupdateTaskArgs = {
+  id: Scalars['ID']['input'];
+  input: UpdateTaskInput;
+};
+
+
+export type MutationupdateTaskTemplateArgs = {
+  id: Scalars['ID']['input'];
+  input: UpdateTaskTemplateInput;
+};
+
+
+export type MutationuploadTaskImageArgs = {
+  input: UploadTaskImageInput;
 };
 
 /** About the Cedar queries. */
@@ -249,17 +377,65 @@ export type Query = {
   redwood?: Maybe<Redwood>;
   remoteApp?: Maybe<RemoteApp>;
   remoteApps: Array<RemoteApp>;
+  roleEvaluationMessages: Array<RoleEvaluationMessage>;
+  roleEvaluationReport: Scalars['String']['output'];
   roleEvaluationTools: Array<RoleEvaluationTool>;
+  roleEvaluations: Array<RoleEvaluation>;
   runtimeHealth: RuntimeHealth;
+  task?: Maybe<Task>;
+  taskArtifactContent: Scalars['String']['output'];
+  taskImageDataUrl: Scalars['String']['output'];
+  taskPulse: TaskPulse;
   taskRun?: Maybe<TaskRun>;
+  taskRunLog: Scalars['String']['output'];
+  taskRunMessages: Array<TaskRunMessage>;
   taskRuns: TaskRunConnection;
+  taskTemplates: Array<TaskTemplate>;
+  tasks: Array<Task>;
   teamRuntimeOverview: TeamRuntimeOverview;
   teamWeeklyReport: TeamWeeklyReport;
+  workspaceStatus: WorkspaceStatus;
 };
 
 
 /** About the Cedar queries. */
 export type QueryremoteAppArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+/** About the Cedar queries. */
+export type QueryroleEvaluationMessagesArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+/** About the Cedar queries. */
+export type QueryroleEvaluationReportArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+/** About the Cedar queries. */
+export type QueryroleEvaluationsArgs = {
+  agentSlug?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+/** About the Cedar queries. */
+export type QuerytaskArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+/** About the Cedar queries. */
+export type QuerytaskArtifactContentArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+/** About the Cedar queries. */
+export type QuerytaskImageDataUrlArgs = {
   id: Scalars['ID']['input'];
 };
 
@@ -271,11 +447,30 @@ export type QuerytaskRunArgs = {
 
 
 /** About the Cedar queries. */
+export type QuerytaskRunLogArgs = {
+  runId: Scalars['ID']['input'];
+};
+
+
+/** About the Cedar queries. */
+export type QuerytaskRunMessagesArgs = {
+  runId: Scalars['ID']['input'];
+};
+
+
+/** About the Cedar queries. */
 export type QuerytaskRunsArgs = {
   after?: InputMaybe<Scalars['String']['input']>;
   filter?: InputMaybe<TaskRunFilter>;
   first?: InputMaybe<Scalars['Int']['input']>;
   skip?: InputMaybe<Scalars['Int']['input']>;
+};
+
+
+/** About the Cedar queries. */
+export type QuerytasksArgs = {
+  agentSlug?: InputMaybe<Scalars['String']['input']>;
+  status?: InputMaybe<Scalars['String']['input']>;
 };
 
 
@@ -319,6 +514,23 @@ export type RemoteApp = {
   url: Scalars['String']['output'];
 };
 
+export type RoleEvaluation = {
+  __typename?: 'RoleEvaluation';
+  agentName: Scalars['String']['output'];
+  agentSlug: Scalars['String']['output'];
+  finishedAt?: Maybe<Scalars['DateTime']['output']>;
+  id: Scalars['ID']['output'];
+  logPath: Scalars['String']['output'];
+  pid?: Maybe<Scalars['Int']['output']>;
+  projectKey: Scalars['String']['output'];
+  projectRoot: Scalars['String']['output'];
+  reportPath: Scalars['String']['output'];
+  sessionId?: Maybe<Scalars['String']['output']>;
+  startedAt: Scalars['DateTime']['output'];
+  status: Scalars['String']['output'];
+  tool: Scalars['String']['output'];
+};
+
 export type RoleEvaluationDispatch = {
   __typename?: 'RoleEvaluationDispatch';
   agentName: Scalars['String']['output'];
@@ -326,11 +538,21 @@ export type RoleEvaluationDispatch = {
   id: Scalars['ID']['output'];
   logPath: Scalars['String']['output'];
   pid?: Maybe<Scalars['Int']['output']>;
+  projectKey: Scalars['String']['output'];
+  projectRoot: Scalars['String']['output'];
   prompt: Scalars['String']['output'];
   reportPath: Scalars['String']['output'];
   resultPath: Scalars['String']['output'];
+  sessionId?: Maybe<Scalars['String']['output']>;
   startedAt: Scalars['DateTime']['output'];
   tool: Scalars['String']['output'];
+};
+
+export type RoleEvaluationMessage = {
+  __typename?: 'RoleEvaluationMessage';
+  content: Scalars['String']['output'];
+  createdAt: Scalars['DateTime']['output'];
+  role: Scalars['String']['output'];
 };
 
 export type RoleEvaluationTool = {
@@ -376,6 +598,40 @@ export type SubscriptiontaskRunChangedArgs = {
   taskRunId: Scalars['ID']['input'];
 };
 
+export type Task = {
+  __typename?: 'Task';
+  acceptance: Scalars['String']['output'];
+  agentSlug: Scalars['String']['output'];
+  artifacts: Array<TaskArtifact>;
+  brief: Scalars['String']['output'];
+  completedAt?: Maybe<Scalars['DateTime']['output']>;
+  createdAt: Scalars['DateTime']['output'];
+  dueAt?: Maybe<Scalars['DateTime']['output']>;
+  id: Scalars['ID']['output'];
+  mode: Scalars['String']['output'];
+  planNote?: Maybe<Scalars['String']['output']>;
+  planPath?: Maybe<Scalars['String']['output']>;
+  priority: Scalars['String']['output'];
+  readOnly: Scalars['Boolean']['output'];
+  reviewNote?: Maybe<Scalars['String']['output']>;
+  reviewedAt?: Maybe<Scalars['DateTime']['output']>;
+  runs: Array<TaskRun>;
+  status: Scalars['String']['output'];
+  title: Scalars['String']['output'];
+  updatedAt: Scalars['DateTime']['output'];
+};
+
+export type TaskArtifact = {
+  __typename?: 'TaskArtifact';
+  createdAt: Scalars['DateTime']['output'];
+  id: Scalars['ID']['output'];
+  kind: Scalars['String']['output'];
+  label: Scalars['String']['output'];
+  path: Scalars['String']['output'];
+  source: Scalars['String']['output'];
+  taskId: Scalars['ID']['output'];
+};
+
 export type TaskEvent = {
   __typename?: 'TaskEvent';
   agent: Scalars['String']['output'];
@@ -396,13 +652,39 @@ export type TaskEvent = {
   taskRunId: Scalars['ID']['output'];
 };
 
+export type TaskImage = {
+  __typename?: 'TaskImage';
+  bytes: Scalars['Int']['output'];
+  createdAt: Scalars['DateTime']['output'];
+  id: Scalars['ID']['output'];
+  label: Scalars['String']['output'];
+  mime: Scalars['String']['output'];
+  path: Scalars['String']['output'];
+  url: Scalars['String']['output'];
+};
+
+export type TaskPulse = {
+  __typename?: 'TaskPulse';
+  awaitingReview: Scalars['Int']['output'];
+  completedToday: Scalars['Int']['output'];
+  failedToday: Scalars['Int']['output'];
+  queued: Scalars['Int']['output'];
+  running: Scalars['Int']['output'];
+};
+
 export type TaskRun = {
   __typename?: 'TaskRun';
+  cachedTokens?: Maybe<Scalars['Int']['output']>;
   completedAt?: Maybe<Scalars['DateTime']['output']>;
   currentStage: TaskRunStage;
+  dirtyAtDispatch: Scalars['Boolean']['output'];
   events: Array<TaskEvent>;
   externalReference?: Maybe<Scalars['String']['output']>;
   id: Scalars['ID']['output'];
+  inputTokens?: Maybe<Scalars['Int']['output']>;
+  logPath?: Maybe<Scalars['String']['output']>;
+  mode: Scalars['String']['output'];
+  outputTokens?: Maybe<Scalars['Int']['output']>;
   platform: Scalars['String']['output'];
   primaryAgent: Scalars['String']['output'];
   startedAt: Scalars['DateTime']['output'];
@@ -434,6 +716,13 @@ export type TaskRunFilter = {
   statuses?: InputMaybe<Array<TaskRunStatus>>;
 };
 
+export type TaskRunMessage = {
+  __typename?: 'TaskRunMessage';
+  content: Scalars['String']['output'];
+  createdAt: Scalars['DateTime']['output'];
+  role: Scalars['String']['output'];
+};
+
 export type TaskRunPageInfo = {
   __typename?: 'TaskRunPageInfo';
   endCursor?: Maybe<Scalars['String']['output']>;
@@ -459,6 +748,19 @@ export type TaskRunStatusCount = {
   __typename?: 'TaskRunStatusCount';
   count: Scalars['Int']['output'];
   status: TaskRunStatus;
+};
+
+export type TaskTemplate = {
+  __typename?: 'TaskTemplate';
+  acceptance: Scalars['String']['output'];
+  agentSlug: Scalars['String']['output'];
+  brief: Scalars['String']['output'];
+  createdAt: Scalars['DateTime']['output'];
+  id: Scalars['ID']['output'];
+  name: Scalars['String']['output'];
+  priority: Scalars['String']['output'];
+  readOnly: Scalars['Boolean']['output'];
+  title: Scalars['String']['output'];
 };
 
 export type TeamRuntimeOverview = {
@@ -511,6 +813,32 @@ export type UpdateRemoteAppInput = {
   url?: InputMaybe<Scalars['String']['input']>;
 };
 
+export type UpdateTaskInput = {
+  acceptance?: InputMaybe<Scalars['String']['input']>;
+  agentSlug?: InputMaybe<Scalars['String']['input']>;
+  brief?: InputMaybe<Scalars['String']['input']>;
+  dueAt?: InputMaybe<Scalars['DateTime']['input']>;
+  mode?: InputMaybe<Scalars['String']['input']>;
+  priority?: InputMaybe<Scalars['String']['input']>;
+  readOnly?: InputMaybe<Scalars['Boolean']['input']>;
+  title?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type UpdateTaskTemplateInput = {
+  acceptance?: InputMaybe<Scalars['String']['input']>;
+  agentSlug?: InputMaybe<Scalars['String']['input']>;
+  brief?: InputMaybe<Scalars['String']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  priority?: InputMaybe<Scalars['String']['input']>;
+  readOnly?: InputMaybe<Scalars['Boolean']['input']>;
+  title?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type UploadTaskImageInput = {
+  dataUrl: Scalars['String']['input'];
+  name?: InputMaybe<Scalars['String']['input']>;
+};
+
 export type WeeklyAgentContribution = {
   __typename?: 'WeeklyAgentContribution';
   agent: Scalars['String']['output'];
@@ -531,10 +859,30 @@ export type WeeklyTaskItem = {
   updatedAt: Scalars['DateTime']['output'];
 };
 
+export type WorkspaceStatus = {
+  __typename?: 'WorkspaceStatus';
+  changedCount: Scalars['Int']['output'];
+  dirty: Scalars['Boolean']['output'];
+};
+
 export type CapabilityHealthCenterVariables = Exact<{ [key: string]: never; }>;
 
 
 export type CapabilityHealthCenter = { __typename?: 'Query', capabilityHealth: { __typename?: 'CapabilityHealth', generatedAt: string, cli: Array<{ __typename?: 'CapabilityCliCheck', id: string, name: string, status: string, path: string, message: string }>, reports: Array<{ __typename?: 'CapabilityPlatformReport', platform: string, generatedAt: string, summary: { __typename?: 'CapabilitySummary', total: number, complete: number, partial: number, notInstalled: number, unbound: number }, agents: Array<{ __typename?: 'AgentCapabilityHealth', slug: string, name: string, status: string, platformSupported: boolean, agentInstalled: boolean, missingRequiredSkills: Array<string>, missingOptionalSkills: Array<string>, missingRequiredTools: Array<string>, unboundRequiredSkills: Array<string>, suggestions: Array<string> }> }> }, runtimeHealth: { __typename?: 'RuntimeHealth', serverTime: string, database: { __typename?: 'RuntimeComponentHealth', status: string, message?: string | null }, realtime: { __typename?: 'RuntimeComponentHealth', status: string, message?: string | null } }, installedSkills: Array<{ __typename?: 'InstalledSkill', id: string, name: string, updatable: boolean }> };
+
+export type TaskImageDataUrlVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type TaskImageDataUrl = { __typename?: 'Query', taskImageDataUrl: string };
+
+export type UploadTaskImageVariables = Exact<{
+  input: UploadTaskImageInput;
+}>;
+
+
+export type UploadTaskImage = { __typename?: 'Mutation', uploadTaskImage: { __typename?: 'TaskImage', id: string, label: string } };
 
 export type RemoteAppsVariables = Exact<{ [key: string]: never; }>;
 
@@ -563,6 +911,35 @@ export type DeleteRemoteAppVariables = Exact<{
 
 export type DeleteRemoteApp = { __typename?: 'Mutation', deleteRemoteApp: { __typename?: 'RemoteApp', id: string } };
 
+export type RoleEvaluationsVariables = Exact<{
+  agentSlug?: InputMaybe<Scalars['String']['input']>;
+}>;
+
+
+export type RoleEvaluations = { __typename?: 'Query', roleEvaluations: Array<{ __typename?: 'RoleEvaluation', id: string, agentSlug: string, agentName: string, projectKey: string, projectRoot: string, tool: string, status: string, sessionId?: string | null, reportPath: string, logPath: string, startedAt: string, finishedAt?: string | null }> };
+
+export type RoleEvaluationMessagesVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type RoleEvaluationMessages = { __typename?: 'Query', roleEvaluationMessages: Array<{ __typename?: 'RoleEvaluationMessage', role: string, content: string, createdAt: string }> };
+
+export type RoleEvaluationReportVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type RoleEvaluationReport = { __typename?: 'Query', roleEvaluationReport: string };
+
+export type SendRoleEvaluationMessageVariables = Exact<{
+  id: Scalars['ID']['input'];
+  message: Scalars['String']['input'];
+}>;
+
+
+export type SendRoleEvaluationMessage = { __typename?: 'Mutation', sendRoleEvaluationMessage: { __typename?: 'RoleEvaluation', id: string, status: string } };
+
 export type InstalledSkillsVariables = Exact<{ [key: string]: never; }>;
 
 
@@ -574,6 +951,151 @@ export type UpdateInstalledSkillVariables = Exact<{
 
 
 export type UpdateInstalledSkill = { __typename?: 'Mutation', updateInstalledSkill: { __typename?: 'UpdateInstalledSkillResult', message: string, skill: { __typename?: 'InstalledSkill', id: string, name: string, description: string, source: string, tags: Array<string>, path: string, updatedAt: string, updatable: boolean, body: string, codexEnabled: boolean, dshEnabled: boolean } } };
+
+export type TasksVariables = Exact<{
+  status?: InputMaybe<Scalars['String']['input']>;
+  agentSlug?: InputMaybe<Scalars['String']['input']>;
+}>;
+
+
+export type Tasks = { __typename?: 'Query', tasks: Array<{ __typename?: 'Task', id: string, title: string, brief: string, acceptance: string, agentSlug: string, priority: string, status: string, readOnly: boolean, mode: string, planPath?: string | null, planNote?: string | null, dueAt?: string | null, createdAt: string, updatedAt: string, completedAt?: string | null, reviewNote?: string | null, reviewedAt?: string | null, artifacts: Array<{ __typename?: 'TaskArtifact', id: string, kind: string, source: string, path: string, label: string, createdAt: string }>, runs: Array<{ __typename?: 'TaskRun', id: string, status: TaskRunStatus, currentStage: TaskRunStage, platform: string, mode: string, summary?: string | null, logPath?: string | null, dirtyAtDispatch: boolean, inputTokens?: number | null, outputTokens?: number | null, cachedTokens?: number | null, startedAt: string, completedAt?: string | null, externalReference?: string | null, events: Array<{ __typename?: 'TaskEvent', id: string, eventType: string, summary: string, createdAt: string }> }> }> };
+
+export type CreateTaskVariables = Exact<{
+  input: CreateTaskInput;
+}>;
+
+
+export type CreateTask = { __typename?: 'Mutation', createTask: { __typename?: 'Task', id: string } };
+
+export type UpdateTaskVariables = Exact<{
+  id: Scalars['ID']['input'];
+  input: UpdateTaskInput;
+}>;
+
+
+export type UpdateTask = { __typename?: 'Mutation', updateTask: { __typename?: 'Task', id: string } };
+
+export type DispatchTaskVariables = Exact<{
+  id: Scalars['ID']['input'];
+  tool?: InputMaybe<Scalars['String']['input']>;
+}>;
+
+
+export type DispatchTask = { __typename?: 'Mutation', dispatchTask: { __typename?: 'Task', id: string, status: string } };
+
+export type CancelTaskVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type CancelTask = { __typename?: 'Mutation', cancelTask: { __typename?: 'Task', id: string } };
+
+export type ReviewTaskVariables = Exact<{
+  id: Scalars['ID']['input'];
+  decision: Scalars['String']['input'];
+  note?: InputMaybe<Scalars['String']['input']>;
+}>;
+
+
+export type ReviewTask = { __typename?: 'Mutation', reviewTask: { __typename?: 'Task', id: string, status: string } };
+
+export type TaskTemplatesVariables = Exact<{ [key: string]: never; }>;
+
+
+export type TaskTemplates = { __typename?: 'Query', taskTemplates: Array<{ __typename?: 'TaskTemplate', id: string, name: string, title: string, brief: string, acceptance: string, agentSlug: string, priority: string, readOnly: boolean }> };
+
+export type CreateTaskTemplateVariables = Exact<{
+  input: CreateTaskTemplateInput;
+}>;
+
+
+export type CreateTaskTemplate = { __typename?: 'Mutation', createTaskTemplate: { __typename?: 'TaskTemplate', id: string, name: string } };
+
+export type UpdateTaskTemplateVariables = Exact<{
+  id: Scalars['ID']['input'];
+  input: UpdateTaskTemplateInput;
+}>;
+
+
+export type UpdateTaskTemplate = { __typename?: 'Mutation', updateTaskTemplate: { __typename?: 'TaskTemplate', id: string, name: string } };
+
+export type DeleteTaskTemplateVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type DeleteTaskTemplate = { __typename?: 'Mutation', deleteTaskTemplate: { __typename?: 'TaskTemplate', id: string } };
+
+export type ReviseTaskPlanVariables = Exact<{
+  id: Scalars['ID']['input'];
+  note: Scalars['String']['input'];
+  tool?: InputMaybe<Scalars['String']['input']>;
+}>;
+
+
+export type ReviseTaskPlan = { __typename?: 'Mutation', reviseTaskPlan: { __typename?: 'Task', id: string, status: string } };
+
+export type ExecuteTaskPlanVariables = Exact<{
+  id: Scalars['ID']['input'];
+  tool?: InputMaybe<Scalars['String']['input']>;
+}>;
+
+
+export type ExecuteTaskPlan = { __typename?: 'Mutation', executeTaskPlan: { __typename?: 'Task', id: string, status: string } };
+
+export type DispatchTasksVariables = Exact<{
+  ids: Array<Scalars['ID']['input']> | Scalars['ID']['input'];
+  tool?: InputMaybe<Scalars['String']['input']>;
+}>;
+
+
+export type DispatchTasks = { __typename?: 'Mutation', dispatchTasks: Array<{ __typename?: 'Task', id: string, status: string }> };
+
+export type TaskRunMessagesVariables = Exact<{
+  runId: Scalars['ID']['input'];
+}>;
+
+
+export type TaskRunMessages = { __typename?: 'Query', taskRunMessages: Array<{ __typename?: 'TaskRunMessage', role: string, content: string, createdAt: string }> };
+
+export type WorkspaceStatusVariables = Exact<{ [key: string]: never; }>;
+
+
+export type WorkspaceStatus = { __typename?: 'Query', workspaceStatus: { __typename?: 'WorkspaceStatus', dirty: boolean, changedCount: number } };
+
+export type AddTaskArtifactVariables = Exact<{
+  taskId: Scalars['ID']['input'];
+  input: AddTaskArtifactInput;
+}>;
+
+
+export type AddTaskArtifact = { __typename?: 'Mutation', addTaskArtifact: { __typename?: 'Task', id: string } };
+
+export type RemoveTaskArtifactVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type RemoveTaskArtifact = { __typename?: 'Mutation', removeTaskArtifact: { __typename?: 'Task', id: string } };
+
+export type TaskRunLogVariables = Exact<{
+  runId: Scalars['ID']['input'];
+}>;
+
+
+export type TaskRunLog = { __typename?: 'Query', taskRunLog: string };
+
+export type TaskArtifactContentVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type TaskArtifactContent = { __typename?: 'Query', taskArtifactContent: string };
+
+export type TaskPulseVariables = Exact<{ [key: string]: never; }>;
+
+
+export type TaskPulse = { __typename?: 'Query', taskPulse: { __typename?: 'TaskPulse', awaitingReview: number, running: number, queued: number, completedToday: number, failedToday: number } };
 
 export type TaskRuntimeDashboardVariables = Exact<{
   filter?: InputMaybe<TaskRunFilter>;

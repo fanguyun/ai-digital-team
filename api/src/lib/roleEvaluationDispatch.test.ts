@@ -52,7 +52,7 @@ describe('roleEvaluationDispatch', () => {
       startedAt: at,
     })
 
-    expect(prompt.split('\n')[0]).toBe('My request: 岗位评估更新：数字总经理')
+    expect(prompt.split('\n')[0]).toBe('My request: 数字团队 · 岗位评估：数字总经理')
     expect(prompt).toContain('岗位 slug：main-agent')
     expect(prompt).toContain('岗位规则：agents/main-agent/AGENTS.md')
     expect(prompt).toContain('agents/role-development-agent/AGENTS.md')

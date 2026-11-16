@@ -31,6 +31,12 @@ export const schema = gql`
     status: TaskRunStatus!
     currentStage: TaskRunStage!
     summary: String
+    logPath: String
+    mode: String!
+    dirtyAtDispatch: Boolean!
+    inputTokens: Int
+    outputTokens: Int
+    cachedTokens: Int
     version: Int!
     startedAt: DateTime!
     updatedAt: DateTime!
