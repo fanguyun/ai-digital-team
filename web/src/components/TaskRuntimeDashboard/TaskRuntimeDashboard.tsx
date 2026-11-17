@@ -157,6 +157,7 @@ type RuntimeHealth = {
 type TaskRuntimeDashboardProps = {
   onSystemState?: (state: SystemState) => void
   onOpenSidebar?: () => void
+  initialAgentFilter?: string | null
 }
 
 type SystemState = {
@@ -165,7 +166,11 @@ type SystemState = {
 }
 
 type DashboardVariables = {
-  filter: { statuses?: TaskStatus[]; search?: string } | null
+  filter: {
+    statuses?: TaskStatus[]
+    search?: string
+    primaryAgent?: string
+  } | null
   first: number
   skip: number
 }
@@ -493,6 +498,7 @@ const ActivityView = ({
 const TaskRuntimeDashboard = ({
   onSystemState,
   onOpenSidebar,
+  initialAgentFilter = null,
 }: TaskRuntimeDashboardProps) => {
   const [requestedPage, setRequestedPage] = useState(0)
   const [displayedPage, setDisplayedPage] = useState(0)
@@ -510,15 +516,20 @@ const TaskRuntimeDashboard = ({
   }, [searchInput])
 
   const variables = useMemo<DashboardVariables>(() => {
-    const filter: { statuses?: TaskStatus[]; search?: string } = {}
+    const filter: {
+      statuses?: TaskStatus[]
+      search?: string
+      primaryAgent?: string
+    } = {}
     if (status !== 'ALL') filter.statuses = [status]
     if (searchKeyword) filter.search = searchKeyword
+    if (initialAgentFilter) filter.primaryAgent = initialAgentFilter
     return {
       filter: Object.keys(filter).length ? filter : null,
       first: PAGE_SIZE,
       skip: requestedPage * PAGE_SIZE,
     }
-  }, [requestedPage, searchKeyword, status])
+  }, [initialAgentFilter, requestedPage, searchKeyword, status])
 
   const { data, error, loading, refetch } = useQuery<
     DashboardData,

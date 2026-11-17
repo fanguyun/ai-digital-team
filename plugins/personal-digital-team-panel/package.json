@@ -1,0 +1,40 @@
+{
+  "name": "personal-digital-team-panel",
+  "version": "0.2.0",
+  "private": true,
+  "description": "DSH 左侧栏「数字团队」入口：展示岗位、实时态势、调用量与任务跳转。",
+  "type": "module",
+  "icon": "icon.svg",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "icon.svg",
+    "README.md"
+  ],
+  "scripts": {
+    "sync:snapshot": "node scripts/sync-snapshot.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0",
+    "dsh": ">=0.2.1-rc.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fanguyun/ai-digital-team.git",
+    "directory": "plugins/personal-digital-team-panel"
+  }
+}

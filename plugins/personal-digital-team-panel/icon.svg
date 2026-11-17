@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="个人数字团队">
+  <rect width="64" height="64" rx="15" fill="#6857e8"/>
+  <g fill="none" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="32" cy="23" r="6.4"/>
+    <path d="M20.6 45.5c0-6.3 5.1-11.4 11.4-11.4s11.4 5.1 11.4 11.4"/>
+    <circle cx="15.6" cy="29.2" r="4.3"/>
+    <path d="M8.4 41.6c0-4 3.2-7.2 7.2-7.2"/>
+    <circle cx="48.4" cy="29.2" r="4.3"/>
+    <path d="M55.6 41.6c0-4-3.2-7.2-7.2-7.2"/>
+  </g>
+</svg>

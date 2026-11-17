@@ -304,7 +304,7 @@ const formatDuration = (start, end) => {
   return `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分`
 }
 
-const TaskBoard = ({ onOpenSidebar }) => {
+const TaskBoard = ({ onOpenSidebar, initialAgentFilter = null }) => {
   const { data, loading, error, refetch } = useQuery(TASKS_QUERY, {
     fetchPolicy: 'cache-and-network',
     pollInterval: 10_000,
@@ -335,7 +335,7 @@ const TaskBoard = ({ onOpenSidebar }) => {
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState(null)
   const [openId, setOpenId] = useState(null)
-  const [agentFilter, setAgentFilter] = useState(null)
+  const [agentFilter, setAgentFilter] = useState(initialAgentFilter)
   const [selectedIds, setSelectedIds] = useState([])
   const [templateSaving, setTemplateSaving] = useState(false)
   const [templateName, setTemplateName] = useState('')

@@ -262,33 +262,57 @@ export const teamRuntimeOverview = async (
 ) => {
   await syncDeepSeekSessions({ pubSub: context?.pubSub })
   const occurredAt = overviewTimeBound(range)
-  const [taskGroups, totalTaskCount, events] = await Promise.all([
-    db.taskRun.groupBy({
-      by: ['primaryAgent'],
-      where: {
-        status: { not: 'CANCELLED' },
-        ...(occurredAt ? { startedAt: occurredAt } : {}),
-      },
-      _count: { _all: true },
-      _min: { startedAt: true },
-      _max: { updatedAt: true },
-    }),
-    db.taskRun.count({
-      where: occurredAt ? { startedAt: occurredAt } : undefined,
-    }),
-    db.taskEvent.findMany({
-      where: occurredAt ? { createdAt: occurredAt } : undefined,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      select: {
-        agent: true,
-        taskRunId: true,
-        inputTokens: true,
-        outputTokens: true,
-        cachedTokens: true,
-        modelId: true,
-      },
-    }),
-  ])
+  const [taskGroups, totalTaskCount, events, activeGroups, activeTasks] =
+    await Promise.all([
+      db.taskRun.groupBy({
+        by: ['primaryAgent'],
+        where: {
+          status: { not: 'CANCELLED' },
+          ...(occurredAt ? { startedAt: occurredAt } : {}),
+        },
+        _count: { _all: true },
+        _min: { startedAt: true },
+        _max: { updatedAt: true },
+      }),
+      db.taskRun.count({
+        where: occurredAt ? { startedAt: occurredAt } : undefined,
+      }),
+      db.taskEvent.findMany({
+        where: occurredAt ? { createdAt: occurredAt } : undefined,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: {
+          agent: true,
+          taskRunId: true,
+          inputTokens: true,
+          outputTokens: true,
+          cachedTokens: true,
+          modelId: true,
+        },
+      }),
+      // 当前活跃任务代表“此刻状态”，不受统计区间限制。
+      db.taskRun.groupBy({
+        by: ['primaryAgent', 'status'],
+        where: {
+          status: { in: ['RUNNING', 'WAITING_CONFIRMATION', 'QUEUED'] },
+        },
+        _count: { _all: true },
+      }),
+      db.taskRun.findMany({
+        where: {
+          status: { in: ['RUNNING', 'WAITING_CONFIRMATION', 'QUEUED'] },
+        },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        select: {
+          id: true,
+          taskId: true,
+          title: true,
+          primaryAgent: true,
+          status: true,
+          currentStage: true,
+          updatedAt: true,
+        },
+      }),
+    ])
 
   const metrics = new Map<
     string,
@@ -306,6 +330,9 @@ export const teamRuntimeOverview = async (
       latestModelId: string | null
       firstTaskAt: Date | null
       lastTaskAt: Date | null
+      runningCount: number
+      waitingCount: number
+      queuedCount: number
     }
   >()
   const metricFor = (agent: string) => {
@@ -325,6 +352,9 @@ export const teamRuntimeOverview = async (
       latestModelId: null,
       firstTaskAt: null,
       lastTaskAt: null,
+      runningCount: 0,
+      waitingCount: 0,
+      queuedCount: 0,
     }
     metrics.set(agent, created)
     return created
@@ -351,6 +381,14 @@ export const teamRuntimeOverview = async (
     metric.workCount = group._count._all
     metric.firstTaskAt = group._min.startedAt
     metric.lastTaskAt = group._max.updatedAt
+  }
+  for (const group of activeGroups) {
+    const metric = metricFor(group.primaryAgent)
+    if (group.status === 'RUNNING') metric.runningCount = group._count._all
+    if (group.status === 'WAITING_CONFIRMATION') {
+      metric.waitingCount = group._count._all
+    }
+    if (group.status === 'QUEUED') metric.queuedCount = group._count._all
   }
   for (const event of events) {
     const metric = metricFor(event.agent)
@@ -413,6 +451,9 @@ export const teamRuntimeOverview = async (
         latestModelId: metric.latestModelId,
         firstTaskAt: metric.firstTaskAt,
         lastTaskAt: metric.lastTaskAt,
+        runningCount: metric.runningCount,
+        waitingCount: metric.waitingCount,
+        queuedCount: metric.queuedCount,
       }
     })
     .sort((left, right) => right.workCount - left.workCount)
@@ -424,6 +465,9 @@ export const teamRuntimeOverview = async (
       outputTokens: overview.outputTokens + metric.outputTokens,
       cachedTokens: overview.cachedTokens + metric.cachedTokens,
       totalTokens: overview.totalTokens + metric.totalTokens,
+      runningCount: overview.runningCount + metric.runningCount,
+      waitingCount: overview.waitingCount + metric.waitingCount,
+      queuedCount: overview.queuedCount + metric.queuedCount,
     }),
     {
       totalWorkCount: 0,
@@ -431,6 +475,9 @@ export const teamRuntimeOverview = async (
       outputTokens: 0,
       cachedTokens: 0,
       totalTokens: 0,
+      runningCount: 0,
+      waitingCount: 0,
+      queuedCount: 0,
     }
   )
   const trackedTaskIds = new Set<string>()
@@ -462,6 +509,7 @@ export const teamRuntimeOverview = async (
   return {
     ...totals,
     totalTaskCount,
+    activeTasks,
     trackedWorkCount: trackedTaskIds.size,
     inputTokenCoverage: coverageFor({
       knownTaskCount: inputTrackedTaskIds.size,

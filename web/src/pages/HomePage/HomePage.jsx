@@ -222,10 +222,32 @@ const getAgentRuntimeState = ({ activeTask, loading, error }) => {
   return { label: '工作中', tone: 'working', task: activeTask }
 }
 
+const WORKSPACE_VIEWS = new Set([
+  'overview',
+  'tasks',
+  'actions',
+  'runs',
+  'report',
+  'market',
+  'apps',
+  'health',
+])
+
+const initialWorkspaceView = () => {
+  if (typeof window === 'undefined') return 'overview'
+  const view = new URLSearchParams(window.location.search).get('view')
+  return WORKSPACE_VIEWS.has(view) ? view : 'overview'
+}
+
+const initialTaskAgent = () => {
+  if (typeof window === 'undefined') return null
+  return new URLSearchParams(window.location.search).get('agent')
+}
+
 function App() {
   const { theme, toggleTheme } = useTheme()
   const { user, logout } = useAuth()
-  const [workspaceView, setWorkspaceView] = useState('overview')
+  const [workspaceView, setWorkspaceView] = useState(initialWorkspaceView)
   const [directoryMode, setDirectoryMode] = useState('office')
   const [activeGroup, setActiveGroup] = useState('全部岗位')
   const [query, setQuery] = useState('')
@@ -970,7 +992,10 @@ function App() {
             onOpenSidebar={() => setSidebarOpen(true)}
           />
         ) : workspaceView === 'tasks' ? (
-          <TaskBoard onOpenSidebar={() => setSidebarOpen(true)} />
+          <TaskBoard
+            onOpenSidebar={() => setSidebarOpen(true)}
+            initialAgentFilter={initialTaskAgent()}
+          />
         ) : workspaceView === 'market' ? (
           <SkillMarket onOpenSidebar={() => setSidebarOpen(true)} />
         ) : workspaceView === 'apps' ? (
@@ -983,6 +1008,7 @@ function App() {
           <TaskRuntimeCell
             onSystemState={setSystemState}
             onOpenSidebar={() => setSidebarOpen(true)}
+            initialAgentFilter={initialTaskAgent()}
           />
         )}
       </main>

@@ -78,12 +78,28 @@ export const schema = gql`
     latestModelId: String
     firstTaskAt: DateTime
     lastTaskAt: DateTime
+    runningCount: Int!
+    waitingCount: Int!
+    queuedCount: Int!
+  }
+
+  type ActiveTaskRun {
+    id: ID!
+    taskId: ID
+    title: String!
+    primaryAgent: String!
+    status: TaskRunStatus!
+    currentStage: TaskRunStage!
+    updatedAt: DateTime!
   }
 
   type TeamRuntimeOverview {
     totalWorkCount: Int!
     totalTaskCount: Int!
     trackedWorkCount: Int!
+    runningCount: Int!
+    waitingCount: Int!
+    queuedCount: Int!
     inputTokens: Float!
     outputTokens: Float!
     cachedTokens: Float!
@@ -93,6 +109,7 @@ export const schema = gql`
     cachedTokenCoverage: RuntimeMetricCoverage!
     totalTokenCoverage: RuntimeMetricCoverage!
     agents: [AgentRuntimeMetric!]!
+    activeTasks: [ActiveTaskRun!]!
   }
 
   type WeeklyAgentContribution {
@@ -227,8 +244,9 @@ export const schema = gql`
     taskRun(id: ID!): TaskRun @requireSessionOrRuntimeWriter
     runtimeHealth: RuntimeHealth! @requireAuth
     teamRuntimeOverview(range: RuntimeTimeRange): TeamRuntimeOverview!
-      @requireAuth
-    teamWeeklyReport(range: RuntimeTimeRange!): TeamWeeklyReport! @requireAuth
+      @requireSessionOrTeamReader
+    teamWeeklyReport(range: RuntimeTimeRange!): TeamWeeklyReport!
+      @requireSessionOrTeamReader
   }
 
   type Mutation {
