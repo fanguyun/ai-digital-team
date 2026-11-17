@@ -66,7 +66,19 @@ API 地址默认 `http://127.0.0.1:8901/graphql`，可通过插件配置 `apiUrl
 
 ## 安装
 
-推荐在 DSH 的插件管理里安装本地目录：目标填
+### 从 git 安装或更新（推荐）
+
+插件位于仓库子目录中，使用 pnpm 的 `#path:` 选择器：
+
+```bash
+dsh plugin --profile desktop add "github:fanguyun/ai-digital-team#path:/plugins/personal-digital-team-panel"
+```
+
+在 DSH 插件管理中安装时，目标同样填这一整串 spec。插件管理会同时写入依赖和 bundle 清单；安装后重启 DSH，让客户端模块从 git 包路径重新加载。
+
+### 本地目录（开发）
+
+在 DSH 的插件管理里安装本地目录：目标填
 `/Users/fan/ai-digital-team/plugins/personal-digital-team-panel`。插件管理会同时写入依赖和 bundle 清单，并热应用。
 
 使用 CLI 时，`dsh plugin add` 只安装依赖，还需要把包名加进 profile 的 bundle 清单：
