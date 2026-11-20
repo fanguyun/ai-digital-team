@@ -5,6 +5,11 @@ import { CheckCircle2, Clock3, FileText, Terminal, Wrench } from 'lucide-react'
 
 import { useQuery } from '@cedarjs/web'
 
+import CodePreview from 'src/components/CodePreview/CodePreview'
+import {
+  isMarkdownPath,
+  languageForPath,
+} from 'src/components/CodePreview/artifactTree'
 import MarkdownDocument from 'src/components/MarkdownDocument/MarkdownDocument'
 import {
   describeWorkflowStage,
@@ -528,7 +533,9 @@ export const StageDetailDrawer = ({
         open={Boolean(artifact)}
         onCancel={() => setArtifact(null)}
         footer={null}
-        width={880}
+        className="artifact-preview-modal"
+        width="min(1180px, 94vw)"
+        style={{ top: 28 }}
         title={
           <span>
             <FileText size={14} /> {artifact?.label}
@@ -543,9 +550,14 @@ export const StageDetailDrawer = ({
             message="读取产物失败"
             description={artifactContent.error.message}
           />
-        ) : artifact?.kind === 'report' ? (
+        ) : artifact?.kind === 'report' || isMarkdownPath(artifact?.path) ? (
           <MarkdownDocument
             content={artifactContent.data?.taskArtifactContent ?? ''}
+          />
+        ) : languageForPath(artifact?.path) ? (
+          <CodePreview
+            content={artifactContent.data?.taskArtifactContent ?? ''}
+            language={languageForPath(artifact?.path) ?? 'ts'}
           />
         ) : (
           <pre className="md-source">

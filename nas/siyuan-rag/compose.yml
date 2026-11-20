@@ -1,0 +1,14 @@
+services:
+  siyuan-rag-bridge:
+    build:
+      context: ../../services/siyuan-rag-bridge
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${RAG_BRIDGE_BIND_IP:-127.0.0.1}:8787:8787"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 256m

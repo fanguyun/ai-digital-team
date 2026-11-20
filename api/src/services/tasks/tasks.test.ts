@@ -11,6 +11,7 @@ import { zstdCompressSync } from 'node:zlib'
 
 import * as agentDispatch from 'src/lib/agentDispatch'
 import { db } from 'src/lib/db'
+import * as knowledgeRetrieval from 'src/lib/knowledgeRetrieval'
 import { resolveRepoRoot } from 'src/lib/roleEvaluationDispatch'
 
 import {
@@ -55,6 +56,12 @@ describe('dispatch concurrency with PostgreSQL', () => {
       args: [],
       logAbsolute: '',
     })
+    jest.spyOn(knowledgeRetrieval, 'retrieveKnowledge').mockResolvedValue({
+      status: 'disabled',
+      mode: 'optional',
+      items: [],
+      elapsedMs: 0,
+    })
   })
   afterEach(() => jest.restoreAllMocks())
 
@@ -69,6 +76,7 @@ describe('dispatch concurrency with PostgreSQL', () => {
     ).toHaveLength(1)
     expect(await db.taskRun.count({ where: { taskId: created.id } })).toBe(1)
     expect(agentDispatch.spawnTaskAgent).toHaveBeenCalledTimes(1)
+    expect(knowledgeRetrieval.retrieveKnowledge).toHaveBeenCalledTimes(1)
   })
 
   it('serializes two different tasks assigned to the same role', async () => {
@@ -86,6 +94,50 @@ describe('dispatch concurrency with PostgreSQL', () => {
       'QUEUED',
     ])
     expect(agentDispatch.spawnTaskAgent).toHaveBeenCalledTimes(1)
+    expect(knowledgeRetrieval.retrieveKnowledge).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips knowledge retrieval when the task opts out', async () => {
+    const created = await createTask({
+      input: { ...base, useKnowledge: false },
+    })
+    expect(created.useKnowledge).toBe(false)
+
+    await dispatchTask({ id: created.id })
+
+    expect(knowledgeRetrieval.retrieveKnowledge).not.toHaveBeenCalled()
+    const event = await db.taskEvent.findFirst({
+      where: { taskRun: { taskId: created.id }, eventType: 'task.dispatched' },
+      orderBy: { sequence: 'desc' },
+    })
+    const evidence = event?.evidence as {
+      knowledge?: { status?: string }
+    } | null
+    expect(evidence?.knowledge?.status).toBe('disabled')
+  })
+
+  it('persists the knowledge switch when the task is edited', async () => {
+    const created = await createTask({ input: base })
+    const updated = await updateTask({
+      id: created.id,
+      input: { useKnowledge: false },
+    })
+    expect(updated.useKnowledge).toBe(false)
+
+    const reverted = await updateTask({
+      id: created.id,
+      input: { useKnowledge: true },
+    })
+    expect(reverted.useKnowledge).toBe(true)
+  })
+
+  it('retrieves knowledge by default when a task does not opt out', async () => {
+    const created = await createTask({ input: base })
+    expect(created.useKnowledge).toBe(true)
+
+    await dispatchTask({ id: created.id })
+
+    expect(knowledgeRetrieval.retrieveKnowledge).toHaveBeenCalledTimes(1)
   })
 
   it('invalidates an old plan after a requirement change', async () => {
@@ -114,6 +166,111 @@ describe('dispatch concurrency with PostgreSQL', () => {
     expect(
       (await db.task.findUniqueOrThrow({ where: { id: created.id } })).status
     ).toBe('DONE')
+  })
+})
+
+describe('knowledge retrieval during reserved dispatch', () => {
+  const empty = {
+    status: 'empty',
+    mode: 'required',
+    items: [],
+    elapsedMs: 1,
+  } as const
+  beforeEach(async () => {
+    await db.taskArtifact.deleteMany()
+    await db.taskEvent.deleteMany()
+    await db.taskRun.deleteMany()
+    await db.task.deleteMany()
+    jest.spyOn(agentDispatch, 'spawnTaskAgent').mockReturnValue({
+      pid: process.pid,
+      command: 'mock',
+      args: [],
+      logAbsolute: '',
+    })
+  })
+  afterEach(() => jest.restoreAllMocks())
+
+  it('blocks required mode without evidence, records safe metadata and releases the reservation', async () => {
+    jest
+      .spyOn(knowledgeRetrieval, 'retrieveKnowledge')
+      .mockResolvedValue({ ...empty, items: [] })
+    const created = await createTask({ input: base })
+    await expect(dispatchTask({ id: created.id })).rejects.toThrow(
+      '知识库证据不可用（empty）'
+    )
+    expect(agentDispatch.spawnTaskAgent).not.toHaveBeenCalled()
+    const run = await db.taskRun.findFirstOrThrow({
+      where: { taskId: created.id },
+      include: { events: true },
+    })
+    expect(run.status).toBe('FAILED')
+    expect(run.events[0].evidence).toMatchObject({
+      knowledge: { status: 'empty', mode: 'required', sources: [] },
+    })
+    expect(
+      (await db.task.findUniqueOrThrow({ where: { id: created.id } })).status
+    ).toBe('DRAFT')
+  })
+  it('continues optional mode with a visible unavailable status', async () => {
+    jest.spyOn(knowledgeRetrieval, 'retrieveKnowledge').mockResolvedValue({
+      ...empty,
+      status: 'timeout',
+      mode: 'optional',
+      items: [],
+    })
+    const created = await createTask({ input: base })
+    await dispatchTask({ id: created.id })
+    expect(agentDispatch.spawnTaskAgent).toHaveBeenCalledTimes(1)
+    expect(
+      jest.mocked(agentDispatch.spawnTaskAgent).mock.calls[0][0].prompt
+    ).toContain('本轮无可用知识库证据')
+  })
+  it('does not spawn if cancellation happens while retrieval is pending', async () => {
+    const created = await createTask({ input: base })
+    jest
+      .spyOn(knowledgeRetrieval, 'retrieveKnowledge')
+      .mockImplementation(async () => {
+        await cancelTask({ id: created.id })
+        return { ...empty, items: [] }
+      })
+    await expect(dispatchTask({ id: created.id })).rejects.toThrow(
+      '任务已取消或状态已变化'
+    )
+    expect(agentDispatch.spawnTaskAgent).not.toHaveBeenCalled()
+    expect(
+      (await db.task.findUniqueOrThrow({ where: { id: created.id } })).status
+    ).toBe('CANCELLED')
+    expect(
+      (await db.taskRun.findFirstOrThrow({ where: { taskId: created.id } }))
+        .status
+    ).toBe('CANCELLED')
+  })
+  it('uses current revision notes and preserves the approved plan on a retrieval failure', async () => {
+    jest
+      .spyOn(knowledgeRetrieval, 'retrieveKnowledge')
+      .mockResolvedValue({ ...empty, items: [] })
+    const created = await createTask({ input: { ...base, mode: 'plan' } })
+    await db.task.update({
+      where: { id: created.id },
+      data: { status: 'AWAITING_APPROVAL', planPath: 'README.md' },
+    })
+    await expect(
+      reviseTaskPlan({ id: created.id, note: '改用思源笔记' })
+    ).rejects.toThrow('知识库证据不可用')
+    expect(
+      jest.mocked(knowledgeRetrieval.retrieveKnowledge).mock.calls[0][0].query
+    ).toMatch(/^改用思源笔记/)
+    await db.task.update({
+      where: { id: created.id },
+      data: { status: 'AWAITING_APPROVAL', planPath: 'README.md' },
+    })
+    await expect(
+      executeTaskPlan({ id: created.id, planPath: 'README.md' })
+    ).rejects.toThrow('知识库证据不可用')
+    expect(
+      (await db.task.findUniqueOrThrow({ where: { id: created.id } })).planPath
+    ).toBe('README.md')
+    expect(agentDispatch.spawnTaskAgent).not.toHaveBeenCalled()
   })
 })
 
@@ -301,6 +458,23 @@ describe('tasks service', () => {
       note: '交付物是 git 改动，没有单独产出文件',
     })
     expect(approved.status).toBe('DONE')
+  })
+
+  it('records the rework note when re-dispatching an awaiting-review task', async () => {
+    const created = await createTask({ input: base })
+    await db.task.update({
+      where: { id: created.id },
+      data: { status: 'AWAITING_REVIEW' },
+    })
+
+    const dispatched = await dispatchTask({
+      id: created.id,
+      tool: 'codex',
+      note: '把接入范围收窄到任务派发链路',
+    })
+
+    expect(dispatched.runs[0]?.mode).toBe('auto')
+    expect(dispatched.reviewNote).toBe('把接入范围收窄到任务派发链路')
   })
 
   it('cancels a task', async () => {

@@ -23,6 +23,8 @@ export const schema = gql`
     priority: String!
     status: String!
     readOnly: Boolean!
+    "派发时是否检索外部知识库"
+    useKnowledge: Boolean!
     mode: String!
     planPath: String
     planNote: String
@@ -44,6 +46,7 @@ export const schema = gql`
     priority: String
     dueAt: DateTime
     readOnly: Boolean
+    useKnowledge: Boolean
     mode: String
   }
 
@@ -55,6 +58,7 @@ export const schema = gql`
     priority: String
     dueAt: DateTime
     readOnly: Boolean
+    useKnowledge: Boolean
     mode: String
   }
 
@@ -141,7 +145,10 @@ export const schema = gql`
   type Mutation {
     createTask(input: CreateTaskInput!): Task! @requireAuth
     updateTask(id: ID!, input: UpdateTaskInput!): Task! @requireAuth
-    dispatchTask(id: ID!, tool: String): Task! @requireAuth
+    """
+    note：重新派发时的修改要求，会并入提示词并记入任务结论
+    """
+    dispatchTask(id: ID!, tool: String, note: String): Task! @requireAuth
     dispatchTasks(ids: [ID!]!, tool: String): [Task!]! @requireAuth
     executeTaskPlan(id: ID!, tool: String, planPath: String!): Task!
       @requireAuth

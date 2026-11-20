@@ -170,8 +170,13 @@ const ACTION_CENTER_OVERVIEW = gql`
       status
       updatedAt
       reviewNote
+      planPath
+      artifacts {
+        id
+      }
       runs {
         summary
+        platform
       }
     }
   }

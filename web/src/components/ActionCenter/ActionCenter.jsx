@@ -1,3 +1,7 @@
+import { useState } from 'react'
+
+import { Input, Modal } from 'antd'
+
 import {
   AlertTriangle,
   CheckCircle2,
@@ -8,6 +12,39 @@ import {
   RefreshCw,
   ShieldAlert,
 } from 'lucide-react'
+
+import { useMutation } from '@cedarjs/web'
+
+const APPROVE_PLAN = gql`
+  mutation ActionCenterApprovePlan(
+    $id: ID!
+    $tool: String
+    $planPath: String!
+  ) {
+    executeTaskPlan(id: $id, tool: $tool, planPath: $planPath) {
+      id
+      status
+    }
+  }
+`
+
+const REVIEW_TASK = gql`
+  mutation ActionCenterReviewTask($id: ID!, $decision: String!, $note: String) {
+    reviewTask(id: $id, decision: $decision, note: $note) {
+      id
+      status
+    }
+  }
+`
+
+const REFRESH_RUN = gql`
+  mutation ActionCenterRefreshRun($runId: ID!) {
+    refreshRun(runId: $runId) {
+      id
+      status
+    }
+  }
+`
 
 const TYPE_META = {
   waiting: { label: '待确认', icon: ShieldAlert },
@@ -28,6 +65,155 @@ function ActionCenter({
   onOpenSidebar,
 }) {
   const { items, counts } = model
+  const [approvePlan] = useMutation(APPROVE_PLAN)
+  const [reviewTask] = useMutation(REVIEW_TASK)
+  const [refreshRun] = useMutation(REFRESH_RUN)
+  const [pending, setPending] = useState(null)
+  const [notice, setNotice] = useState(null)
+  const [reviewDialog, setReviewDialog] = useState({
+    open: false,
+    item: null,
+    decision: 'REJECT',
+    note: '',
+  })
+
+  const runAction = async (item, action, successText) => {
+    setNotice(null)
+    setPending(item.id)
+    try {
+      await action()
+      setNotice({ tone: 'success', text: successText })
+      onRefresh?.()
+    } catch (error) {
+      setNotice({ tone: 'error', text: error.message || '操作失败' })
+    } finally {
+      setPending(null)
+    }
+  }
+
+  // 方案批准：直接按最近一次执行的平台重启执行
+  const handleApprovePlan = (item) => {
+    if (!item.planPath) {
+      setNotice({
+        tone: 'error',
+        text: '这张卡片没有可执行的方案文件，请进任务详情查看。',
+      })
+      return
+    }
+    runAction(
+      item,
+      () =>
+        approvePlan({
+          variables: {
+            id: item.taskId,
+            tool: item.tool || 'codex',
+            planPath: item.planPath,
+          },
+        }),
+      '已批准方案并开始执行'
+    )
+  }
+
+  // 验收通过：没有产物时服务端要求写清交付物位置，因此先收集说明
+  const handleApproveReview = (item) => {
+    if (!item.hasArtifacts) {
+      setReviewDialog({
+        open: true,
+        item,
+        decision: 'APPROVE',
+        note: '',
+      })
+      return
+    }
+    runAction(
+      item,
+      () =>
+        reviewTask({
+          variables: { id: item.taskId, decision: 'APPROVE', note: '' },
+        }),
+      '已通过验收'
+    )
+  }
+
+  const handleReject = (item) => {
+    setReviewDialog({ open: true, item, decision: 'REJECT', note: '' })
+  }
+
+  const submitReviewDialog = async () => {
+    const { item, decision, note } = reviewDialog
+    if (!item) return
+    await runAction(
+      item,
+      () => reviewTask({ variables: { id: item.taskId, decision, note } }),
+      decision === 'APPROVE' ? '已通过验收' : '已打回任务'
+    )
+    setReviewDialog({ open: false, item: null, decision: 'REJECT', note: '' })
+  }
+
+  const handleRefreshRun = (item) => {
+    if (!item.runId) return
+    runAction(
+      item,
+      () => refreshRun({ variables: { runId: item.runId } }),
+      '已按最近一次执行刷新状态'
+    )
+  }
+
+  const renderInlineActions = (item) => {
+    const busy = pending === item.id
+    const buttons = []
+
+    if (item.type === 'approval') {
+      buttons.push(
+        <button
+          key="approve-plan"
+          type="button"
+          className="is-primary"
+          disabled={busy}
+          onClick={() => handleApprovePlan(item)}
+        >
+          {busy ? '执行中…' : '批准并执行'}
+        </button>
+      )
+    }
+
+    if (item.type === 'review') {
+      buttons.push(
+        <button
+          key="approve"
+          type="button"
+          className="is-primary"
+          disabled={busy}
+          onClick={() => handleApproveReview(item)}
+        >
+          {busy ? '处理中…' : '通过'}
+        </button>,
+        <button
+          key="reject"
+          type="button"
+          disabled={busy}
+          onClick={() => handleReject(item)}
+        >
+          打回
+        </button>
+      )
+    }
+
+    if (item.type === 'stale' && item.runId) {
+      buttons.push(
+        <button
+          key="refresh"
+          type="button"
+          disabled={busy}
+          onClick={() => handleRefreshRun(item)}
+        >
+          {busy ? '刷新中…' : '刷新状态'}
+        </button>
+      )
+    }
+
+    return buttons
+  }
 
   return (
     <div className="action-center-page">
@@ -82,6 +268,60 @@ function ActionCenter({
         </div>
       </section>
 
+      {notice && (
+        <p
+          className={`action-notice ${notice.tone === 'error' ? 'error' : ''}`}
+          role="status"
+        >
+          {notice.text}
+        </p>
+      )}
+
+      <Modal
+        open={reviewDialog.open}
+        title={
+          reviewDialog.decision === 'APPROVE'
+            ? `通过验收 · ${reviewDialog.item?.title || ''}`
+            : `打回任务 · ${reviewDialog.item?.title || ''}`
+        }
+        okText={reviewDialog.decision === 'APPROVE' ? '确认通过' : '确认打回'}
+        cancelText="取消"
+        okButtonProps={{
+          disabled:
+            Boolean(pending) ||
+            // 打回必须写原因；通过但在没有产物时也要写明交付物位置
+            ((reviewDialog.decision === 'REJECT' ||
+              !reviewDialog.item?.hasArtifacts) &&
+              !reviewDialog.note.trim()),
+        }}
+        onOk={submitReviewDialog}
+        onCancel={() =>
+          setReviewDialog({
+            open: false,
+            item: null,
+            decision: 'REJECT',
+            note: '',
+          })
+        }
+        destroyOnHidden
+      >
+        <p className="action-dialog-hint">
+          {reviewDialog.decision === 'APPROVE'
+            ? '这次执行没有登记任何产物，请写明交付物在哪里（例如 git 改动或具体文件）。'
+            : '打回需要说明原因，任务会回到待派发。'}
+        </p>
+        <Input.TextArea
+          value={reviewDialog.note}
+          onChange={(event) =>
+            setReviewDialog((state) => ({ ...state, note: event.target.value }))
+          }
+          rows={3}
+          placeholder={
+            reviewDialog.decision === 'APPROVE' ? '交付物位置说明' : '打回原因'
+          }
+        />
+      </Modal>
+
       {model.taskLimitReached && (
         <p role="status">
           仅显示最近 100 条待处理任务，其余任务请到任务看板查看。
@@ -125,21 +365,24 @@ function ActionCenter({
                 </div>
                 <div className="action-card-side">
                   <span>{item.meta}</span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      item.action === 'refresh'
-                        ? onRefresh()
-                        : onNavigate(
-                            item.action,
-                            item.taskId
-                              ? { taskId: item.taskId, section: item.section }
-                              : null
-                          )
-                    }
-                  >
-                    {item.actionLabel}
-                  </button>
+                  <div className="action-card-buttons">
+                    {renderInlineActions(item)}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        item.action === 'refresh'
+                          ? onRefresh()
+                          : onNavigate(
+                              item.action,
+                              item.taskId
+                                ? { taskId: item.taskId, section: item.section }
+                                : null
+                            )
+                      }
+                    >
+                      {item.actionLabel}
+                    </button>
+                  </div>
                 </div>
               </article>
             )

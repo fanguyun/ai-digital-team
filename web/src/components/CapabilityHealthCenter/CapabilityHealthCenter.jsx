@@ -24,6 +24,8 @@ import {
 
 import { useMutation, useQuery } from '@cedarjs/web'
 
+import KnowledgeSettings from 'src/components/KnowledgeSettings/KnowledgeSettings'
+
 const CAPABILITY_FIX_PLAN = gql`
   mutation CapabilityFixPlan($agentSlug: String!) {
     capabilityFixPlan(agentSlug: $agentSlug) {
@@ -301,6 +303,8 @@ const CapabilityHealthCenter = ({ onOpenSidebar }) => {
           detail={updateCount > 0 ? '可前往插件市场逐项确认更新' : ''}
         />
       </div>
+
+      <KnowledgeSettings />
 
       <div className="capability-toolbar">
         <Segmented

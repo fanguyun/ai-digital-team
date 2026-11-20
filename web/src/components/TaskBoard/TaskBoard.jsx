@@ -17,11 +17,15 @@ import {
   Select,
   Tabs,
   Tag,
+  Tree,
   notification,
 } from 'antd'
 import {
   Bell,
   BellOff,
+  FileCode2,
+  FileText,
+  Folder,
   Menu,
   Play,
   Plus,
@@ -33,6 +37,12 @@ import {
 
 import { useMutation, useQuery } from '@cedarjs/web'
 
+import CodePreview from 'src/components/CodePreview/CodePreview'
+import {
+  buildArtifactTree,
+  isMarkdownPath,
+  languageForPath,
+} from 'src/components/CodePreview/artifactTree'
 import MarkdownDocument from 'src/components/MarkdownDocument/MarkdownDocument'
 import MarkdownEditor from 'src/components/MarkdownEditor/MarkdownEditor'
 
@@ -54,6 +64,7 @@ const TASKS_QUERY = gql`
       priority
       status
       readOnly
+      useKnowledge
       mode
       planPath
       planNote
@@ -108,6 +119,7 @@ const TASK_BY_ID = gql`
       priority
       status
       readOnly
+      useKnowledge
       mode
       planPath
       planNote
@@ -174,8 +186,8 @@ const UPDATE_TASK = gql`
 `
 
 const DISPATCH_TASK = gql`
-  mutation DispatchTask($id: ID!, $tool: String) {
-    dispatchTask(id: $id, tool: $tool) {
+  mutation DispatchTask($id: ID!, $tool: String, $note: String) {
+    dispatchTask(id: $id, tool: $tool, note: $note) {
       id
       status
     }
@@ -226,6 +238,30 @@ const rangeForTab = (tab, customRange) => {
     }
   }
   return {}
+}
+
+const DISPATCH_TOOLS = [
+  { value: 'codex', label: 'Codex' },
+  { value: 'deepseek-harness', label: 'DeepSeek Harness' },
+]
+
+const DISPATCH_TOOL_STORAGE_KEY = 'pdt.taskDispatch.tool'
+
+const readStoredTool = () => {
+  try {
+    const saved = window.localStorage.getItem(DISPATCH_TOOL_STORAGE_KEY)
+    return DISPATCH_TOOLS.some((tool) => tool.value === saved) ? saved : 'codex'
+  } catch {
+    return 'codex'
+  }
+}
+
+const storeTool = (value) => {
+  try {
+    window.localStorage.setItem(DISPATCH_TOOL_STORAGE_KEY, value)
+  } catch {
+    // 隐私模式下写不进去就算了
+  }
 }
 
 const REFRESH_TASK = gql`
@@ -481,7 +517,14 @@ const TaskBoard = ({
   const [openId, setOpenId] = useState(null)
   const [openSection, setOpenSection] = useState('brief')
   const [approving, setApproving] = useState(false)
-  const [dispatchTool, setDispatchTool] = useState('codex')
+  const [dispatchTool, setDispatchTool] = useState(readStoredTool)
+  const selectDispatchTool = (value) => {
+    setDispatchTool(value)
+    storeTool(value)
+  }
+  const dispatchToolLabel =
+    DISPATCH_TOOLS.find((tool) => tool.value === dispatchTool)?.label ||
+    dispatchTool
   const {
     data: targetData,
     error: targetError,
@@ -649,7 +692,7 @@ const TaskBoard = ({
       })
       setNotice({
         type: 'success',
-        message: '批量派发已完成；请查看任务状态。',
+        message: `批量派发已完成（${dispatchToolLabel}）；请查看任务状态。`,
       })
       setSelectedIds([])
       await refreshTasks()
@@ -667,6 +710,7 @@ const TaskBoard = ({
       agentSlug,
       priority: 'P1',
       readOnly: false,
+      useKnowledge: true,
       mode: 'auto',
     })
     setModalOpen(true)
@@ -692,6 +736,7 @@ const TaskBoard = ({
       agentSlug: task.agentSlug,
       priority: task.priority,
       readOnly: task.readOnly,
+      useKnowledge: task.useKnowledge !== false,
       mode: task.mode,
     })
     setModalOpen(true)
@@ -776,11 +821,37 @@ const TaskBoard = ({
 
   const run = async (task) => {
     setNotice(null)
+    // 待验收/失败的任务再次执行＝按新要求重做：直接进抽屉，在那里写修改要求
+    if (['AWAITING_REVIEW', 'FAILED'].includes(task.status)) {
+      setOpenId(task.id)
+      return
+    }
     if (task.mode === 'plan' && !(await confirmPlanSave())) return
     if (!(await confirmPrecheck(task))) return
     try {
       await dispatchTask({ variables: { id: task.id, tool: dispatchTool } })
-      setNotice({ type: 'success', message: `已派发「${task.title}」` })
+      setNotice({
+        type: 'success',
+        message: `已派发「${task.title}」到 ${dispatchToolLabel}`,
+      })
+      await refreshTasks()
+    } catch (dispatchError) {
+      setNotice({ type: 'error', message: dispatchError.message })
+    }
+  }
+
+  // 抽屉里的「确认重新派发」：带上本轮修改要求再次执行
+  const redispatch = async (task, note) => {
+    setNotice(null)
+    if (!(await confirmPrecheck(task))) return
+    try {
+      await dispatchTask({
+        variables: { id: task.id, tool: dispatchTool, note },
+      })
+      setNotice({
+        type: 'success',
+        message: `已按新要求重新派发「${task.title}」到 ${dispatchToolLabel}`,
+      })
       await refreshTasks()
     } catch (dispatchError) {
       setNotice({ type: 'error', message: dispatchError.message })
@@ -855,15 +926,16 @@ const TaskBoard = ({
           <p>布置任务、派发给本地 agent 执行，跑完在这里验收。</p>
         </div>
         <Flex gap={8} style={{ marginLeft: 'auto' }} align="center">
-          <Select
-            aria-label="派发平台"
-            value={dispatchTool}
-            onChange={setDispatchTool}
-            options={[
-              { value: 'codex', label: 'Codex' },
-              { value: 'deepseek-harness', label: 'DeepSeek Harness' },
-            ]}
-          />
+          <label className="task-dispatch-tool">
+            <span>派发到</span>
+            <Select
+              aria-label="派发平台"
+              value={dispatchTool}
+              onChange={selectDispatchTool}
+              style={{ minWidth: 150 }}
+              options={DISPATCH_TOOLS}
+            />
+          </label>
           <Select
             allowClear
             placeholder="全部岗位"
@@ -1027,7 +1099,7 @@ const TaskBoard = ({
                           icon={<Play size={13} />}
                           onClick={() => run(task)}
                         >
-                          派发
+                          {task.status === 'DRAFT' ? '派发' : '重新派发'}
                         </Button>
                       )}
                       {['DISPATCHED', 'RUNNING', 'QUEUED'].includes(
@@ -1035,7 +1107,7 @@ const TaskBoard = ({
                       ) && (
                         <Button
                           size="small"
-                          type="text"
+                          icon={<RotateCcw size={13} />}
                           loading={refreshingState}
                           onClick={() => refreshState(task)}
                         >
@@ -1051,12 +1123,7 @@ const TaskBoard = ({
                           cancelText="返回"
                           onConfirm={() => cancel(task)}
                         >
-                          <Button
-                            size="small"
-                            danger
-                            type="text"
-                            icon={<X size={13} />}
-                          >
+                          <Button size="small" danger icon={<X size={13} />}>
                             取消
                           </Button>
                         </Popconfirm>
@@ -1076,6 +1143,7 @@ const TaskBoard = ({
                       {task.status === 'AWAITING_REVIEW' && (
                         <Button
                           size="small"
+                          type="primary"
                           onClick={() => {
                             if (!task.artifacts.length) {
                               setOpenId(task.id)
@@ -1119,6 +1187,7 @@ const TaskBoard = ({
             approving={approving}
             onEdit={() => openEdit(current)}
             onDispatch={() => run(current)}
+            onRedispatch={(note) => redispatch(current, note)}
             onCancel={() => cancel(current)}
             onApprove={(tool) => approvePlan(current, tool)}
             onReview={review}
@@ -1255,6 +1324,19 @@ const TaskBoard = ({
                 ]}
               />
             </Form.Item>
+            <Form.Item
+              name="useKnowledge"
+              label="外部知识库"
+              style={{ flex: 1, minWidth: 0 }}
+              extra="开启且可用时带知识片段；未配置或不可用时自动忽略"
+            >
+              <Select
+                options={[
+                  { label: '使用', value: true },
+                  { label: '不使用', value: false },
+                ]}
+              />
+            </Form.Item>
           </Flex>
         </Form>
       </Drawer>
@@ -1311,10 +1393,61 @@ const TaskBoard = ({
   )
 }
 
+const artifactSourceLabel = (source) =>
+  source === 'git' ? 'git 改动' : source === 'manual' ? '手动' : '声明'
+
+/** 产物树：目录只显示名字，文件行带类型、来源与操作 */
+const decorateArtifactNode = (node, handlers) => ({
+  key: node.key,
+  selectable: false,
+  isLeaf: node.isLeaf,
+  title: node.isLeaf ? (
+    <span className="task-artifact-node">
+      <span className="task-artifact-icon">
+        {node.artifact.kind === 'report' ? (
+          <FileText size={13} />
+        ) : (
+          <FileCode2 size={13} />
+        )}
+      </span>
+      <span className="task-artifact-kind">{node.artifact.kind}</span>
+      <span className="task-artifact-source">
+        {artifactSourceLabel(node.artifact.source)}
+      </span>
+      <span className="task-artifact-label">{node.artifact.label}</span>
+      <code>{node.artifact.path}</code>
+      <Flex gap={4}>
+        <Button size="small" onClick={() => handlers.onOpen(node.artifact)}>
+          打开
+        </Button>
+        <Popconfirm
+          title="删除这条产物？"
+          okText="删除"
+          cancelText="取消"
+          onConfirm={() => handlers.onRemove(node.artifact)}
+        >
+          <Button size="small" danger type="text">
+            删除
+          </Button>
+        </Popconfirm>
+      </Flex>
+    </span>
+  ) : (
+    <span className="task-artifact-dir">
+      <Folder size={13} />
+      {node.title}
+    </span>
+  ),
+  children: node.children?.map((child) =>
+    decorateArtifactNode(child, handlers)
+  ),
+})
+
 const TaskDetail = ({
   task,
   onEdit,
   onDispatch,
+  onRedispatch,
   onCancel,
   onApprove,
   onReview,
@@ -1331,6 +1464,11 @@ const TaskDetail = ({
         : 'brief'
   )
   const latestPlatform = task.runs[0]?.platform || 'codex'
+  const [reworkNote, setReworkNote] = useState(task.reviewNote || '')
+  const [redispatching, setRedispatching] = useState(false)
+  useEffect(() => {
+    setReworkNote(task.reviewNote || '')
+  }, [task.id, task.reviewNote])
   const [planTool, setPlanTool] = useState(latestPlatform)
   useEffect(() => {
     setPlanTool(latestPlatform)
@@ -1402,6 +1540,7 @@ const TaskDetail = ({
         <Tag>{task.priority}</Tag>
         <Tag>{STATUS_LABELS[task.status] || task.status}</Tag>
         {task.readOnly && <Tag>只读</Tag>}
+        {task.useKnowledge === false && <Tag>不检索知识库</Tag>}
         <Tag>{task.runs.length} 次执行</Tag>
       </Flex>
 
@@ -1565,47 +1704,31 @@ const TaskDetail = ({
           {!task.artifacts.length && (
             <p className="task-board-empty">还没有产物。</p>
           )}
-          {task.artifacts.map((item) => (
-            <div className="task-artifact" key={item.id}>
-              <span className="task-artifact-kind">{item.kind}</span>
-              <span className="task-artifact-source">
-                {item.source === 'git'
-                  ? 'git 改动'
-                  : item.source === 'manual'
-                    ? '手动'
-                    : '声明'}
-              </span>
-              <span className="task-artifact-label">{item.label}</span>
-              <code>{item.path}</code>
-              <Flex gap={4}>
-                <Button size="small" onClick={() => openArtifact(item)}>
-                  打开
-                </Button>
-                <Popconfirm
-                  title="删除这条产物？"
-                  okText="删除"
-                  cancelText="取消"
-                  onConfirm={async () => {
+          {task.artifacts.length > 0 && (
+            <Tree
+              className="task-artifact-tree"
+              blockNode
+              showLine={{ showLeafIcon: false }}
+              defaultExpandAll
+              selectable={false}
+              treeData={buildArtifactTree(task.artifacts).map((node) =>
+                decorateArtifactNode(node, {
+                  onOpen: openArtifact,
+                  onRemove: async (item) => {
                     await removeArtifact({ variables: { id: item.id } })
                     await onChanged()
-                  }}
-                >
-                  <Button size="small" danger type="text">
-                    删除
-                  </Button>
-                </Popconfirm>
-              </Flex>
-            </div>
-          ))}
+                  },
+                })
+              )}
+            />
+          )}
         </div>
       )}
 
       <div className="task-detail-actions">
-        {['DRAFT', 'FAILED', 'AWAITING_REVIEW', 'CANCELLED'].includes(
-          task.status
-        ) && (
+        {['DRAFT', 'CANCELLED'].includes(task.status) && (
           <Button type="primary" icon={<Play size={14} />} onClick={onDispatch}>
-            {task.status === 'AWAITING_REVIEW' ? '打回重跑' : '派发执行'}
+            派发执行
           </Button>
         )}
         {['DISPATCHED', 'RUNNING'].includes(task.status) && (
@@ -1618,8 +1741,42 @@ const TaskDetail = ({
         </Button>
       </div>
 
+      {['AWAITING_REVIEW', 'FAILED'].includes(task.status) && (
+        <div className="task-redispatch">
+          <h4>重新派发</h4>
+          <p className="task-board-hint">
+            写清这次要改什么：会并入执行提示词，作为本轮依据，并记入任务结论；留空则沿用原有需求。
+          </p>
+          <Input.TextArea
+            aria-label="本轮修改要求"
+            value={reworkNote}
+            onChange={(event) => setReworkNote(event.target.value)}
+            rows={3}
+            placeholder="本轮修改要求（可留空沿用原需求）"
+          />
+          <div className="task-redispatch-actions">
+            <Button
+              type="primary"
+              icon={<Play size={14} />}
+              loading={redispatching}
+              onClick={async () => {
+                setRedispatching(true)
+                try {
+                  await onRedispatch?.(reworkNote)
+                } finally {
+                  setRedispatching(false)
+                }
+              }}
+            >
+              确认重新派发
+            </Button>
+          </div>
+        </div>
+      )}
+
       {task.status === 'AWAITING_REVIEW' && (
         <div className="task-review">
+          <h4>验收任务</h4>
           {!task.artifacts.length && (
             <p className="task-board-empty">
               这次执行没有登记任何产物；验收标准要求的交付物如果不在产物里，请在结论中说明它在哪里。
@@ -1742,12 +1899,19 @@ const TaskDetail = ({
         open={Boolean(artifact)}
         onCancel={() => setArtifact(null)}
         footer={null}
-        width={880}
+        className="artifact-preview-modal"
+        width="min(1180px, 94vw)"
+        style={{ top: 28 }}
         title={artifact?.label}
         destroyOnHidden
       >
-        {artifact?.kind === 'report' ? (
+        {artifact?.kind === 'report' || isMarkdownPath(artifact?.path) ? (
           <MarkdownDocument content={data?.taskArtifactContent || ''} />
+        ) : languageForPath(artifact?.path) ? (
+          <CodePreview
+            content={data?.taskArtifactContent || ''}
+            language={languageForPath(artifact?.path)}
+          />
         ) : (
           <pre className="md-source">
             {data?.taskArtifactContent || '读取中…'}

@@ -24,6 +24,7 @@ export type TaskPromptInput = {
   reviewNote?: string | null
   previousSummary?: string | null
   previousArtifacts?: string[]
+  knowledge?: string
 }
 
 /**
@@ -42,6 +43,7 @@ export const buildTaskPrompt = ({
   reviewNote,
   previousSummary,
   previousArtifacts = [],
+  knowledge,
 }: TaskPromptInput) => {
   const lines = [
     `My request: ${title}`,
@@ -121,8 +123,17 @@ export const buildTaskPrompt = ({
     '3. 若被阻塞或需要人工确认，明确写出「待确认：<问题>」。'
   )
 
+  if (knowledge) lines.push('', '## 本轮外部知识参考', knowledge)
   return lines.join('\n')
 }
+
+/** 思源凭证只能留在 NAS；新检索配置不继承到执行子进程。 */
+export const taskAgentEnv = (env: NodeJS.ProcessEnv = process.env) =>
+  Object.fromEntries(
+    Object.entries(env).filter(
+      ([key]) => !/^(KNOWLEDGE_|SIYUAN_|RAG_BRIDGE_)/i.test(key)
+    )
+  )
 
 export const buildTaskCommand = ({
   tool,
@@ -221,7 +232,7 @@ export const spawnTaskAgent = ({
       cwd: projectRoot,
       detached: true,
       stdio: ['ignore', logHandle, logHandle],
-      env: process.env,
+      env: taskAgentEnv(),
     })
   } finally {
     closeSync(logHandle)

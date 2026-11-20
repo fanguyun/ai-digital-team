@@ -1,6 +1,6 @@
 import { Prisma } from "src/lib/db"
 import { MergePrismaWithSdlTypes, MakeRelationsOptional } from '@cedarjs/api'
-import { TaskRun as PrismaTaskRun, User as PrismaUser, AuthSession as PrismaAuthSession, TaskEvent as PrismaTaskEvent, RemoteApp as PrismaRemoteApp, RoleEvaluation as PrismaRoleEvaluation, Task as PrismaTask, TaskArtifact as PrismaTaskArtifact, TaskImage as PrismaTaskImage, TaskTemplate as PrismaTaskTemplate } from 'src/lib/db'
+import { TaskRun as PrismaTaskRun, RagKnowledgeConfig as PrismaRagKnowledgeConfig, User as PrismaUser, AuthSession as PrismaAuthSession, TaskEvent as PrismaTaskEvent, RemoteApp as PrismaRemoteApp, RoleEvaluation as PrismaRoleEvaluation, Task as PrismaTask, TaskArtifact as PrismaTaskArtifact, TaskImage as PrismaTaskImage, TaskTemplate as PrismaTaskTemplate } from 'src/lib/db'
 import { GraphQLResolveInfo, GraphQLScalarType, GraphQLScalarTypeConfig } from 'graphql';
 import { CedarGraphQLContext } from '@cedarjs/graphql-server/dist/types';
 export type Maybe<T> = T | null;
@@ -240,6 +240,7 @@ export type CreateTaskInput = {
   priority?: InputMaybe<Scalars['String']['input']>;
   readOnly?: InputMaybe<Scalars['Boolean']['input']>;
   title: Scalars['String']['input'];
+  useKnowledge?: InputMaybe<Scalars['Boolean']['input']>;
 };
 
 export type CreateTaskRunInput = {
@@ -311,6 +312,7 @@ export type Mutation = {
   cancelTask: Task;
   capabilityApplyFixes: CapabilityApplyResult;
   capabilityFixPlan: CapabilityFixPlan;
+  clearRagKnowledgeSource: RagKnowledgeSource;
   createRemoteApp: RemoteApp;
   createTask: Task;
   createTaskRun: TaskRun;
@@ -318,6 +320,7 @@ export type Mutation = {
   deleteRemoteApp: RemoteApp;
   deleteTaskTemplate: TaskTemplate;
   dispatchRoleEvaluation: RoleEvaluationDispatch;
+  /** note：重新派发时的修改要求，会并入提示词并记入任务结论 */
   dispatchTask: Task;
   dispatchTasks: Array<Task>;
   executeTaskPlan: Task;
@@ -328,7 +331,10 @@ export type Mutation = {
   removeTaskArtifact: Task;
   reviewTask: Task;
   reviseTaskPlan: Task;
+  saveRagKnowledgeSource: RagKnowledgeSource;
   sendRoleEvaluationMessage: RoleEvaluation;
+  /** ad-hoc 令牌仅用于尚未保存的新令牌；地址固定取已保存配置 */
+  testRagKnowledgeSource: RagKnowledgeTest;
   updateInstalledSkill: UpdateInstalledSkillResult;
   updateRemoteApp: RemoteApp;
   updateTask: Task;
@@ -401,6 +407,7 @@ export type MutationdispatchRoleEvaluationArgs = {
 
 export type MutationdispatchTaskArgs = {
   id: Scalars['ID']['input'];
+  note?: InputMaybe<Scalars['String']['input']>;
   tool?: InputMaybe<Scalars['String']['input']>;
 };
 
@@ -447,9 +454,19 @@ export type MutationreviseTaskPlanArgs = {
 };
 
 
+export type MutationsaveRagKnowledgeSourceArgs = {
+  input: RagKnowledgeSourceInput;
+};
+
+
 export type MutationsendRoleEvaluationMessageArgs = {
   id: Scalars['ID']['input'];
   message: Scalars['String']['input'];
+};
+
+
+export type MutationtestRagKnowledgeSourceArgs = {
+  token?: InputMaybe<Scalars['String']['input']>;
 };
 
 
@@ -487,6 +504,7 @@ export type Query = {
   /** Fetches the Cedar root schema. */
   cedar?: Maybe<Cedar>;
   installedSkills: Array<InstalledSkill>;
+  ragKnowledgeSource: RagKnowledgeSource;
   /**
    * Fetches the Cedar root schema.
    * @deprecated Use 'cedar' instead.
@@ -499,6 +517,7 @@ export type Query = {
   roleEvaluationTools: Array<RoleEvaluationTool>;
   roleEvaluations: Array<RoleEvaluation>;
   runtimeHealth: RuntimeHealth;
+  siyuanNotebooks: SiYuanNotebookList;
   task?: Maybe<Task>;
   taskArtifactContent: Scalars['String']['output'];
   taskImageDataUrl: Scalars['String']['output'];
@@ -628,6 +647,62 @@ export type QueryteamWeeklyReportArgs = {
   range: RuntimeTimeRange;
 };
 
+export type RagKnowledgeAgent = {
+  __typename?: 'RagKnowledgeAgent';
+  name: Scalars['String']['output'];
+  slug: Scalars['String']['output'];
+};
+
+export type RagKnowledgeCheck = {
+  __typename?: 'RagKnowledgeCheck';
+  detail?: Maybe<Scalars['String']['output']>;
+  latencyMs?: Maybe<Scalars['Int']['output']>;
+  name: Scalars['String']['output'];
+  ok: Scalars['Boolean']['output'];
+};
+
+export type RagKnowledgeSource = {
+  __typename?: 'RagKnowledgeSource';
+  agentSlugs: Array<Scalars['String']['output']>;
+  availableAgents: Array<RagKnowledgeAgent>;
+  baseUrl: Scalars['String']['output'];
+  /** 生效来源：database / env / none */
+  configSource: Scalars['String']['output'];
+  enabled: Scalars['Boolean']['output'];
+  hasToken: Scalars['Boolean']['output'];
+  lastTest?: Maybe<RagKnowledgeTest>;
+  mode: Scalars['String']['output'];
+  /** 直连模式下的思源笔记本白名单（box id），空表示不限制 */
+  notebooks: Array<Scalars['String']['output']>;
+  pathPrefixes: Array<Scalars['String']['output']>;
+  /** bridge = 自建检索桥；siyuan = 直连思源 API */
+  provider: Scalars['String']['output'];
+  timeoutMs: Scalars['Int']['output'];
+  tokenHint?: Maybe<Scalars['String']['output']>;
+  updatedAt?: Maybe<Scalars['DateTime']['output']>;
+};
+
+export type RagKnowledgeSourceInput = {
+  agentSlugs?: InputMaybe<Array<Scalars['String']['input']>>;
+  baseUrl?: InputMaybe<Scalars['String']['input']>;
+  enabled?: InputMaybe<Scalars['Boolean']['input']>;
+  mode?: InputMaybe<Scalars['String']['input']>;
+  notebooks?: InputMaybe<Array<Scalars['String']['input']>>;
+  pathPrefixes?: InputMaybe<Array<Scalars['String']['input']>>;
+  provider?: InputMaybe<Scalars['String']['input']>;
+  timeoutMs?: InputMaybe<Scalars['Int']['input']>;
+  /** 不传=保持原令牌；空字符串=清除；其它=新令牌 */
+  token?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type RagKnowledgeTest = {
+  __typename?: 'RagKnowledgeTest';
+  at?: Maybe<Scalars['DateTime']['output']>;
+  checks: Array<RagKnowledgeCheck>;
+  latencyMs?: Maybe<Scalars['Int']['output']>;
+  ok: Scalars['Boolean']['output'];
+};
+
 export type Redwood = {
   __typename?: 'Redwood';
   /**
@@ -733,6 +808,20 @@ export type RuntimeTimeRange = {
   to?: InputMaybe<Scalars['DateTime']['input']>;
 };
 
+export type SiYuanNotebook = {
+  __typename?: 'SiYuanNotebook';
+  closed: Scalars['Boolean']['output'];
+  id: Scalars['String']['output'];
+  name: Scalars['String']['output'];
+};
+
+export type SiYuanNotebookList = {
+  __typename?: 'SiYuanNotebookList';
+  error?: Maybe<Scalars['String']['output']>;
+  notebooks: Array<SiYuanNotebook>;
+  ok: Scalars['Boolean']['output'];
+};
+
 export type Subscription = {
   __typename?: 'Subscription';
   taskRunChanged: TaskRun;
@@ -765,6 +854,8 @@ export type Task = {
   status: Scalars['String']['output'];
   title: Scalars['String']['output'];
   updatedAt: Scalars['DateTime']['output'];
+  /** 派发时是否检索外部知识库 */
+  useKnowledge: Scalars['Boolean']['output'];
 };
 
 export type TaskArtifact = {
@@ -1014,6 +1105,7 @@ export type UpdateTaskInput = {
   priority?: InputMaybe<Scalars['String']['input']>;
   readOnly?: InputMaybe<Scalars['Boolean']['input']>;
   title?: InputMaybe<Scalars['String']['input']>;
+  useKnowledge?: InputMaybe<Scalars['Boolean']['input']>;
 };
 
 export type UpdateTaskTemplateInput = {
@@ -1160,6 +1252,11 @@ export type ResolversTypes = {
   JSONObject: ResolverTypeWrapper<Scalars['JSONObject']['output']>;
   Mutation: ResolverTypeWrapper<Record<PropertyKey, never>>;
   Query: ResolverTypeWrapper<Record<PropertyKey, never>>;
+  RagKnowledgeAgent: ResolverTypeWrapper<RagKnowledgeAgent>;
+  RagKnowledgeCheck: ResolverTypeWrapper<RagKnowledgeCheck>;
+  RagKnowledgeSource: ResolverTypeWrapper<RagKnowledgeSource>;
+  RagKnowledgeSourceInput: RagKnowledgeSourceInput;
+  RagKnowledgeTest: ResolverTypeWrapper<RagKnowledgeTest>;
   Redwood: ResolverTypeWrapper<Redwood>;
   RemoteApp: ResolverTypeWrapper<MergePrismaWithSdlTypes<PrismaRemoteApp, MakeRelationsOptional<RemoteApp, AllMappedModels>, AllMappedModels>>;
   RoleEvaluation: ResolverTypeWrapper<MergePrismaWithSdlTypes<PrismaRoleEvaluation, MakeRelationsOptional<RoleEvaluation, AllMappedModels>, AllMappedModels>>;
@@ -1170,6 +1267,8 @@ export type ResolversTypes = {
   RuntimeHealth: ResolverTypeWrapper<RuntimeHealth>;
   RuntimeMetricCoverage: RuntimeMetricCoverage;
   RuntimeTimeRange: RuntimeTimeRange;
+  SiYuanNotebook: ResolverTypeWrapper<SiYuanNotebook>;
+  SiYuanNotebookList: ResolverTypeWrapper<SiYuanNotebookList>;
   String: ResolverTypeWrapper<Scalars['String']['output']>;
   Subscription: ResolverTypeWrapper<Record<PropertyKey, never>>;
   Task: ResolverTypeWrapper<MergePrismaWithSdlTypes<PrismaTask, MakeRelationsOptional<Task, AllMappedModels>, AllMappedModels>>;
@@ -1245,6 +1344,11 @@ export type ResolversParentTypes = {
   JSONObject: Scalars['JSONObject']['output'];
   Mutation: Record<PropertyKey, never>;
   Query: Record<PropertyKey, never>;
+  RagKnowledgeAgent: RagKnowledgeAgent;
+  RagKnowledgeCheck: RagKnowledgeCheck;
+  RagKnowledgeSource: RagKnowledgeSource;
+  RagKnowledgeSourceInput: RagKnowledgeSourceInput;
+  RagKnowledgeTest: RagKnowledgeTest;
   Redwood: Redwood;
   RemoteApp: MergePrismaWithSdlTypes<PrismaRemoteApp, MakeRelationsOptional<RemoteApp, AllMappedModels>, AllMappedModels>;
   RoleEvaluation: MergePrismaWithSdlTypes<PrismaRoleEvaluation, MakeRelationsOptional<RoleEvaluation, AllMappedModels>, AllMappedModels>;
@@ -1254,6 +1358,8 @@ export type ResolversParentTypes = {
   RuntimeComponentHealth: RuntimeComponentHealth;
   RuntimeHealth: RuntimeHealth;
   RuntimeTimeRange: RuntimeTimeRange;
+  SiYuanNotebook: SiYuanNotebook;
+  SiYuanNotebookList: SiYuanNotebookList;
   String: Scalars['String']['output'];
   Subscription: Record<PropertyKey, never>;
   Task: MergePrismaWithSdlTypes<PrismaTask, MakeRelationsOptional<Task, AllMappedModels>, AllMappedModels>;
@@ -1672,6 +1778,7 @@ export type MutationResolvers<ContextType = CedarGraphQLContext, ParentType exte
   cancelTask?: Resolver<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationcancelTaskArgs, 'id'>>;
   capabilityApplyFixes?: Resolver<ResolversTypes['CapabilityApplyResult'], ParentType, ContextType, RequireFields<MutationcapabilityApplyFixesArgs, 'agentSlug'>>;
   capabilityFixPlan?: Resolver<ResolversTypes['CapabilityFixPlan'], ParentType, ContextType, RequireFields<MutationcapabilityFixPlanArgs, 'agentSlug'>>;
+  clearRagKnowledgeSource?: OptArgsResolverFn<ResolversTypes['RagKnowledgeSource'], ParentType, ContextType>;
   createRemoteApp?: Resolver<ResolversTypes['RemoteApp'], ParentType, ContextType, RequireFields<MutationcreateRemoteAppArgs, 'input'>>;
   createTask?: Resolver<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationcreateTaskArgs, 'input'>>;
   createTaskRun?: Resolver<ResolversTypes['TaskRun'], ParentType, ContextType, RequireFields<MutationcreateTaskRunArgs, 'input'>>;
@@ -1687,7 +1794,9 @@ export type MutationResolvers<ContextType = CedarGraphQLContext, ParentType exte
   removeTaskArtifact?: Resolver<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationremoveTaskArtifactArgs, 'id'>>;
   reviewTask?: Resolver<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationreviewTaskArgs, 'decision' | 'id'>>;
   reviseTaskPlan?: Resolver<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationreviseTaskPlanArgs, 'id' | 'note'>>;
+  saveRagKnowledgeSource?: Resolver<ResolversTypes['RagKnowledgeSource'], ParentType, ContextType, RequireFields<MutationsaveRagKnowledgeSourceArgs, 'input'>>;
   sendRoleEvaluationMessage?: Resolver<ResolversTypes['RoleEvaluation'], ParentType, ContextType, RequireFields<MutationsendRoleEvaluationMessageArgs, 'id' | 'message'>>;
+  testRagKnowledgeSource?: Resolver<ResolversTypes['RagKnowledgeTest'], ParentType, ContextType, Partial<MutationtestRagKnowledgeSourceArgs>>;
   updateInstalledSkill?: Resolver<ResolversTypes['UpdateInstalledSkillResult'], ParentType, ContextType, RequireFields<MutationupdateInstalledSkillArgs, 'id'>>;
   updateRemoteApp?: Resolver<ResolversTypes['RemoteApp'], ParentType, ContextType, RequireFields<MutationupdateRemoteAppArgs, 'id' | 'input'>>;
   updateTask?: Resolver<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationupdateTaskArgs, 'id' | 'input'>>;
@@ -1701,6 +1810,7 @@ export type MutationRelationResolvers<ContextType = CedarGraphQLContext, ParentT
   cancelTask?: RequiredResolverFn<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationcancelTaskArgs, 'id'>>;
   capabilityApplyFixes?: RequiredResolverFn<ResolversTypes['CapabilityApplyResult'], ParentType, ContextType, RequireFields<MutationcapabilityApplyFixesArgs, 'agentSlug'>>;
   capabilityFixPlan?: RequiredResolverFn<ResolversTypes['CapabilityFixPlan'], ParentType, ContextType, RequireFields<MutationcapabilityFixPlanArgs, 'agentSlug'>>;
+  clearRagKnowledgeSource?: RequiredResolverFn<ResolversTypes['RagKnowledgeSource'], ParentType, ContextType>;
   createRemoteApp?: RequiredResolverFn<ResolversTypes['RemoteApp'], ParentType, ContextType, RequireFields<MutationcreateRemoteAppArgs, 'input'>>;
   createTask?: RequiredResolverFn<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationcreateTaskArgs, 'input'>>;
   createTaskRun?: RequiredResolverFn<ResolversTypes['TaskRun'], ParentType, ContextType, RequireFields<MutationcreateTaskRunArgs, 'input'>>;
@@ -1716,7 +1826,9 @@ export type MutationRelationResolvers<ContextType = CedarGraphQLContext, ParentT
   removeTaskArtifact?: RequiredResolverFn<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationremoveTaskArtifactArgs, 'id'>>;
   reviewTask?: RequiredResolverFn<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationreviewTaskArgs, 'decision' | 'id'>>;
   reviseTaskPlan?: RequiredResolverFn<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationreviseTaskPlanArgs, 'id' | 'note'>>;
+  saveRagKnowledgeSource?: RequiredResolverFn<ResolversTypes['RagKnowledgeSource'], ParentType, ContextType, RequireFields<MutationsaveRagKnowledgeSourceArgs, 'input'>>;
   sendRoleEvaluationMessage?: RequiredResolverFn<ResolversTypes['RoleEvaluation'], ParentType, ContextType, RequireFields<MutationsendRoleEvaluationMessageArgs, 'id' | 'message'>>;
+  testRagKnowledgeSource?: RequiredResolverFn<ResolversTypes['RagKnowledgeTest'], ParentType, ContextType, Partial<MutationtestRagKnowledgeSourceArgs>>;
   updateInstalledSkill?: RequiredResolverFn<ResolversTypes['UpdateInstalledSkillResult'], ParentType, ContextType, RequireFields<MutationupdateInstalledSkillArgs, 'id'>>;
   updateRemoteApp?: RequiredResolverFn<ResolversTypes['RemoteApp'], ParentType, ContextType, RequireFields<MutationupdateRemoteAppArgs, 'id' | 'input'>>;
   updateTask?: RequiredResolverFn<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationupdateTaskArgs, 'id' | 'input'>>;
@@ -1728,6 +1840,7 @@ export type QueryResolvers<ContextType = CedarGraphQLContext, ParentType extends
   capabilityHealth?: OptArgsResolverFn<ResolversTypes['CapabilityHealth'], ParentType, ContextType>;
   cedar?: OptArgsResolverFn<Maybe<ResolversTypes['Cedar']>, ParentType, ContextType>;
   installedSkills?: OptArgsResolverFn<Array<ResolversTypes['InstalledSkill']>, ParentType, ContextType>;
+  ragKnowledgeSource?: OptArgsResolverFn<ResolversTypes['RagKnowledgeSource'], ParentType, ContextType>;
   redwood?: OptArgsResolverFn<Maybe<ResolversTypes['Redwood']>, ParentType, ContextType>;
   remoteApp?: Resolver<Maybe<ResolversTypes['RemoteApp']>, ParentType, ContextType, RequireFields<QueryremoteAppArgs, 'id'>>;
   remoteApps?: OptArgsResolverFn<Array<ResolversTypes['RemoteApp']>, ParentType, ContextType>;
@@ -1736,6 +1849,7 @@ export type QueryResolvers<ContextType = CedarGraphQLContext, ParentType extends
   roleEvaluationTools?: OptArgsResolverFn<Array<ResolversTypes['RoleEvaluationTool']>, ParentType, ContextType>;
   roleEvaluations?: Resolver<Array<ResolversTypes['RoleEvaluation']>, ParentType, ContextType, Partial<QueryroleEvaluationsArgs>>;
   runtimeHealth?: OptArgsResolverFn<ResolversTypes['RuntimeHealth'], ParentType, ContextType>;
+  siyuanNotebooks?: OptArgsResolverFn<ResolversTypes['SiYuanNotebookList'], ParentType, ContextType>;
   task?: Resolver<Maybe<ResolversTypes['Task']>, ParentType, ContextType, RequireFields<QuerytaskArgs, 'id'>>;
   taskArtifactContent?: Resolver<ResolversTypes['String'], ParentType, ContextType, RequireFields<QuerytaskArtifactContentArgs, 'id'>>;
   taskImageDataUrl?: Resolver<ResolversTypes['String'], ParentType, ContextType, RequireFields<QuerytaskImageDataUrlArgs, 'id'>>;
@@ -1758,6 +1872,7 @@ export type QueryRelationResolvers<ContextType = CedarGraphQLContext, ParentType
   capabilityHealth?: RequiredResolverFn<ResolversTypes['CapabilityHealth'], ParentType, ContextType>;
   cedar?: RequiredResolverFn<Maybe<ResolversTypes['Cedar']>, ParentType, ContextType>;
   installedSkills?: RequiredResolverFn<Array<ResolversTypes['InstalledSkill']>, ParentType, ContextType>;
+  ragKnowledgeSource?: RequiredResolverFn<ResolversTypes['RagKnowledgeSource'], ParentType, ContextType>;
   redwood?: RequiredResolverFn<Maybe<ResolversTypes['Redwood']>, ParentType, ContextType>;
   remoteApp?: RequiredResolverFn<Maybe<ResolversTypes['RemoteApp']>, ParentType, ContextType, RequireFields<QueryremoteAppArgs, 'id'>>;
   remoteApps?: RequiredResolverFn<Array<ResolversTypes['RemoteApp']>, ParentType, ContextType>;
@@ -1766,6 +1881,7 @@ export type QueryRelationResolvers<ContextType = CedarGraphQLContext, ParentType
   roleEvaluationTools?: RequiredResolverFn<Array<ResolversTypes['RoleEvaluationTool']>, ParentType, ContextType>;
   roleEvaluations?: RequiredResolverFn<Array<ResolversTypes['RoleEvaluation']>, ParentType, ContextType, Partial<QueryroleEvaluationsArgs>>;
   runtimeHealth?: RequiredResolverFn<ResolversTypes['RuntimeHealth'], ParentType, ContextType>;
+  siyuanNotebooks?: RequiredResolverFn<ResolversTypes['SiYuanNotebookList'], ParentType, ContextType>;
   task?: RequiredResolverFn<Maybe<ResolversTypes['Task']>, ParentType, ContextType, RequireFields<QuerytaskArgs, 'id'>>;
   taskArtifactContent?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType, RequireFields<QuerytaskArtifactContentArgs, 'id'>>;
   taskImageDataUrl?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType, RequireFields<QuerytaskImageDataUrlArgs, 'id'>>;
@@ -1782,6 +1898,78 @@ export type QueryRelationResolvers<ContextType = CedarGraphQLContext, ParentType
   teamRuntimeOverview?: RequiredResolverFn<ResolversTypes['TeamRuntimeOverview'], ParentType, ContextType, Partial<QueryteamRuntimeOverviewArgs>>;
   teamWeeklyReport?: RequiredResolverFn<ResolversTypes['TeamWeeklyReport'], ParentType, ContextType, RequireFields<QueryteamWeeklyReportArgs, 'range'>>;
   workspaceStatus?: RequiredResolverFn<ResolversTypes['WorkspaceStatus'], ParentType, ContextType>;
+};
+
+export type RagKnowledgeAgentResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['RagKnowledgeAgent'] = ResolversParentTypes['RagKnowledgeAgent']> = {
+  name: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  slug: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+};
+
+export type RagKnowledgeAgentRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['RagKnowledgeAgent'] = ResolversParentTypes['RagKnowledgeAgent']> = {
+  name?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  slug?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+};
+
+export type RagKnowledgeCheckResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['RagKnowledgeCheck'] = ResolversParentTypes['RagKnowledgeCheck']> = {
+  detail: OptArgsResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  latencyMs: OptArgsResolverFn<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+  name: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  ok: OptArgsResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+};
+
+export type RagKnowledgeCheckRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['RagKnowledgeCheck'] = ResolversParentTypes['RagKnowledgeCheck']> = {
+  detail?: RequiredResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  latencyMs?: RequiredResolverFn<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+  name?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  ok?: RequiredResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+};
+
+export type RagKnowledgeSourceResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['RagKnowledgeSource'] = ResolversParentTypes['RagKnowledgeSource']> = {
+  agentSlugs: OptArgsResolverFn<Array<ResolversTypes['String']>, ParentType, ContextType>;
+  availableAgents: OptArgsResolverFn<Array<ResolversTypes['RagKnowledgeAgent']>, ParentType, ContextType>;
+  baseUrl: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  configSource: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  enabled: OptArgsResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  hasToken: OptArgsResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  lastTest: OptArgsResolverFn<Maybe<ResolversTypes['RagKnowledgeTest']>, ParentType, ContextType>;
+  mode: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  notebooks: OptArgsResolverFn<Array<ResolversTypes['String']>, ParentType, ContextType>;
+  pathPrefixes: OptArgsResolverFn<Array<ResolversTypes['String']>, ParentType, ContextType>;
+  provider: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  timeoutMs: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  tokenHint: OptArgsResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  updatedAt: OptArgsResolverFn<Maybe<ResolversTypes['DateTime']>, ParentType, ContextType>;
+};
+
+export type RagKnowledgeSourceRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['RagKnowledgeSource'] = ResolversParentTypes['RagKnowledgeSource']> = {
+  agentSlugs?: RequiredResolverFn<Array<ResolversTypes['String']>, ParentType, ContextType>;
+  availableAgents?: RequiredResolverFn<Array<ResolversTypes['RagKnowledgeAgent']>, ParentType, ContextType>;
+  baseUrl?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  configSource?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  enabled?: RequiredResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  hasToken?: RequiredResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  lastTest?: RequiredResolverFn<Maybe<ResolversTypes['RagKnowledgeTest']>, ParentType, ContextType>;
+  mode?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  notebooks?: RequiredResolverFn<Array<ResolversTypes['String']>, ParentType, ContextType>;
+  pathPrefixes?: RequiredResolverFn<Array<ResolversTypes['String']>, ParentType, ContextType>;
+  provider?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  timeoutMs?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  tokenHint?: RequiredResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  updatedAt?: RequiredResolverFn<Maybe<ResolversTypes['DateTime']>, ParentType, ContextType>;
+};
+
+export type RagKnowledgeTestResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['RagKnowledgeTest'] = ResolversParentTypes['RagKnowledgeTest']> = {
+  at: OptArgsResolverFn<Maybe<ResolversTypes['DateTime']>, ParentType, ContextType>;
+  checks: OptArgsResolverFn<Array<ResolversTypes['RagKnowledgeCheck']>, ParentType, ContextType>;
+  latencyMs: OptArgsResolverFn<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+  ok: OptArgsResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+};
+
+export type RagKnowledgeTestRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['RagKnowledgeTest'] = ResolversParentTypes['RagKnowledgeTest']> = {
+  at?: RequiredResolverFn<Maybe<ResolversTypes['DateTime']>, ParentType, ContextType>;
+  checks?: RequiredResolverFn<Array<ResolversTypes['RagKnowledgeCheck']>, ParentType, ContextType>;
+  latencyMs?: RequiredResolverFn<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+  ok?: RequiredResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
 };
 
 export type RedwoodResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['Redwood'] = ResolversParentTypes['Redwood']> = {
@@ -1932,6 +2120,30 @@ export type RuntimeHealthRelationResolvers<ContextType = CedarGraphQLContext, Pa
   serverTime?: RequiredResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
 };
 
+export type SiYuanNotebookResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['SiYuanNotebook'] = ResolversParentTypes['SiYuanNotebook']> = {
+  closed: OptArgsResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  id: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  name: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+};
+
+export type SiYuanNotebookRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['SiYuanNotebook'] = ResolversParentTypes['SiYuanNotebook']> = {
+  closed?: RequiredResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  id?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  name?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+};
+
+export type SiYuanNotebookListResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['SiYuanNotebookList'] = ResolversParentTypes['SiYuanNotebookList']> = {
+  error: OptArgsResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  notebooks: OptArgsResolverFn<Array<ResolversTypes['SiYuanNotebook']>, ParentType, ContextType>;
+  ok: OptArgsResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+};
+
+export type SiYuanNotebookListRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['SiYuanNotebookList'] = ResolversParentTypes['SiYuanNotebookList']> = {
+  error?: RequiredResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  notebooks?: RequiredResolverFn<Array<ResolversTypes['SiYuanNotebook']>, ParentType, ContextType>;
+  ok?: RequiredResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+};
+
 export type SubscriptionResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['Subscription'] = ResolversParentTypes['Subscription']> = {
   taskRunChanged?: SubscriptionResolver<ResolversTypes['TaskRun'], "taskRunChanged", ParentType, ContextType, RequireFields<SubscriptiontaskRunChangedArgs, 'taskRunId'>>;
   taskRunsChanged?: SubscriptionResolver<ResolversTypes['TaskRun'], "taskRunsChanged", ParentType, ContextType>;
@@ -1962,6 +2174,7 @@ export type TaskResolvers<ContextType = CedarGraphQLContext, ParentType extends 
   status: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
   title: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
   updatedAt: OptArgsResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
+  useKnowledge: OptArgsResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
 };
 
 export type TaskRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['Task'] = ResolversParentTypes['Task']> = {
@@ -1984,6 +2197,7 @@ export type TaskRelationResolvers<ContextType = CedarGraphQLContext, ParentType 
   status?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
   title?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
   updatedAt?: RequiredResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
+  useKnowledge?: RequiredResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
 };
 
 export type TaskArtifactResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TaskArtifact'] = ResolversParentTypes['TaskArtifact']> = {
@@ -2447,6 +2661,10 @@ export type Resolvers<ContextType = CedarGraphQLContext> = {
   JSONObject: GraphQLScalarType;
   Mutation: MutationResolvers<ContextType>;
   Query: QueryResolvers<ContextType>;
+  RagKnowledgeAgent: RagKnowledgeAgentResolvers<ContextType>;
+  RagKnowledgeCheck: RagKnowledgeCheckResolvers<ContextType>;
+  RagKnowledgeSource: RagKnowledgeSourceResolvers<ContextType>;
+  RagKnowledgeTest: RagKnowledgeTestResolvers<ContextType>;
   Redwood: RedwoodResolvers<ContextType>;
   RemoteApp: RemoteAppResolvers<ContextType>;
   RoleEvaluation: RoleEvaluationResolvers<ContextType>;
@@ -2455,6 +2673,8 @@ export type Resolvers<ContextType = CedarGraphQLContext> = {
   RoleEvaluationTool: RoleEvaluationToolResolvers<ContextType>;
   RuntimeComponentHealth: RuntimeComponentHealthResolvers<ContextType>;
   RuntimeHealth: RuntimeHealthResolvers<ContextType>;
+  SiYuanNotebook: SiYuanNotebookResolvers<ContextType>;
+  SiYuanNotebookList: SiYuanNotebookListResolvers<ContextType>;
   Subscription: SubscriptionResolvers<ContextType>;
   Task: TaskResolvers<ContextType>;
   TaskArtifact: TaskArtifactResolvers<ContextType>;

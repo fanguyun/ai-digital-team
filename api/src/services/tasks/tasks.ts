@@ -12,6 +12,15 @@ import {
 } from 'src/lib/agentDispatch'
 import { db } from 'src/lib/db'
 import { findSessionSnapshot } from 'src/lib/deepseekSessionSync'
+import {
+  knowledgeContext,
+  knowledgeEvidence,
+  knowledgeQuery,
+} from 'src/lib/knowledgeContext'
+import {
+  retrieveKnowledge,
+  type KnowledgeResult,
+} from 'src/lib/knowledgeRetrieval'
 import { logger } from 'src/lib/logger'
 import { readTeamAgent, resolveRepoRoot } from 'src/lib/roleEvaluationDispatch'
 import { logAgeMs } from 'src/lib/roleEvaluationLog'
@@ -396,6 +405,7 @@ export type CreateTaskInput = {
   priority?: string | null
   dueAt?: string | null
   readOnly?: boolean | null
+  useKnowledge?: boolean | null
   mode?: string | null
 }
 
@@ -424,6 +434,8 @@ export const createTask = async ({ input }: { input: CreateTaskInput }) => {
       priority,
       status: STATUS.DRAFT,
       readOnly: Boolean(input?.readOnly),
+      // 默认使用知识库；显式关掉时本条任务不检索
+      useKnowledge: input?.useKnowledge === false ? false : true,
       mode: input?.mode === 'plan' ? 'plan' : 'auto',
       dueAt: input?.dueAt ? new Date(input.dueAt) : null,
     },
@@ -464,6 +476,9 @@ export const updateTask = async ({
   }
   if (input?.priority !== undefined) data.priority = input.priority
   if (input?.readOnly !== undefined) data.readOnly = Boolean(input.readOnly)
+  if (input?.useKnowledge !== undefined) {
+    data.useKnowledge = Boolean(input.useKnowledge)
+  }
   if (input?.mode !== undefined)
     data.mode = input.mode === 'plan' ? 'plan' : 'auto'
   if (input?.dueAt !== undefined) {
@@ -471,7 +486,15 @@ export const updateTask = async ({
   }
 
   const changesPlan = (
-    ['title', 'brief', 'acceptance', 'agentSlug', 'readOnly', 'mode'] as const
+    [
+      'title',
+      'brief',
+      'acceptance',
+      'agentSlug',
+      'readOnly',
+      'useKnowledge',
+      'mode',
+    ] as const
   ).some((field) => data[field] !== undefined && data[field] !== row[field])
   if (changesPlan && row.status === STATUS.AWAITING_APPROVAL) {
     data.status = STATUS.DRAFT
@@ -492,12 +515,15 @@ export const dispatchTask = async ({
   mode,
   revisionNote,
   expectedPlanPath,
+  note,
 }: {
   id: string
   tool?: string
   mode?: TaskMode
   revisionNote?: string
   expectedPlanPath?: string | null
+  /** 重新派发时写的本轮修改要求，会并入提示词并记到任务结论里 */
+  note?: string | null
 }) => {
   const row = await db.task.findUnique({
     where: { id },
@@ -529,8 +555,9 @@ export const dispatchTask = async ({
   }
 
   const { repoRoot } = requireAgent(row.agentSlug)
+  const reworkNote = text(note, 2000, '修改要求')
 
-  const prompt = buildTaskPrompt({
+  const promptInput = {
     title: row.title,
     brief: row.brief,
     acceptance: row.acceptance,
@@ -538,11 +565,11 @@ export const dispatchTask = async ({
     readOnly: runMode === 'plan' ? true : row.readOnly,
     mode: runMode,
     planPath: row.planPath,
-    revisionNote,
-    reviewNote: row.reviewNote,
+    revisionNote: revisionNote || reworkNote || undefined,
+    reviewNote: reworkNote || row.reviewNote,
     previousSummary: row.runs[0]?.summary,
     previousArtifacts: row.artifacts.map((item) => item.path),
-  })
+  }
 
   const startedAt = new Date()
   // 派发前记一次工作区快照，结束时对比得到真实改动
@@ -554,14 +581,8 @@ export const dispatchTask = async ({
 
   // 需求/验收标准里引用的图片 → codex --image 附件
   const images = await resolveTaskImages(`${row.brief}\n${row.acceptance}`)
-  const promptWithImages =
-    tool === 'codex' || !images.length
-      ? prompt
-      : `${prompt}\n\n## 参考图片（本地路径）\n${images
-          .map((file) => `- ${file}`)
-          .join('\n')}`
-
   let spawned
+  let knowledge: KnowledgeResult | undefined
   const run = await db.$transaction(async (transaction) => {
     await transaction.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`task-agent:${row.agentSlug}`}))::text`
     const active = await transaction.taskRun.findMany({
@@ -594,6 +615,8 @@ export const dispatchTask = async ({
         status: STATUS.DISPATCHED,
         ...(runMode === 'plan' ? { planPath: null } : {}),
         ...(revisionNote ? { planNote: revisionNote } : {}),
+        // 重新派发时把修改要求写进结论，下一轮和验收时都能看到依据
+        ...(reworkNote ? { reviewNote: reworkNote } : {}),
       },
     })
     if (!claimed.count) throw new UserInputError('任务状态已变化，请刷新后重试')
@@ -622,6 +645,44 @@ export const dispatchTask = async ({
   if (!run)
     return db.task.findUnique({ where: { id: row.id }, include: withRelations })
   try {
+    // 任务里关掉知识库时不发起检索，按"未启用"记录，派发照常继续
+    knowledge =
+      row.useKnowledge === false
+        ? {
+            status: 'disabled',
+            mode: 'optional',
+            items: [],
+            elapsedMs: 0,
+            filteredOut: 0,
+          }
+        : await retrieveKnowledge({
+            agentSlug: row.agentSlug,
+            query: knowledgeQuery(promptInput),
+          })
+    const current = await db.task.findFirst({
+      where: {
+        id: row.id,
+        status: STATUS.DISPATCHED,
+        updatedAt: run.taskVersion,
+        runs: { some: { id: run.id, status: 'QUEUED' } },
+      },
+      select: { id: true },
+    })
+    if (!current) throw new UserInputError('任务已取消或状态已变化')
+    if (
+      knowledge.mode === 'required' &&
+      !['disabled', 'hit'].includes(knowledge.status)
+    ) {
+      throw new UserInputError(`知识库证据不可用（${knowledge.status}）`)
+    }
+    const prompt = buildTaskPrompt({
+      ...promptInput,
+      knowledge: knowledgeContext(knowledge).prompt,
+    })
+    const promptWithImages =
+      tool === 'codex' || !images.length
+        ? prompt
+        : `${prompt}\n\n## 参考图片（本地路径）\n${images.map((file) => `- ${file}`).join('\n')}`
     spawned = spawnTaskAgent({
       tool: tool as AgentToolId,
       projectRoot: repoRoot,
@@ -655,6 +716,7 @@ export const dispatchTask = async ({
           agent: row.agentSlug,
           summary: `派发到 ${tool}（PID ${spawned.pid}）`,
           idempotencyKey: `${run.id}:dispatched`,
+          evidence: { knowledge: knowledgeEvidence(knowledge) },
         },
       })
     })
@@ -697,6 +759,21 @@ export const dispatchTask = async ({
               planNote: row.planNote,
             },
     })
+    if (knowledge && knowledge.status !== 'disabled') {
+      await db.taskEvent.create({
+        data: {
+          taskRunId: run.id,
+          sequence: 1,
+          eventType: 'task.dispatch_failed',
+          status: 'FAILED',
+          stage: runMode === 'plan' ? 'PLANNING' : 'EXECUTION',
+          agent: row.agentSlug,
+          summary: '派发前停止，知识检索状态见证据摘要',
+          idempotencyKey: `${run.id}:dispatch-failed`,
+          evidence: { knowledge: knowledgeEvidence(knowledge) },
+        },
+      })
+    }
     throw new UserInputError(
       `派发失败：${error instanceof Error ? error.message : String(error)}`
     )

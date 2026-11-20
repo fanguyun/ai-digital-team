@@ -1,4 +1,8 @@
-import { buildTaskCommand, buildTaskPrompt } from './agentDispatch'
+import {
+  buildTaskCommand,
+  buildTaskPrompt,
+  taskAgentEnv,
+} from './agentDispatch'
 
 describe('buildTaskCommand', () => {
   it('passes each image with -i for codex', () => {
@@ -91,4 +95,45 @@ describe('buildTaskPrompt', () => {
       'artifact: <相对仓库根的路径或链接>'
     )
   })
+
+  it('uses the same knowledge prompt for both tools without changing approval or read-only rules', () => {
+    const prompt = buildTaskPrompt({
+      ...base,
+      mode: 'plan',
+      knowledge: '[KB-1] 外部资料',
+    })
+    expect(prompt).toContain('本次只读：不得修改任何仓库文件')
+    expect(prompt).toContain('[KB-1] 外部资料')
+    for (const tool of ['codex', 'deepseek-harness'] as const) {
+      expect(
+        buildTaskCommand({
+          tool,
+          bin: tool,
+          projectRoot: '/repo',
+          prompt,
+          readOnly: true,
+        }).args.at(-1)
+      ).toBe(prompt)
+    }
+    expect(
+      buildTaskPrompt({
+        ...base,
+        mode: 'execute',
+        planPath: 'plan.md',
+        knowledge: '[KB-1]',
+      })
+    ).toContain('已确认的方案在：plan.md')
+  })
+})
+
+it('removes all new retrieval credentials from child process environments', () => {
+  expect(
+    taskAgentEnv({
+      PATH: '/bin',
+      SIYUAN_API_TOKEN: 'secret',
+      RAG_BRIDGE_TOKEN: 'secret',
+      KNOWLEDGE_BRIDGE_TOKEN: 'secret',
+      KNOWLEDGE_ENABLED: '1',
+    })
+  ).toEqual({ PATH: '/bin' })
 })

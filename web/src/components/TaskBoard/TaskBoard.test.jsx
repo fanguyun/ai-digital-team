@@ -143,3 +143,117 @@ it('submits a revision with the inherited platform', async () => {
     })
   )
 })
+
+it('re-dispatches with the remembered platform and the rework note', async () => {
+  window.localStorage.setItem('pdt.taskDispatch.tool', 'deepseek-harness')
+  const failed = {
+    ...selectedTask,
+    id: 'task-dispatch',
+    title: '待重做任务',
+    status: 'FAILED',
+    mode: 'auto',
+    planPath: null,
+  }
+
+  useQuery.mockImplementation((query, options) => {
+    const operation = query.definitions[0].name.value
+    const refetch = jest.fn().mockResolvedValue({ data: {} })
+    if (operation === 'Tasks') return { data: { tasks: [failed] }, refetch }
+    return { data: options?.skip ? undefined : {}, refetch }
+  })
+
+  render(<TaskBoard />)
+  fireEvent.click(await screen.findByRole('button', { name: '重新派发' }))
+
+  fireEvent.change(await screen.findByLabelText('本轮修改要求'), {
+    target: { value: '补上失败回退方案' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: '确认重新派发' }))
+
+  await waitFor(() =>
+    expect(mutations.DispatchTask).toHaveBeenCalledWith({
+      variables: {
+        id: 'task-dispatch',
+        tool: 'deepseek-harness',
+        note: '补上失败回退方案',
+      },
+    })
+  )
+  window.localStorage.removeItem('pdt.taskDispatch.tool')
+})
+
+it('keeps the plain dispatch label for draft tasks', async () => {
+  const draft = {
+    ...selectedTask,
+    id: 'task-draft',
+    status: 'DRAFT',
+    mode: 'auto',
+    planPath: null,
+  }
+
+  useQuery.mockImplementation((query, options) => {
+    const operation = query.definitions[0].name.value
+    const refetch = jest.fn().mockResolvedValue({ data: {} })
+    if (operation === 'Tasks') return { data: { tasks: [draft] }, refetch }
+    return { data: options?.skip ? undefined : {}, refetch }
+  })
+
+  render(<TaskBoard />)
+  expect(
+    await screen.findByRole('button', { name: '派发' })
+  ).toBeInTheDocument()
+})
+
+it('shows artifacts as a directory tree in the drawer', async () => {
+  const withArtifacts = {
+    ...selectedTask,
+    id: 'task-artifacts',
+    status: 'AWAITING_REVIEW',
+    planPath: null,
+    artifacts: [
+      {
+        id: 'a1',
+        kind: 'file',
+        source: 'git',
+        path: 'api/src/lib/knowledgeConfig.ts',
+        label: 'knowledgeConfig.ts',
+      },
+      {
+        id: 'a2',
+        kind: 'file',
+        source: 'git',
+        path: 'api/src/lib/knowledgeRetrieval.ts',
+        label: 'knowledgeRetrieval.ts',
+      },
+      {
+        id: 'a3',
+        kind: 'report',
+        source: 'git',
+        path: 'docs/plans/run.md',
+        label: '执行方案',
+      },
+    ],
+  }
+
+  useQuery.mockImplementation((query, options) => {
+    const operation = query.definitions[0].name.value
+    const refetch = jest.fn().mockResolvedValue({ data: {} })
+    if (operation === 'Tasks')
+      return { data: { tasks: [withArtifacts] }, refetch }
+    if (operation === 'ActionTask')
+      return {
+        data: options.skip ? undefined : { task: withArtifacts },
+        refetch,
+      }
+    return { data: {}, refetch }
+  })
+
+  render(<TaskBoard />)
+  fireEvent.click(await screen.findByText(withArtifacts.title))
+  fireEvent.click(await screen.findByText('产物 3'))
+
+  expect(await screen.findByText('knowledgeConfig.ts')).toBeInTheDocument()
+  expect(screen.getByText('knowledgeRetrieval.ts')).toBeInTheDocument()
+  expect(screen.getByText('api')).toBeInTheDocument()
+  expect(screen.getByText('docs')).toBeInTheDocument()
+})

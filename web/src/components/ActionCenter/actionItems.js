@@ -67,6 +67,10 @@ export const buildActionCenterModel = ({
       action: 'tasks',
       section,
       actionLabel,
+      // 行内操作需要的上下文
+      planPath: task.planPath || null,
+      tool: task.runs?.[0]?.platform || null,
+      hasArtifacts: (task.artifacts?.length ?? 0) > 0,
     })
   }
 
@@ -77,9 +81,12 @@ export const buildActionCenterModel = ({
       (task.status === 'FAILED' || actionableTaskIds.has(task.taskId))
     )
       continue
-    const destination = task.taskId
-      ? { action: 'tasks', taskId: task.taskId, section: 'runs' }
-      : { action: 'runs' }
+    const destination = {
+      ...(task.taskId
+        ? { action: 'tasks', taskId: task.taskId, section: 'runs' }
+        : { action: 'runs' }),
+      runId: task.id,
+    }
     const ageMinutes = minutesSince(task.updatedAt, now)
 
     if (task.status === 'WAITING_CONFIRMATION') {
