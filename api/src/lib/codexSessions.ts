@@ -73,6 +73,8 @@ type CodexTask = {
   usedSkill: boolean
   startedAt?: number
   updatedAt?: number
+  /** 会话里出现了 task_complete / turn_aborted 这类明确的结束标记 */
+  finished?: boolean
   modelId?: string
   inputTokens?: number
   outputTokens?: number
@@ -170,6 +172,15 @@ export const summarizeCodexLines = (
     markTime()
     if (!current) continue
 
+    // codex 会在回合结束时写 task_complete（失败/中断是 turn_aborted）：
+    // 以它为准判定结束，不再只看"最后一条记录到现在多久"。
+    if (
+      record.payload?.type === 'task_complete' ||
+      record.payload?.type === 'turn_aborted'
+    ) {
+      current.finished = true
+    }
+
     const skillName = normalizedAgentSlug(record.payload?.arguments, teamAgents)
     if (skillName) {
       current.usedSkill = true
@@ -211,7 +222,8 @@ export const summarizeCodexLines = (
     .map((task) => {
       const started = new Date(task.startedAt ?? now)
       const updated = new Date(task.updatedAt ?? task.startedAt ?? now)
-      const running = now - updated.getTime() < ACTIVE_WINDOW_MS
+      const running =
+        !task.finished && now - updated.getTime() < ACTIVE_WINDOW_MS
       return {
         sessionId: `${sessionId}:${task.key}`,
         platform: 'codex' as const,

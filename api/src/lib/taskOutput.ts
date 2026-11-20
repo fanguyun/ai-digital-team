@@ -50,6 +50,12 @@ const lastAgentText = (raw: string, tool: AgentToolId) => {
     if (!record) continue
 
     if (tool === 'codex') {
+      if (record.type === 'item.completed') {
+        const item = record.item as LogRecord | undefined
+        if (item?.type === 'agent_message' && typeof item.text === 'string') {
+          last = item.text.trim() || last
+        }
+      }
       const payload = (record.payload || {}) as LogRecord
       if (record.type === 'response_item' && payload.type === 'message') {
         if (payload.role !== 'assistant') continue
@@ -82,6 +88,8 @@ export type TaskUsage = {
 
 export type TaskRunOutput = {
   summary: string
+  completed?: boolean
+  finalText?: string
   usage?: TaskUsage
   artifacts: Array<{
     path: string
@@ -100,31 +108,38 @@ const ERROR_PATTERNS = [
   /\bpanicked\b/i,
 ]
 
-/** 从日志里找明确的失败信号（没有则视为正常结束） */
+/**
+ * 从日志里找明确的失败信号（没有则视为正常结束）。
+ * 结构化事件只认同明确的失败形状；关键字扫描只作用于非 JSON 行
+ * （CLI 直接打印的报错），避免把提示词/模型输出里引用的错误字样当成失败。
+ */
 const findError = (raw: string): string | undefined => {
   const tail = raw.slice(-20_000)
+  let error: string | undefined
 
   for (const line of tail.split('\n')) {
     const record = parseLine(line)
     if (record) {
+      if (record.type === 'turn.completed') error = undefined
       const status = record.reason as
         | { kind?: string; error?: unknown }
         | undefined
       if (status?.kind === 'error') {
         const detail = status.error as { message?: string } | undefined
-        return detail?.message || '执行返回错误状态'
+        error = detail?.message || '执行返回错误状态'
       }
       if (record.type === 'error' || record.type === 'turn.failed') {
-        return typeof record.message === 'string' ? record.message : '执行失败'
+        error = typeof record.message === 'string' ? record.message : '执行失败'
       }
+      continue
     }
 
     if (ERROR_PATTERNS.some((pattern) => pattern.test(line))) {
-      return line.trim().slice(0, 300)
+      error = line.trim().slice(0, 300)
     }
   }
 
-  return undefined
+  return error
 }
 
 /** 从 turn.completed 事件里取 token 用量（codex 才有） */
@@ -206,6 +221,13 @@ export const parseTaskRunOutput = ({
 
   return {
     summary: finalText.slice(0, SUMMARY_MAX),
+    completed: raw.split('\n').some((line) => {
+      const record = parseLine(line)
+      return tool === 'codex'
+        ? record?.type === 'turn.completed'
+        : record?.type === 'final'
+    }),
+    ...(finalText ? { finalText } : {}),
     artifacts: artifacts.slice(0, 20),
     error: findError(raw),
     usage,

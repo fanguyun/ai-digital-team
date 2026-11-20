@@ -23,6 +23,17 @@ export type Scalars = {
   Time: { input: string; output: string; }
 };
 
+export type ActiveTaskRun = {
+  __typename?: 'ActiveTaskRun';
+  currentStage: TaskRunStage;
+  id: Scalars['ID']['output'];
+  primaryAgent: Scalars['String']['output'];
+  status: TaskRunStatus;
+  taskId?: Maybe<Scalars['ID']['output']>;
+  title: Scalars['String']['output'];
+  updatedAt: Scalars['DateTime']['output'];
+};
+
 export type AddTaskArtifactInput = {
   kind?: InputMaybe<Scalars['String']['input']>;
   label?: InputMaybe<Scalars['String']['input']>;
@@ -59,9 +70,12 @@ export type AgentRuntimeMetric = {
   latestModelId?: Maybe<Scalars['String']['output']>;
   outputTokenCoverage: RuntimeMetricCoverage;
   outputTokens: Scalars['Float']['output'];
+  queuedCount: Scalars['Int']['output'];
+  runningCount: Scalars['Int']['output'];
   totalTokenCoverage: RuntimeMetricCoverage;
   totalTokens: Scalars['Float']['output'];
   trackedWorkCount: Scalars['Int']['output'];
+  waitingCount: Scalars['Int']['output'];
   workCount: Scalars['Int']['output'];
 };
 
@@ -87,6 +101,12 @@ export type AppendTaskEventResult = {
   taskRun: TaskRun;
 };
 
+export type CapabilityApplyResult = {
+  __typename?: 'CapabilityApplyResult';
+  agentSlug: Scalars['String']['output'];
+  applied: Array<CapabilityFixResult>;
+};
+
 export type CapabilityCliCheck = {
   __typename?: 'CapabilityCliCheck';
   id: Scalars['ID']['output'];
@@ -94,6 +114,42 @@ export type CapabilityCliCheck = {
   name: Scalars['String']['output'];
   path: Scalars['String']['output'];
   status: Scalars['String']['output'];
+};
+
+export type CapabilityFixItem = {
+  __typename?: 'CapabilityFixItem';
+  blockedReason?: Maybe<Scalars['String']['output']>;
+  canApply: Scalars['Boolean']['output'];
+  kind: Scalars['String']['output'];
+  linkPath?: Maybe<Scalars['String']['output']>;
+  name: Scalars['String']['output'];
+  severity: Scalars['String']['output'];
+  source?: Maybe<Scalars['String']['output']>;
+  steps: Array<CapabilityFixStep>;
+  title: Scalars['String']['output'];
+};
+
+export type CapabilityFixPlan = {
+  __typename?: 'CapabilityFixPlan';
+  agentName: Scalars['String']['output'];
+  agentSlug: Scalars['String']['output'];
+  items: Array<CapabilityFixItem>;
+};
+
+export type CapabilityFixResult = {
+  __typename?: 'CapabilityFixResult';
+  changed: Scalars['Boolean']['output'];
+  linkPath: Scalars['String']['output'];
+  message: Scalars['String']['output'];
+  ok: Scalars['Boolean']['output'];
+  skill: Scalars['String']['output'];
+  source?: Maybe<Scalars['String']['output']>;
+};
+
+export type CapabilityFixStep = {
+  __typename?: 'CapabilityFixStep';
+  detail?: Maybe<Scalars['String']['output']>;
+  title: Scalars['String']['output'];
 };
 
 export type CapabilityHealth = {
@@ -194,6 +250,21 @@ export type CreateTaskTemplateInput = {
   title: Scalars['String']['input'];
 };
 
+export type DeliveryDirectoryStat = {
+  __typename?: 'DeliveryDirectoryStat';
+  added: Scalars['Int']['output'];
+  directory: Scalars['String']['output'];
+  files: Scalars['Int']['output'];
+  removed: Scalars['Int']['output'];
+};
+
+export type DeliveryStat = {
+  __typename?: 'DeliveryStat';
+  added: Scalars['Int']['output'];
+  files: Scalars['Int']['output'];
+  removed: Scalars['Int']['output'];
+};
+
 export type DispatchRoleEvaluationInput = {
   agentSlug: Scalars['String']['input'];
   tool: Scalars['String']['input'];
@@ -219,6 +290,8 @@ export type Mutation = {
   addTaskArtifact: Task;
   appendTaskEvent: AppendTaskEventResult;
   cancelTask: Task;
+  capabilityApplyFixes: CapabilityApplyResult;
+  capabilityFixPlan: CapabilityFixPlan;
   createRemoteApp: RemoteApp;
   createTask: Task;
   createTaskRun: TaskRun;
@@ -229,6 +302,10 @@ export type Mutation = {
   dispatchTask: Task;
   dispatchTasks: Array<Task>;
   executeTaskPlan: Task;
+  /** 手动刷新运行状态：重新读取会话快照，必要时按已结束收尾 */
+  refreshRun: TaskRun;
+  /** 手动刷新任务状态：进程已退出/日志不动时按日志收尾并推进任务 */
+  refreshTask: Task;
   removeTaskArtifact: Task;
   reviewTask: Task;
   reviseTaskPlan: Task;
@@ -255,6 +332,16 @@ export type MutationappendTaskEventArgs = {
 
 export type MutationcancelTaskArgs = {
   id: Scalars['ID']['input'];
+};
+
+
+export type MutationcapabilityApplyFixesArgs = {
+  agentSlug: Scalars['String']['input'];
+};
+
+
+export type MutationcapabilityFixPlanArgs = {
+  agentSlug: Scalars['String']['input'];
 };
 
 
@@ -307,7 +394,18 @@ export type MutationdispatchTasksArgs = {
 
 export type MutationexecuteTaskPlanArgs = {
   id: Scalars['ID']['input'];
+  planPath: Scalars['String']['input'];
   tool?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type MutationrefreshRunArgs = {
+  runId: Scalars['ID']['input'];
+};
+
+
+export type MutationrefreshTaskArgs = {
+  id: Scalars['ID']['input'];
 };
 
 
@@ -385,12 +483,16 @@ export type Query = {
   task?: Maybe<Task>;
   taskArtifactContent: Scalars['String']['output'];
   taskImageDataUrl: Scalars['String']['output'];
+  taskPlanContent: Scalars['String']['output'];
+  taskPrecheck: TaskPrecheck;
   taskPulse: TaskPulse;
   taskRun?: Maybe<TaskRun>;
   taskRunLog: Scalars['String']['output'];
   taskRunMessages: Array<TaskRunMessage>;
+  taskRunTrace: TaskRunTrace;
   taskRuns: TaskRunConnection;
   taskTemplates: Array<TaskTemplate>;
+  /** 按创建时间筛选：from/to 为 ISO 时间 */
   tasks: Array<Task>;
   teamRuntimeOverview: TeamRuntimeOverview;
   teamWeeklyReport: TeamWeeklyReport;
@@ -441,6 +543,19 @@ export type QuerytaskImageDataUrlArgs = {
 
 
 /** About the Cedar queries. */
+export type QuerytaskPlanContentArgs = {
+  planPath?: InputMaybe<Scalars['String']['input']>;
+  taskId: Scalars['ID']['input'];
+};
+
+
+/** About the Cedar queries. */
+export type QuerytaskPrecheckArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+/** About the Cedar queries. */
 export type QuerytaskRunArgs = {
   id: Scalars['ID']['input'];
 };
@@ -459,6 +574,12 @@ export type QuerytaskRunMessagesArgs = {
 
 
 /** About the Cedar queries. */
+export type QuerytaskRunTraceArgs = {
+  runId: Scalars['ID']['input'];
+};
+
+
+/** About the Cedar queries. */
 export type QuerytaskRunsArgs = {
   after?: InputMaybe<Scalars['String']['input']>;
   filter?: InputMaybe<TaskRunFilter>;
@@ -470,7 +591,10 @@ export type QuerytaskRunsArgs = {
 /** About the Cedar queries. */
 export type QuerytasksArgs = {
   agentSlug?: InputMaybe<Scalars['String']['input']>;
+  from?: InputMaybe<Scalars['DateTime']['input']>;
   status?: InputMaybe<Scalars['String']['input']>;
+  statuses?: InputMaybe<Array<Scalars['String']['input']>>;
+  to?: InputMaybe<Scalars['DateTime']['input']>;
 };
 
 
@@ -518,6 +642,8 @@ export type RoleEvaluation = {
   __typename?: 'RoleEvaluation';
   agentName: Scalars['String']['output'];
   agentSlug: Scalars['String']['output'];
+  /** 失败时从日志尾部取到的真实报错（成功或运行中为 null） */
+  failureReason?: Maybe<Scalars['String']['output']>;
   finishedAt?: Maybe<Scalars['DateTime']['output']>;
   id: Scalars['ID']['output'];
   logPath: Scalars['String']['output'];
@@ -528,6 +654,7 @@ export type RoleEvaluation = {
   sessionId?: Maybe<Scalars['String']['output']>;
   startedAt: Scalars['DateTime']['output'];
   status: Scalars['String']['output'];
+  taskId?: Maybe<Scalars['ID']['output']>;
   tool: Scalars['String']['output'];
 };
 
@@ -663,6 +790,12 @@ export type TaskImage = {
   url: Scalars['String']['output'];
 };
 
+export type TaskPrecheck = {
+  __typename?: 'TaskPrecheck';
+  expectedPaths: Array<Scalars['String']['output']>;
+  warnings: Array<Scalars['String']['output']>;
+};
+
 export type TaskPulse = {
   __typename?: 'TaskPulse';
   awaitingReview: Scalars['Int']['output'];
@@ -690,6 +823,8 @@ export type TaskRun = {
   startedAt: Scalars['DateTime']['output'];
   status: TaskRunStatus;
   summary?: Maybe<Scalars['String']['output']>;
+  task?: Maybe<Task>;
+  taskId?: Maybe<Scalars['ID']['output']>;
   title: Scalars['String']['output'];
   updatedAt: Scalars['DateTime']['output'];
   version: Scalars['Int']['output'];
@@ -721,6 +856,7 @@ export type TaskRunMessage = {
   content: Scalars['String']['output'];
   createdAt: Scalars['DateTime']['output'];
   role: Scalars['String']['output'];
+  step?: Maybe<Scalars['Int']['output']>;
 };
 
 export type TaskRunPageInfo = {
@@ -750,6 +886,26 @@ export type TaskRunStatusCount = {
   status: TaskRunStatus;
 };
 
+export type TaskRunTool = {
+  __typename?: 'TaskRunTool';
+  createdAt: Scalars['DateTime']['output'];
+  detail: Scalars['String']['output'];
+  name: Scalars['String']['output'];
+  redacted: Scalars['Boolean']['output'];
+  result: Scalars['String']['output'];
+  resultTruncated: Scalars['Boolean']['output'];
+  step?: Maybe<Scalars['Int']['output']>;
+};
+
+export type TaskRunTrace = {
+  __typename?: 'TaskRunTrace';
+  messages: Array<TaskRunMessage>;
+  source: Scalars['String']['output'];
+  tools: Array<TaskRunTool>;
+  truncated: Scalars['Boolean']['output'];
+  turn?: Maybe<Scalars['Int']['output']>;
+};
+
 export type TaskTemplate = {
   __typename?: 'TaskTemplate';
   acceptance: Scalars['String']['output'];
@@ -763,8 +919,21 @@ export type TaskTemplate = {
   title: Scalars['String']['output'];
 };
 
+export type TeamDeliveryStat = {
+  __typename?: 'TeamDeliveryStat';
+  added: Scalars['Int']['output'];
+  byDirectory: Array<DeliveryDirectoryStat>;
+  /** 有交付统计的运行数 */
+  coveredRuns: Scalars['Int']['output'];
+  files: Scalars['Int']['output'];
+  removed: Scalars['Int']['output'];
+  totalRuns: Scalars['Int']['output'];
+  uncategorized: DeliveryStat;
+};
+
 export type TeamRuntimeOverview = {
   __typename?: 'TeamRuntimeOverview';
+  activeTasks: Array<ActiveTaskRun>;
   agents: Array<AgentRuntimeMetric>;
   cachedTokenCoverage: RuntimeMetricCoverage;
   cachedTokens: Scalars['Float']['output'];
@@ -772,11 +941,14 @@ export type TeamRuntimeOverview = {
   inputTokens: Scalars['Float']['output'];
   outputTokenCoverage: RuntimeMetricCoverage;
   outputTokens: Scalars['Float']['output'];
+  queuedCount: Scalars['Int']['output'];
+  runningCount: Scalars['Int']['output'];
   totalTaskCount: Scalars['Int']['output'];
   totalTokenCoverage: RuntimeMetricCoverage;
   totalTokens: Scalars['Float']['output'];
   totalWorkCount: Scalars['Int']['output'];
   trackedWorkCount: Scalars['Int']['output'];
+  waitingCount: Scalars['Int']['output'];
 };
 
 export type TeamWeeklyReport = {
@@ -786,6 +958,7 @@ export type TeamWeeklyReport = {
   completed: Array<WeeklyTaskItem>;
   completedTasks: Scalars['Int']['output'];
   contributions: Array<WeeklyAgentContribution>;
+  delivery: TeamDeliveryStat;
   failedTasks: Scalars['Int']['output'];
   failures: Array<WeeklyTaskItem>;
   from: Scalars['DateTime']['output'];
@@ -864,6 +1037,20 @@ export type WorkspaceStatus = {
   changedCount: Scalars['Int']['output'];
   dirty: Scalars['Boolean']['output'];
 };
+
+export type CapabilityFixPlanVariables = Exact<{
+  agentSlug: Scalars['String']['input'];
+}>;
+
+
+export type CapabilityFixPlan = { __typename?: 'Mutation', capabilityFixPlan: { __typename?: 'CapabilityFixPlan', agentSlug: string, agentName: string, items: Array<{ __typename?: 'CapabilityFixItem', kind: string, name: string, severity: string, title: string, canApply: boolean, blockedReason?: string | null, source?: string | null, linkPath?: string | null, steps: Array<{ __typename?: 'CapabilityFixStep', title: string, detail?: string | null }> }> } };
+
+export type CapabilityApplyFixesVariables = Exact<{
+  agentSlug: Scalars['String']['input'];
+}>;
+
+
+export type CapabilityApplyFixes = { __typename?: 'Mutation', capabilityApplyFixes: { __typename?: 'CapabilityApplyResult', agentSlug: string, applied: Array<{ __typename?: 'CapabilityFixResult', skill: string, ok: boolean, changed: boolean, message: string }> } };
 
 export type CapabilityHealthCenterVariables = Exact<{ [key: string]: never; }>;
 
@@ -955,10 +1142,27 @@ export type UpdateInstalledSkill = { __typename?: 'Mutation', updateInstalledSki
 export type TasksVariables = Exact<{
   status?: InputMaybe<Scalars['String']['input']>;
   agentSlug?: InputMaybe<Scalars['String']['input']>;
+  from?: InputMaybe<Scalars['DateTime']['input']>;
+  to?: InputMaybe<Scalars['DateTime']['input']>;
 }>;
 
 
 export type Tasks = { __typename?: 'Query', tasks: Array<{ __typename?: 'Task', id: string, title: string, brief: string, acceptance: string, agentSlug: string, priority: string, status: string, readOnly: boolean, mode: string, planPath?: string | null, planNote?: string | null, dueAt?: string | null, createdAt: string, updatedAt: string, completedAt?: string | null, reviewNote?: string | null, reviewedAt?: string | null, artifacts: Array<{ __typename?: 'TaskArtifact', id: string, kind: string, source: string, path: string, label: string, createdAt: string }>, runs: Array<{ __typename?: 'TaskRun', id: string, status: TaskRunStatus, currentStage: TaskRunStage, platform: string, mode: string, summary?: string | null, logPath?: string | null, dirtyAtDispatch: boolean, inputTokens?: number | null, outputTokens?: number | null, cachedTokens?: number | null, startedAt: string, completedAt?: string | null, externalReference?: string | null, events: Array<{ __typename?: 'TaskEvent', id: string, eventType: string, summary: string, createdAt: string }> }> }> };
+
+export type ActionTaskVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type ActionTask = { __typename?: 'Query', task?: { __typename?: 'Task', id: string, title: string, brief: string, acceptance: string, agentSlug: string, priority: string, status: string, readOnly: boolean, mode: string, planPath?: string | null, planNote?: string | null, dueAt?: string | null, createdAt: string, updatedAt: string, completedAt?: string | null, reviewNote?: string | null, reviewedAt?: string | null, artifacts: Array<{ __typename?: 'TaskArtifact', id: string, kind: string, source: string, path: string, label: string, createdAt: string }>, runs: Array<{ __typename?: 'TaskRun', id: string, status: TaskRunStatus, currentStage: TaskRunStage, platform: string, mode: string, summary?: string | null, logPath?: string | null, dirtyAtDispatch: boolean, inputTokens?: number | null, outputTokens?: number | null, cachedTokens?: number | null, startedAt: string, completedAt?: string | null, externalReference?: string | null, events: Array<{ __typename?: 'TaskEvent', id: string, eventType: string, summary: string, createdAt: string }> }> } | null };
+
+export type ApprovalPlanVariables = Exact<{
+  taskId: Scalars['ID']['input'];
+  planPath?: InputMaybe<Scalars['String']['input']>;
+}>;
+
+
+export type ApprovalPlan = { __typename?: 'Query', taskPlanContent: string };
 
 export type CreateTaskVariables = Exact<{
   input: CreateTaskInput;
@@ -989,6 +1193,20 @@ export type CancelTaskVariables = Exact<{
 
 
 export type CancelTask = { __typename?: 'Mutation', cancelTask: { __typename?: 'Task', id: string } };
+
+export type TaskPrecheckVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type TaskPrecheck = { __typename?: 'Query', taskPrecheck: { __typename?: 'TaskPrecheck', warnings: Array<string>, expectedPaths: Array<string> } };
+
+export type RefreshTaskVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type RefreshTask = { __typename?: 'Mutation', refreshTask: { __typename?: 'Task', id: string, status: string } };
 
 export type ReviewTaskVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -1038,6 +1256,7 @@ export type ReviseTaskPlan = { __typename?: 'Mutation', reviseTaskPlan: { __type
 export type ExecuteTaskPlanVariables = Exact<{
   id: Scalars['ID']['input'];
   tool?: InputMaybe<Scalars['String']['input']>;
+  planPath: Scalars['String']['input'];
 }>;
 
 
@@ -1092,6 +1311,13 @@ export type TaskArtifactContentVariables = Exact<{
 
 export type TaskArtifactContent = { __typename?: 'Query', taskArtifactContent: string };
 
+export type RefreshRunVariables = Exact<{
+  runId: Scalars['ID']['input'];
+}>;
+
+
+export type RefreshRun = { __typename?: 'Mutation', refreshRun: { __typename?: 'TaskRun', id: string, status: TaskRunStatus } };
+
 export type TaskPulseVariables = Exact<{ [key: string]: never; }>;
 
 
@@ -1111,12 +1337,47 @@ export type TaskRunsChangedVariables = Exact<{ [key: string]: never; }>;
 
 export type TaskRunsChanged = { __typename?: 'Subscription', taskRunsChanged: { __typename?: 'TaskRun', id: string, status: TaskRunStatus, currentStage: TaskRunStage, summary?: string | null, version: number, updatedAt: string, completedAt?: string | null } };
 
+export type TaskStageSourcesVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type TaskStageSources = { __typename?: 'Query', taskRun?: { __typename?: 'TaskRun', id: string, taskId?: string | null, logPath?: string | null, task?: { __typename?: 'Task', id: string, title: string, brief: string, acceptance: string, planPath?: string | null, planNote?: string | null, reviewNote?: string | null, reviewedAt?: string | null, completedAt?: string | null, artifacts: Array<{ __typename?: 'TaskArtifact', id: string, kind: string, path: string, label: string }> } | null } | null };
+
+export type TaskStageTraceVariables = Exact<{
+  runId: Scalars['ID']['input'];
+}>;
+
+
+export type TaskStageTrace = { __typename?: 'Query', taskRunTrace: { __typename?: 'TaskRunTrace', turn?: number | null, source: string, truncated: boolean, messages: Array<{ __typename?: 'TaskRunMessage', role: string, content: string, createdAt: string, step?: number | null }>, tools: Array<{ __typename?: 'TaskRunTool', name: string, detail: string, result: string, resultTruncated: boolean, redacted: boolean, createdAt: string, step?: number | null }> } };
+
+export type TaskStagePlanVariables = Exact<{
+  taskId: Scalars['ID']['input'];
+}>;
+
+
+export type TaskStagePlan = { __typename?: 'Query', taskPlanContent: string };
+
+export type TaskStageLogVariables = Exact<{
+  runId: Scalars['ID']['input'];
+}>;
+
+
+export type TaskStageLog = { __typename?: 'Query', taskRunLog: string };
+
+export type TaskStageArtifactContentVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type TaskStageArtifactContent = { __typename?: 'Query', taskArtifactContent: string };
+
 export type TeamWeeklyReportVariables = Exact<{
   range: RuntimeTimeRange;
 }>;
 
 
-export type TeamWeeklyReport = { __typename?: 'Query', teamWeeklyReport: { __typename?: 'TeamWeeklyReport', from: string, to: string, generatedAt: string, totalTasks: number, completedTasks: number, failedTasks: number, cancelledTasks: number, pendingTasks: number, inputTokens: number, outputTokens: number, cachedTokens: number, totalTokens: number, totalTokenCoverage: RuntimeMetricCoverage, headline: string, contributions: Array<{ __typename?: 'WeeklyAgentContribution', agent: string, workCount: number, trackedWorkCount: number, totalTokens: number, tokenCoverage: RuntimeMetricCoverage }>, completed: Array<{ __typename?: 'WeeklyTaskItem', id: string, title: string, primaryAgent: string, status: TaskRunStatus, currentStage: TaskRunStage, summary?: string | null, updatedAt: string }>, failures: Array<{ __typename?: 'WeeklyTaskItem', id: string, title: string, primaryAgent: string, status: TaskRunStatus, currentStage: TaskRunStage, summary?: string | null, updatedAt: string }>, pending: Array<{ __typename?: 'WeeklyTaskItem', id: string, title: string, primaryAgent: string, status: TaskRunStatus, currentStage: TaskRunStage, summary?: string | null, updatedAt: string }> } };
+export type TeamWeeklyReport = { __typename?: 'Query', teamWeeklyReport: { __typename?: 'TeamWeeklyReport', from: string, to: string, generatedAt: string, totalTasks: number, completedTasks: number, failedTasks: number, cancelledTasks: number, pendingTasks: number, inputTokens: number, outputTokens: number, cachedTokens: number, totalTokens: number, totalTokenCoverage: RuntimeMetricCoverage, headline: string, delivery: { __typename?: 'TeamDeliveryStat', files: number, added: number, removed: number, coveredRuns: number, totalRuns: number, byDirectory: Array<{ __typename?: 'DeliveryDirectoryStat', directory: string, files: number, added: number, removed: number }>, uncategorized: { __typename?: 'DeliveryStat', files: number, added: number, removed: number } }, contributions: Array<{ __typename?: 'WeeklyAgentContribution', agent: string, workCount: number, trackedWorkCount: number, totalTokens: number, tokenCoverage: RuntimeMetricCoverage }>, completed: Array<{ __typename?: 'WeeklyTaskItem', id: string, title: string, primaryAgent: string, status: TaskRunStatus, currentStage: TaskRunStage, summary?: string | null, updatedAt: string }>, failures: Array<{ __typename?: 'WeeklyTaskItem', id: string, title: string, primaryAgent: string, status: TaskRunStatus, currentStage: TaskRunStage, summary?: string | null, updatedAt: string }>, pending: Array<{ __typename?: 'WeeklyTaskItem', id: string, title: string, primaryAgent: string, status: TaskRunStatus, currentStage: TaskRunStage, summary?: string | null, updatedAt: string }> } };
 
 export type SummaryTaskDetailVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -1140,7 +1401,7 @@ export type AgentRuntimeChanged = { __typename?: 'Subscription', taskRunsChanged
 export type ActionCenterOverviewVariables = Exact<{ [key: string]: never; }>;
 
 
-export type ActionCenterOverview = { __typename?: 'Query', taskRuns: { __typename?: 'TaskRunConnection', edges: Array<{ __typename?: 'TaskRunEdge', node: { __typename?: 'TaskRun', id: string, title: string, primaryAgent: string, status: TaskRunStatus, summary?: string | null, updatedAt: string } }> }, runtimeHealth: { __typename?: 'RuntimeHealth', database: { __typename?: 'RuntimeComponentHealth', status: string, message?: string | null }, realtime: { __typename?: 'RuntimeComponentHealth', status: string, message?: string | null } }, installedSkills: Array<{ __typename?: 'InstalledSkill', id: string, name: string, updatable: boolean }> };
+export type ActionCenterOverview = { __typename?: 'Query', taskRuns: { __typename?: 'TaskRunConnection', edges: Array<{ __typename?: 'TaskRunEdge', node: { __typename?: 'TaskRun', id: string, title: string, primaryAgent: string, status: TaskRunStatus, summary?: string | null, taskId?: string | null, updatedAt: string } }> }, runtimeHealth: { __typename?: 'RuntimeHealth', database: { __typename?: 'RuntimeComponentHealth', status: string, message?: string | null }, realtime: { __typename?: 'RuntimeComponentHealth', status: string, message?: string | null } }, installedSkills: Array<{ __typename?: 'InstalledSkill', id: string, name: string, updatable: boolean }>, tasks: Array<{ __typename?: 'Task', id: string, title: string, agentSlug: string, priority: string, status: string, updatedAt: string, reviewNote?: string | null, runs: Array<{ __typename?: 'TaskRun', summary?: string | null }> }> };
 
 export type RoleEvaluationToolsVariables = Exact<{ [key: string]: never; }>;
 
@@ -1153,3 +1414,10 @@ export type DispatchRoleEvaluationVariables = Exact<{
 
 
 export type DispatchRoleEvaluation = { __typename?: 'Mutation', dispatchRoleEvaluation: { __typename?: 'RoleEvaluationDispatch', id: string, agentSlug: string, agentName: string, tool: string, startedAt: string, reportPath: string, logPath: string, pid?: number | null } };
+
+export type RoleEvaluationProbeVariables = Exact<{
+  agentSlug?: InputMaybe<Scalars['String']['input']>;
+}>;
+
+
+export type RoleEvaluationProbe = { __typename?: 'Query', roleEvaluations: Array<{ __typename?: 'RoleEvaluation', id: string, status: string, reportPath: string, failureReason?: string | null }> };

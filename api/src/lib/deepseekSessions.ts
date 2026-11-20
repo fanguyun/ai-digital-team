@@ -1,9 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
-import { promisify } from 'node:util'
-import { zstdDecompress } from 'node:zlib'
 
 import { parseDeepSeekTelemetryLine } from '../../../scripts/runtime-telemetry.mjs'
 
@@ -12,9 +10,8 @@ import {
   taskTitleKey,
   usableTaskTitle,
 } from './sessionTaskTitle'
+import { readZstdLines } from './zstdLines'
 
-const decompressZstdFrame = promisify(zstdDecompress)
-const ZSTD_FRAME_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd])
 const ACTIVE_WINDOW_MS = 15 * 60 * 1000
 const MAX_SESSIONS = 200
 
@@ -94,30 +91,6 @@ const skillNameFromCall = (record: {
   const name =
     'name' in args ? args.name : 'skill' in args ? args.skill : undefined
   return typeof name === 'string' ? name : undefined
-}
-
-export async function* readZstdLines(path: string) {
-  const compressed = await readFile(path)
-  const frameOffsets: number[] = []
-  let offset = 0
-  while ((offset = compressed.indexOf(ZSTD_FRAME_MAGIC, offset)) >= 0) {
-    frameOffsets.push(offset)
-    offset += ZSTD_FRAME_MAGIC.length
-  }
-  if (frameOffsets[0] !== 0) throw new Error('Invalid Zstd session log')
-
-  let remainder = ''
-  for (let index = 0; index < frameOffsets.length; index += 1) {
-    const frame = compressed.subarray(
-      frameOffsets[index],
-      frameOffsets[index + 1] ?? compressed.length
-    )
-    const text = remainder + (await decompressZstdFrame(frame)).toString('utf8')
-    const lines = text.split(/\r?\n/)
-    remainder = lines.pop() ?? ''
-    for (const line of lines) yield line
-  }
-  if (remainder) yield remainder
 }
 
 const shortRequest = (value: unknown) => {

@@ -1,0 +1,166 @@
+{
+  "date": "2026-11-19",
+  "runtimeId": "c79abcdb-c836-444b-b186-17602ddac3b0",
+  "realPlatforms": [
+    {
+      "platform": "codex",
+      "taskId": "034dc883-8249-4e5c-bdde-60e91d230bfc",
+      "status": "DONE",
+      "elapsedMs": 86260,
+      "runs": [
+        {
+          "id": "677c02b5-c801-4d1a-8be5-5606260c36b3",
+          "mode": "plan",
+          "status": "COMPLETED",
+          "inputTokens": 110987,
+          "outputTokens": 1002
+        },
+        {
+          "id": "d6dda781-46f3-4a21-a875-61ee4f4ebd6f",
+          "mode": "plan",
+          "status": "COMPLETED",
+          "inputTokens": 112308,
+          "outputTokens": 1320
+        },
+        {
+          "id": "b2eab318-bafa-492f-a73f-848bd313eac6",
+          "mode": "execute",
+          "status": "COMPLETED",
+          "inputTokens": 112984,
+          "outputTokens": 200
+        }
+      ],
+      "firstPlan": "docs/plans/034dc883-8249-4e5c-bdde-60e91d230bfc/677c02b5-c801-4d1a-8be5-5606260c36b3.md",
+      "revisedPlan": "docs/plans/034dc883-8249-4e5c-bdde-60e91d230bfc/d6dda781-46f3-4a21-a875-61ee4f4ebd6f.md",
+      "fixture": "after\n"
+    },
+    {
+      "platform": "deepseek-harness",
+      "taskId": "3ff02a84-5a9e-45e5-954b-e3d768833ae2",
+      "status": "DONE",
+      "elapsedMs": 58917,
+      "runs": [
+        {
+          "id": "e280f268-199f-4f90-9d1d-90abc1afdb1f",
+          "mode": "plan",
+          "status": "COMPLETED",
+          "inputTokens": null,
+          "outputTokens": null
+        },
+        {
+          "id": "653959d0-0ffa-46ee-96b7-8adefea6020d",
+          "mode": "plan",
+          "status": "COMPLETED",
+          "inputTokens": null,
+          "outputTokens": null
+        },
+        {
+          "id": "13653d37-259d-4152-83a3-b77abe2e62ce",
+          "mode": "execute",
+          "status": "COMPLETED",
+          "inputTokens": null,
+          "outputTokens": null
+        }
+      ],
+      "firstPlan": "docs/plans/3ff02a84-5a9e-45e5-954b-e3d768833ae2/e280f268-199f-4f90-9d1d-90abc1afdb1f.md",
+      "revisedPlan": "docs/plans/3ff02a84-5a9e-45e5-954b-e3d768833ae2/653959d0-0ffa-46ee-96b7-8adefea6020d.md",
+      "fixture": "after\n"
+    }
+  ],
+  "browser": {
+    "title": "P0 浏览器审批验收 1795074565754",
+    "task": {
+      "id": "90d5df26-fa21-4c05-a72d-7d10ff9922b5",
+      "status": "DONE",
+      "planPath": "docs/plans/90d5df26-fa21-4c05-a72d-7d10ff9922b5/7f9664e1-b979-4444-87d5-1c5bb60dd126.md",
+      "runs": [
+        {
+          "id": "1949a773-1ee0-4ba7-92f1-b25acd3b1c46",
+          "mode": "execute",
+          "status": "COMPLETED"
+        },
+        {
+          "id": "7f9664e1-b979-4444-87d5-1c5bb60dd126",
+          "mode": "plan",
+          "status": "COMPLETED"
+        },
+        {
+          "id": "149eec2b-94e0-401b-b8c1-a030bc47b4f8",
+          "mode": "plan",
+          "status": "COMPLETED"
+        }
+      ]
+    },
+    "mutations": [
+      {
+        "action": "createTask",
+        "id": "90d5df26-fa21-4c05-a72d-7d10ff9922b5",
+        "__typename": "Task"
+      },
+      {
+        "action": "dispatchTask",
+        "id": "90d5df26-fa21-4c05-a72d-7d10ff9922b5",
+        "status": "DISPATCHED",
+        "__typename": "Task"
+      },
+      {
+        "action": "reviseTaskPlan",
+        "id": "90d5df26-fa21-4c05-a72d-7d10ff9922b5",
+        "status": "DISPATCHED",
+        "__typename": "Task"
+      },
+      {
+        "action": "executeTaskPlan",
+        "id": "90d5df26-fa21-4c05-a72d-7d10ff9922b5",
+        "status": "DISPATCHED",
+        "__typename": "Task"
+      },
+      {
+        "action": "reviewTask",
+        "id": "90d5df26-fa21-4c05-a72d-7d10ff9922b5",
+        "status": "DONE",
+        "__typename": "Task"
+      }
+    ],
+    "pageErrors": [],
+    "checks": {
+      "create": true,
+      "planBody": true,
+      "actionCenterNavigation": true,
+      "revision": true,
+      "approve": true,
+      "review": true,
+      "unauthTaskDenied": true,
+      "runtimeRunAllowed": true,
+      "runtimeTaskDenied": true,
+      "runtimeTraceDenied": true
+    },
+    "cli": "controlled fixture; real Codex and DeepSeek Harness tested separately"
+  },
+  "verification": {
+    "unit": 45,
+    "postgresIntegration": 42,
+    "web": 14,
+    "realPlatformFlows": 2,
+    "build": "API + Web passed; API rebuilt after last parser change",
+    "scopedLint": "passed",
+    "diffCheck": "passed",
+    "apiTypeErrors": 5,
+    "webTypeCheck": "passed with skipLibCheck"
+  },
+  "isolation": {
+    "host": "127.0.0.1",
+    "port": 55439,
+    "testDatabase": "pdt_p0_test",
+    "browserDatabase": "pdt_p0_web",
+    "browserPorts": [8910, 8911]
+  },
+  "runtimeSynchronization": {
+    "observedStatus": "COMPLETED",
+    "observedStage": "VERIFICATION",
+    "observedCompletedAt": "2026-11-19T07:28:27.756Z",
+    "eventCount": 1,
+    "finalReportWriteback": "rejected: Task is already in a terminal status",
+    "localEvidenceSaved": true
+  }
+}

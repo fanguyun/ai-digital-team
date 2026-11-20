@@ -16,7 +16,7 @@ describe('buildTaskCommand', () => {
     expect(args[args.length - 1]).toBe('do it')
   })
 
-  it('keeps dsh argv without image flags', () => {
+  it('pins dsh read-only tasks to the task-specific sandbox overlay', () => {
     const { args } = buildTaskCommand({
       tool: 'deepseek-harness',
       bin: '/opt/dsh',
@@ -26,7 +26,26 @@ describe('buildTaskCommand', () => {
       images: ['/repo/a.png'],
     })
 
-    expect(args).toEqual(['--profile', 'headless', '--json', 'do it'])
+    expect(args).toEqual([
+      '--profile',
+      'headless',
+      '--patch',
+      '/repo/dsh/task-readonly.patch.yml',
+      '--json',
+      'do it',
+    ])
+  })
+
+  it('keeps writable dsh tasks on their existing profile', () => {
+    expect(
+      buildTaskCommand({
+        tool: 'deepseek-harness',
+        bin: '/opt/dsh',
+        projectRoot: '/repo',
+        prompt: 'implement',
+        readOnly: false,
+      }).args
+    ).toEqual(['--profile', 'headless', '--json', 'implement'])
   })
 })
 
@@ -57,6 +76,14 @@ describe('buildTaskPrompt', () => {
   it('omits previous section on first dispatch', () => {
     const prompt = buildTaskPrompt(base)
     expect(prompt).not.toContain('上一轮的结果')
+  })
+
+  it('returns the full plan without asking a read-only agent to write it', () => {
+    const prompt = buildTaskPrompt({ ...base, mode: 'plan' })
+    expect(prompt).toContain('最终回复直接返回完整 Markdown 方案正文')
+    expect(prompt).not.toContain('用 3 行以内')
+    expect(prompt).not.toContain('可以修改仓库文件')
+    expect(prompt).not.toContain('方案写到')
   })
 
   it('keeps artifact convention line', () => {

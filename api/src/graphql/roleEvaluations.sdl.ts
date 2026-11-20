@@ -37,6 +37,9 @@ export const schema = gql`
     logPath: String!
     startedAt: DateTime!
     finishedAt: DateTime
+    taskId: ID
+    """失败时从日志尾部取到的真实报错（成功或运行中为 null）"""
+    failureReason: String
   }
 
   type RoleEvaluationMessage {

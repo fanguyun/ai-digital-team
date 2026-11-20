@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   CircleAlert,
   Clock3,
+  FileCode2,
   Menu,
   RefreshCw,
   Sparkles,
@@ -39,6 +40,24 @@ const WEEKLY_REPORT_QUERY = gql`
       totalTokens
       totalTokenCoverage
       headline
+      delivery {
+        files
+        added
+        removed
+        coveredRuns
+        totalRuns
+        byDirectory {
+          directory
+          files
+          added
+          removed
+        }
+        uncategorized {
+          files
+          added
+          removed
+        }
+      }
       contributions {
         agent
         workCount
@@ -154,12 +173,7 @@ const dimensionMeta = {
   },
 }
 
-const ReportTaskList = ({
-  items,
-  empty,
-  onSelectTask,
-  tone = 'default',
-}) =>
+const ReportTaskList = ({ items, empty, onSelectTask, tone = 'default' }) =>
   items.length ? (
     <div className="weekly-task-list">
       {items.map((task) => (
@@ -174,7 +188,9 @@ const ReportTaskList = ({
             <span className="weekly-task-copy">
               <strong>{task.title}</strong>
               <span>{task.summary || '暂无摘要'}</span>
-              <small>{agentNames[task.primaryAgent] || task.primaryAgent}</small>
+              <small>
+                {agentNames[task.primaryAgent] || task.primaryAgent}
+              </small>
             </span>
             <Tag>{statusLabel[task.status] || task.status}</Tag>
           </button>
@@ -231,7 +247,9 @@ const WeeklyReport = ({ onOpenSidebar }) => {
             <CircleAlert size={24} />
             <h1>任务详情加载失败</h1>
             <p>{taskDetailError.message}</p>
-            <Button onClick={() => setSelectedTaskId(null)}>返回工作总结</Button>
+            <Button onClick={() => setSelectedTaskId(null)}>
+              返回工作总结
+            </Button>
           </div>
         ) : (
           <div className="runtime-state-panel" aria-busy={taskDetailLoading}>
@@ -298,9 +316,7 @@ const WeeklyReport = ({ onOpenSidebar }) => {
             icon={<ArrowRight size={15} />}
             iconPosition="end"
             disabled={reportOffset === 0}
-            onClick={() =>
-              setReportOffset((value) => Math.min(0, value + 1))
-            }
+            onClick={() => setReportOffset((value) => Math.min(0, value + 1))}
           >
             {meta.next}
           </Button>
@@ -348,6 +364,11 @@ const WeeklyReport = ({ onOpenSidebar }) => {
               <small>当前仍未闭环</small>
             </Card>
             <Card>
+              <span>交付文件</span>
+              <strong>{report.delivery?.files ?? 0}</strong>
+              <small>本期运行改动</small>
+            </Card>
+            <Card>
               <span>Token 消耗</span>
               <strong>
                 {formatTokenValue(
@@ -358,6 +379,102 @@ const WeeklyReport = ({ onOpenSidebar }) => {
               <small>输入与输出合计</small>
             </Card>
           </div>
+
+          <Card
+            className="weekly-section weekly-delivery"
+            title={
+              <>
+                <FileCode2 size={16} /> 交付物统计（按项目目录）
+              </>
+            }
+          >
+            {!report.delivery || report.delivery.files === 0 ? (
+              <p className="weekly-empty">
+                {meta.scope}还没有记录到交付改动。
+                {report.delivery &&
+                  report.delivery.totalRuns > 0 &&
+                  `（${report.delivery.totalRuns} 个运行尚未产生交付统计）`}
+              </p>
+            ) : (
+              <>
+                <div className="weekly-delivery-total">
+                  <div>
+                    <span>变更文件</span>
+                    <strong>{report.delivery.files}</strong>
+                  </div>
+                  <div>
+                    <span>新增行</span>
+                    <strong className="added">+{report.delivery.added}</strong>
+                  </div>
+                  <div>
+                    <span>删除行</span>
+                    <strong className="removed">
+                      −{report.delivery.removed}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>净变化</span>
+                    <strong>
+                      {report.delivery.added - report.delivery.removed >= 0
+                        ? '+'
+                        : ''}
+                      {report.delivery.added - report.delivery.removed}
+                    </strong>
+                  </div>
+                </div>
+
+                <table className="weekly-delivery-table">
+                  <thead>
+                    <tr>
+                      <th>项目目录</th>
+                      <th>文件</th>
+                      <th>新增</th>
+                      <th>删除</th>
+                      <th>净变化</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.delivery.byDirectory.map((row) => (
+                      <tr key={row.directory}>
+                        <td>
+                          <code>{row.directory}/</code>
+                        </td>
+                        <td>{row.files}</td>
+                        <td className="added">+{row.added}</td>
+                        <td className="removed">−{row.removed}</td>
+                        <td>
+                          {row.added - row.removed >= 0 ? '+' : ''}
+                          {row.added - row.removed}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {report.delivery.uncategorized?.files > 0 && (
+                  <p className="weekly-note">
+                    未分类（仓库根目录文件）：
+                    {report.delivery.uncategorized.files} 个文件， +
+                    {report.delivery.uncategorized.added} / −
+                    {report.delivery.uncategorized.removed} 行
+                  </p>
+                )}
+
+                {report.delivery.coveredRuns < report.delivery.totalRuns && (
+                  <p className="weekly-note">
+                    本期 {report.delivery.totalRuns} 个运行中{' '}
+                    {report.delivery.coveredRuns}{' '}
+                    个有交付统计（会话同步与历史运行不记录）。
+                  </p>
+                )}
+
+                <p className="weekly-note">
+                  口径：按运行统计工作区相对 HEAD
+                  的改动，并扣掉派发前已存在的未提交改动；日志、构建产物、软链接与二进制文件不计入。
+                </p>
+              </>
+            )}
+          </Card>
 
           <div className="weekly-layout">
             <Card

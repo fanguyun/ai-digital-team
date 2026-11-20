@@ -82,9 +82,36 @@ describe('parseTaskRunOutput', () => {
     })
     expect(output).toEqual({ summary: '', artifacts: [] })
   })
+
+  it('preserves full codex exec final messages separately from the summary', () => {
+    const content = '# 实施方案\n' + '方案正文'.repeat(300)
+    const logPath = writeLog([
+      JSON.stringify({
+        type: 'item.completed',
+        item: { type: 'agent_message', text: content },
+      }),
+    ])
+    const output = parseTaskRunOutput({ logPath, tool: 'codex' })
+    expect(output.finalText).toBe(content)
+    expect(output.summary.length).toBeLessThanOrEqual(500)
+  })
 })
 
 describe('failure detection', () => {
+  it('ignores a nonfatal CLI startup diagnostic once the turn finishes successfully', () => {
+    const file = writeLog([
+      '2026-11-19 ERROR codex_core::skills: failed to load an unrelated skill',
+      JSON.stringify({
+        type: 'item.completed',
+        item: { type: 'agent_message', text: '# 方案正文' },
+      }),
+      JSON.stringify({ type: 'turn.completed' }),
+    ])
+    expect(parseTaskRunOutput({ logPath: file, tool: 'codex' })).toMatchObject({
+      completed: true,
+      error: undefined,
+    })
+  })
   it('detects dsh error status', () => {
     const file = writeLog([
       JSON.stringify({
@@ -95,6 +122,7 @@ describe('failure detection', () => {
           error: { message: 'MISSING_CREDENTIAL: no api key' },
         },
       }),
+      JSON.stringify({ type: 'final', text: '执行已结束' }),
     ])
 
     const output = parseTaskRunOutput({
@@ -110,6 +138,28 @@ describe('failure detection', () => {
     ])
     const output = parseTaskRunOutput({ logPath: file, tool: 'codex' })
     expect(output.error).toContain('rate limited')
+  })
+
+  it('ignores error wording echoed inside prompts or model output', () => {
+    const lines = [
+      JSON.stringify({
+        type: 'item.started',
+        item: {
+          type: 'user_message',
+          text: '上一轮失败原因：dsh: MISSING_CREDENTIAL: no API key',
+        },
+      }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { type: 'agent_message', text: '已按规则重新评估。' },
+      }),
+      JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 10 } }),
+    ]
+    const file = writeLog(lines)
+
+    expect(parseTaskRunOutput({ logPath: file, tool: 'codex' })?.error).toBe(
+      undefined
+    )
   })
 
   it('reports no error for a normal run', () => {

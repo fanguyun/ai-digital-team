@@ -5,8 +5,12 @@ import { publishTaskRun, type TaskRuntimePubSub } from 'src/lib/runtimeEvents'
 import { loadCodexSessions } from './codexSessions'
 import {
   loadDeepSeekSessions,
+  summarizeDeepSeekLines,
   type DeepSeekSessionSnapshot,
 } from './deepseekSessions'
+import { findDshSessionFile } from './roleEvaluationSessions'
+import { parseSessionReference } from './sessionTrace'
+import { readZstdLines } from './zstdLines'
 
 const SYNC_INTERVAL_MS = 20_000
 const TOKEN_LIMIT = 2_147_483_647
@@ -15,7 +19,10 @@ let syncedAt = 0
 let pending: Promise<void> | null = null
 
 const bounded = (value: number | undefined) =>
-  value !== undefined && Number.isSafeInteger(value) && value >= 0 && value <= TOKEN_LIMIT
+  value !== undefined &&
+  Number.isSafeInteger(value) &&
+  value >= 0 &&
+  value <= TOKEN_LIMIT
     ? value
     : undefined
 
@@ -157,6 +164,37 @@ export const upsertDeepSeekSession = async (
   return taskRun
 }
 
+/** 按运行记录的 externalReference 找回它对应的会话快照（找不到说明会话已被清理） */
+export const findSessionSnapshot = async (reference: string) => {
+  if (!reference) return null
+
+  // dsh 会话能按 sessionId 直接定位文件，只读这一份，避免全量扫描上百个会话
+  const parsed = parseSessionReference(reference)
+  if (parsed.platform === 'dsh' && parsed.sessionId) {
+    const filePath = await findDshSessionFile(parsed.sessionId)
+    if (!filePath) return null
+    const lines: string[] = []
+    try {
+      for await (const line of readZstdLines(filePath)) lines.push(line)
+    } catch {
+      return null
+    }
+    return (
+      summarizeDeepSeekLines(lines, parsed.sessionId).find(
+        (snapshot) => referenceFor(snapshot) === reference
+      ) ?? null
+    )
+  }
+
+  const snapshots = [
+    ...(await loadDeepSeekSessions()),
+    ...(await loadCodexSessions()),
+  ]
+  return (
+    snapshots.find((snapshot) => referenceFor(snapshot) === reference) ?? null
+  )
+}
+
 export const syncDeepSeekSessions = async ({
   pubSub,
   force = false,
@@ -164,7 +202,8 @@ export const syncDeepSeekSessions = async ({
   pubSub?: TaskRuntimePubSub
   force?: boolean
 } = {}) => {
-  if (process.env.NODE_ENV === 'test' && !process.env.DEEPSEEK_SESSION_ROOT) return
+  if (process.env.NODE_ENV === 'test' && !process.env.DEEPSEEK_SESSION_ROOT)
+    return
   if (!force && pending) return pending
   if (!force && Date.now() - syncedAt < SYNC_INTERVAL_MS) return
 
@@ -189,7 +228,9 @@ export const syncDeepSeekSessions = async ({
       select: { id: true, externalReference: true },
     })
     const staleIds = imported
-      .filter((run) => run.externalReference && !keep.has(run.externalReference))
+      .filter(
+        (run) => run.externalReference && !keep.has(run.externalReference)
+      )
       .map((run) => run.id)
     if (staleIds.length > 0) {
       await db.taskEvent.deleteMany({ where: { taskRunId: { in: staleIds } } })

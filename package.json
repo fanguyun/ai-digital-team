@@ -51,10 +51,10 @@
     "test": "yarn test:node && yarn test:api:unit && yarn test:api && yarn test:web"
   },
   "devDependencies": {
-    "@cedarjs/core": "5.0.0",
-    "@cedarjs/eslint-config": "5.0.0",
-    "@cedarjs/project-config": "5.0.0",
-    "@cedarjs/testing": "5.0.0",
+    "@cedarjs/core": "7.1.0",
+    "@cedarjs/eslint-config": "7.1.0",
+    "@cedarjs/project-config": "7.1.0",
+    "@cedarjs/testing": "7.1.0",
     "prisma": "7.8.0"
   },
   "engines": {

@@ -9,7 +9,12 @@ import { UserInputError } from '@cedarjs/graphql-server'
 
 import { db } from 'src/lib/db'
 import { syncDeepSeekSessions } from 'src/lib/deepseekSessionSync'
+import { resolveRepoRoot } from 'src/lib/roleEvaluationDispatch'
 import { publishTaskRun, type TaskRuntimePubSub } from 'src/lib/runtimeEvents'
+import {
+  parseSessionReference,
+  readSessionTurnTrace,
+} from 'src/lib/sessionTrace'
 import {
   isTerminalStatus,
   normalizeCreateTaskRunInput,
@@ -18,6 +23,7 @@ import {
   type TaskRunStageValue,
   type TaskRunStatusValue,
 } from 'src/lib/taskState'
+import { mergeRunDiffStats, type RunDiffStat } from 'src/lib/taskWorkspace'
 
 const DEFAULT_PAGE_SIZE = 20
 const MAX_PAGE_SIZE = 100
@@ -588,10 +594,35 @@ export const teamWeeklyReport = async (
         right.workCount - left.workCount || right.totalTokens - left.totalTokens
     )
 
+  // 交付物统计：只看本系统派发的运行（带 diffStat），按项目目录分组
+  const merged = mergeRunDiffStats(
+    periodTasks.map((task) => (task.diffStat as RunDiffStat | null) ?? null)
+  )
+  const delivery = {
+    files: merged.files,
+    added: merged.added,
+    removed: merged.removed,
+    byDirectory: Object.entries(merged.byDirectory)
+      .map(([directory, stat]) => ({ directory, ...stat }))
+      .sort(
+        (left, right) =>
+          right.added + right.removed - (left.added + left.removed) ||
+          left.directory.localeCompare(right.directory)
+      ),
+    uncategorized: merged.uncategorized,
+    coveredRuns: merged.covered,
+    totalRuns: periodTasks.length,
+  }
+
+  const deliverySummary =
+    merged.files > 0
+      ? `，交付改动 ${merged.files} 个文件（+${merged.added} / −${merged.removed} 行）`
+      : ''
+
   const headline =
     periodTasks.length === 0
       ? '当前统计周期还没有数字团队任务记录。'
-      : `当前统计周期记录 ${periodTasks.length} 个任务，完成 ${completed.length} 个，失败 ${failed.length} 个，当前仍有 ${pendingTasks.length} 个事项待推进。`
+      : `当前统计周期记录 ${periodTasks.length} 个任务，完成 ${completed.length} 个，失败 ${failed.length} 个，当前仍有 ${pendingTasks.length} 个事项待推进${deliverySummary}。`
 
   return {
     from: occurredAt.gte,
@@ -608,6 +639,7 @@ export const teamWeeklyReport = async (
     totalTokens: overview.totalTokens,
     totalTokenCoverage: overview.totalTokenCoverage,
     headline,
+    delivery,
     contributions,
     completed: completed.slice(0, 12),
     failures: failed.slice(0, 8).map((task) => ({
@@ -816,9 +848,7 @@ export const appendTaskEvent = async (
             status: input.status as TaskRunStatusValue | null | undefined,
             stage: input.stage as TaskRunStageValue,
             evidence: input.evidence as
-              | Record<string, unknown>
-              | null
-              | undefined,
+              Record<string, unknown> | null | undefined,
           }
         )
       )
@@ -890,4 +920,30 @@ export const TaskRun = {
       where: { taskRunId: root.id },
       orderBy: { sequence: 'asc' },
     }),
+  // 只读关联：阶段详情要拿需求、方案路径和产物，但不触发 reconcileTask
+  task: (_obj: unknown, { root }: { root: { taskId?: string | null } }) =>
+    root.taskId
+      ? db.task.findUnique({
+          where: { id: root.taskId },
+          include: { artifacts: { orderBy: { createdAt: 'asc' } } },
+        })
+      : null,
+}
+
+/**
+ * 某次运行所属轮次的会话轨迹（消息 + 工具调用摘要）。
+ * 不落库：每次都从本机会话记录实时解析，读不到时返回空轨迹。
+ */
+export const taskRunTrace = async ({ runId }: { runId: string }) => {
+  const run = await db.taskRun.findUnique({ where: { id: runId } })
+  if (!run) throw new UserInputError('执行记录不存在')
+
+  const reference = parseSessionReference(run.externalReference)
+
+  return readSessionTurnTrace({
+    tool: run.platform,
+    sessionId: reference.sessionId,
+    turn: reference.turn,
+    projectRoot: resolveRepoRoot(),
+  })
 }

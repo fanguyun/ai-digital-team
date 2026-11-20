@@ -304,6 +304,7 @@ const ActivityView = ({
   onStatusChange,
   onSearchInputChange,
   onPageChange,
+  onRefresh,
 }: {
   taskRuns: TaskRun[]
   page: number
@@ -316,6 +317,7 @@ const ActivityView = ({
   onStatusChange: (status: TaskStatus | 'ALL') => void
   onSearchInputChange: (value: string) => void
   onPageChange: (page: number) => void
+  onRefresh?: () => void
 }) => {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   // 分组只在当前页内进行；筛选/搜索已由服务端完成。
@@ -331,6 +333,7 @@ const ActivityView = ({
       <TaskDetail
         task={selectedTask as TaskDetailTask}
         onBack={() => setSelectedTaskId(null)}
+        onRefresh={onRefresh}
       />
     )
   }
@@ -714,6 +717,7 @@ const TaskRuntimeDashboard = ({
         searchInput={searchInput}
         onStatusChange={changeStatus}
         onSearchInputChange={changeSearchInput}
+        onRefresh={refreshLatest}
         onPageChange={changePage}
       />
     </section>

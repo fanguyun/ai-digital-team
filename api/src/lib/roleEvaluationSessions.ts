@@ -1,9 +1,10 @@
 import { createReadStream, readFileSync, statSync } from 'node:fs'
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { createInterface } from 'node:readline'
-import { zstdDecompressSync } from 'node:zlib'
+
+import { readZstdText } from './zstdLines'
 
 export type RoleEvaluationToolId = 'codex' | 'deepseek-harness'
 
@@ -174,6 +175,40 @@ export const listDshSessionDirsIn = async (
   return dirs.sort((left, right) => right.mtimeMs - left.mtimeMs)
 }
 
+const uuidOf = (value: string) => value.match(uuidPattern)?.[0]?.toLowerCase()
+
+/**
+ * 按 sessionId 在全量会话根目录下找会话文件。
+ * 运行记录同步的是整台机器的会话（不限本仓库），所以不能只用
+ * dshWorkspaceDir(projectRoot) 那一个目录。
+ */
+export const findDshSessionFile = async (
+  sessionId: string
+): Promise<string | null> => {
+  const target = uuidOf(sessionId)
+  if (!target) return null
+
+  const root = dshSessionRoot()
+  let entries: string[] = []
+  try {
+    entries = await readdir(root, { recursive: true })
+  } catch {
+    return null
+  }
+
+  for (const entry of entries) {
+    if (path.basename(entry) !== 'session.v4.jsonl.zstd') continue
+    const filePath = path.isAbsolute(entry) ? entry : path.join(root, entry)
+    if (uuidOf(path.basename(path.dirname(filePath))) !== target) continue
+    try {
+      if ((await stat(filePath)).isFile()) return filePath
+    } catch {
+      // 扫描期间被清理：继续找下一个
+    }
+  }
+  return null
+}
+
 export const discoverDshSession = async ({
   projectRoot,
   since,
@@ -231,10 +266,17 @@ const readCodexThread = async (filePath: string): Promise<ThreadMessage[]> => {
   return messages
 }
 
+const recordTime = (record: Record<string, unknown>) => {
+  const raw = record.time ?? record.timestamp
+  if (typeof raw === 'number') return new Date(raw)
+  if (typeof raw === 'string') return new Date(raw)
+  return new Date()
+}
+
 const readDshThread = async (filePath: string): Promise<ThreadMessage[]> => {
   let raw: string
   try {
-    raw = zstdDecompressSync(await readFile(filePath)).toString('utf8')
+    raw = await readZstdText(filePath)
   } catch {
     return []
   }
@@ -246,14 +288,15 @@ const readDshThread = async (filePath: string): Promise<ThreadMessage[]> => {
     const type = record.type
     if (type !== 'user/message' && type !== 'assistant/message') continue
     const data = (record.data || {}) as Record<string, unknown>
-    const text = clip(textOf(data.content).trim())
+    // v4 会话把 assistant 正文放在 data.message.content，旧格式在 data.content
+    const content =
+      type === 'assistant/message'
+        ? ((data.message as { content?: unknown } | undefined)?.content ??
+          data.content)
+        : data.content
+    const text = clip(textOf(content).trim())
     if (!text) continue
-    const stamp =
-      typeof record.timestamp === 'string'
-        ? new Date(record.timestamp)
-        : typeof record.time === 'string'
-          ? new Date(record.time)
-          : new Date()
+    const stamp = recordTime(record)
     messages.push({
       role: type === 'user/message' ? 'user' : 'assistant',
       content: text,

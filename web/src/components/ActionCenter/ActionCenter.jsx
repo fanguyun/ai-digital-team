@@ -11,6 +11,8 @@ import {
 
 const TYPE_META = {
   waiting: { label: '待确认', icon: ShieldAlert },
+  approval: { label: '待批准方案', icon: ShieldAlert },
+  review: { label: '待验收', icon: CheckCircle2 },
   failed: { label: '执行失败', icon: AlertTriangle },
   stale: { label: '长时间未更新', icon: Clock3 },
   health: { label: '系统异常', icon: DatabaseZap },
@@ -55,8 +57,12 @@ function ActionCenter({
 
       <section className="action-summary" aria-label="待处理统计">
         <div>
-          <span>全部事项</span>
+          <span>已显示事项</span>
           <strong>{counts.total}</strong>
+        </div>
+        <div className="danger">
+          <span>待验收</span>
+          <strong>{counts.review}</strong>
         </div>
         <div className="danger">
           <span>待确认</span>
@@ -75,6 +81,12 @@ function ActionCenter({
           <strong>{counts.system}</strong>
         </div>
       </section>
+
+      {model.taskLimitReached && (
+        <p role="status">
+          仅显示最近 100 条待处理任务，其余任务请到任务看板查看。
+        </p>
+      )}
 
       {loading && items.length === 0 ? (
         <div className="action-center-state">
@@ -118,7 +130,12 @@ function ActionCenter({
                     onClick={() =>
                       item.action === 'refresh'
                         ? onRefresh()
-                        : onNavigate(item.action)
+                        : onNavigate(
+                            item.action,
+                            item.taskId
+                              ? { taskId: item.taskId, section: item.section }
+                              : null
+                          )
                     }
                   >
                     {item.actionLabel}

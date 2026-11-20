@@ -6,6 +6,7 @@ import {
   taskRun,
   taskRuns,
   teamRuntimeOverview,
+  teamWeeklyReport,
 } from './taskRuns'
 
 const publish = jest.fn().mockResolvedValue(undefined)
@@ -705,5 +706,78 @@ describe('taskRuns service', () => {
       true,
     ])
     expect(await db.taskEvent.count()).toBe(2)
+  })
+})
+
+describe('teamWeeklyReport delivery stats', () => {
+  const now = new Date('2026-11-20T10:00:00.000Z')
+
+  beforeEach(async () => {
+    await db.taskEvent.deleteMany()
+    await db.taskRun.deleteMany()
+    await db.task.deleteMany()
+  })
+
+  const run = (overrides: Record<string, unknown>) =>
+    db.taskRun.create({
+      data: {
+        title: '交付统计测试',
+        platform: 'codex',
+        primaryAgent: 'main-agent',
+        status: 'COMPLETED',
+        currentStage: 'DELIVERY',
+        startedAt: now,
+        completedAt: now,
+        ...overrides,
+      },
+    })
+
+  it('sums files and lines per directory and reports coverage', async () => {
+    await run({
+      diffStat: {
+        files: 3,
+        added: 20,
+        removed: 4,
+        byDirectory: {
+          api: { files: 2, added: 15, removed: 3 },
+          web: { files: 1, added: 5, removed: 1 },
+        },
+        uncategorized: { files: 0, added: 0, removed: 0 },
+      },
+    })
+    await run({
+      diffStat: {
+        files: 2,
+        added: 9,
+        removed: 6,
+        byDirectory: { api: { files: 1, added: 9, removed: 6 } },
+        uncategorized: { files: 1, added: 0, removed: 0 },
+      },
+    })
+    // 没有统计的运行（会话同步 / 历史运行）
+    await run({ diffStat: null })
+
+    const report = await teamWeeklyReport({
+      range: {
+        from: '2026-11-20T00:00:00.000Z',
+        to: '2026-11-21T00:00:00.000Z',
+      },
+    })
+
+    expect(report.delivery.files).toBe(5)
+    expect(report.delivery.added).toBe(29)
+    expect(report.delivery.removed).toBe(10)
+    expect(report.delivery.coveredRuns).toBe(2)
+    expect(report.delivery.totalRuns).toBe(3)
+    expect(report.delivery.byDirectory).toEqual([
+      { directory: 'api', files: 3, added: 24, removed: 9 },
+      { directory: 'web', files: 1, added: 5, removed: 1 },
+    ])
+    expect(report.delivery.uncategorized).toEqual({
+      files: 1,
+      added: 0,
+      removed: 0,
+    })
+    expect(report.headline).toContain('交付改动 5 个文件')
   })
 })

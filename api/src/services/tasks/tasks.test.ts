@@ -1,6 +1,15 @@
-import { appendFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { zstdCompressSync } from 'node:zlib'
 
+import * as agentDispatch from 'src/lib/agentDispatch'
 import { db } from 'src/lib/db'
 import { resolveRepoRoot } from 'src/lib/roleEvaluationDispatch'
 
@@ -13,8 +22,13 @@ import {
   executeTaskPlan,
   reviseTaskPlan,
   sweepTasks,
+  refreshRun,
+  refreshTask,
+  taskPrecheck,
   taskPulse,
+  taskPlanContent,
   taskRunLog,
+  taskRunMessages,
   removeTaskArtifact,
   reviewTask,
   task,
@@ -29,6 +43,79 @@ const base = {
   acceptance: '方案包含改动点与验证方式',
   agentSlug: 'product-solution-agent',
 }
+
+describe('dispatch concurrency with PostgreSQL', () => {
+  beforeEach(async () => {
+    await db.taskEvent.deleteMany()
+    await db.taskRun.deleteMany()
+    await db.task.deleteMany()
+    jest.spyOn(agentDispatch, 'spawnTaskAgent').mockReturnValue({
+      pid: process.pid,
+      command: 'mock',
+      args: [],
+      logAbsolute: '',
+    })
+  })
+  afterEach(() => jest.restoreAllMocks())
+
+  it('reserves only one run for simultaneous dispatches of the same task', async () => {
+    const created = await createTask({ input: base })
+    const results = await Promise.allSettled([
+      dispatchTask({ id: created.id }),
+      dispatchTask({ id: created.id }),
+    ])
+    expect(
+      results.filter((result) => result.status === 'fulfilled')
+    ).toHaveLength(1)
+    expect(await db.taskRun.count({ where: { taskId: created.id } })).toBe(1)
+    expect(agentDispatch.spawnTaskAgent).toHaveBeenCalledTimes(1)
+  })
+
+  it('serializes two different tasks assigned to the same role', async () => {
+    const first = await createTask({ input: base })
+    const second = await createTask({ input: { ...base, title: '并发第二项' } })
+    await Promise.all([
+      dispatchTask({ id: first.id }),
+      dispatchTask({ id: second.id }),
+    ])
+    const rows = await db.task.findMany({
+      where: { id: { in: [first.id, second.id] } },
+    })
+    expect(rows.map((row) => row.status).sort()).toEqual([
+      'DISPATCHED',
+      'QUEUED',
+    ])
+    expect(agentDispatch.spawnTaskAgent).toHaveBeenCalledTimes(1)
+  })
+
+  it('invalidates an old plan after a requirement change', async () => {
+    const created = await createTask({ input: base })
+    await db.task.update({
+      where: { id: created.id },
+      data: { status: 'AWAITING_APPROVAL', planPath: 'README.md' },
+    })
+    await updateTask({ id: created.id, input: { brief: '变更后的需求' } })
+    await expect(
+      executeTaskPlan({ id: created.id, planPath: 'README.md' })
+    ).rejects.toThrow('没有待确认')
+    expect(
+      (await db.task.findUniqueOrThrow({ where: { id: created.id } })).planPath
+    ).toBeNull()
+    expect(agentDispatch.spawnTaskAgent).not.toHaveBeenCalled()
+  })
+
+  it('preserves a completed task and its finished run when cancellation arrives late', async () => {
+    const created = await createTask({ input: base })
+    await db.task.update({
+      where: { id: created.id },
+      data: { status: 'DONE' },
+    })
+    await expect(cancelTask({ id: created.id })).rejects.toThrow('不能取消')
+    expect(
+      (await db.task.findUniqueOrThrow({ where: { id: created.id } })).status
+    ).toBe('DONE')
+  })
+})
 
 describe('tasks service', () => {
   const originalBin = process.env.ROLE_EVAL_CODEX_BIN
@@ -121,14 +208,68 @@ describe('tasks service', () => {
     expect(updated.title).toBe('改个标题')
   })
 
+  it('filters tasks by creation time range', async () => {
+    await db.task.create({
+      data: {
+        title: '旧任务',
+        brief: 'b',
+        acceptance: 'a',
+        agentSlug: 'main-agent',
+        status: 'DRAFT',
+        createdAt: new Date('2026-10-01T02:00:00.000Z'),
+        updatedAt: new Date('2026-10-01T02:00:00.000Z'),
+      },
+    })
+    await db.task.create({
+      data: {
+        title: '新任务',
+        brief: 'b',
+        acceptance: 'a',
+        agentSlug: 'main-agent',
+        status: 'DRAFT',
+        createdAt: new Date('2026-11-18T02:00:00.000Z'),
+        updatedAt: new Date('2026-11-18T02:00:00.000Z'),
+      },
+    })
+
+    const recent = await tasks({ from: '2026-11-01T00:00:00.000Z' })
+    expect(recent.map((item) => item.title)).toEqual(['新任务'])
+
+    const all = await tasks({})
+    expect(all.map((item) => item.title).sort()).toEqual(['新任务', '旧任务'])
+
+    const onlyOld = await tasks({
+      from: '2026-10-01T00:00:00.000Z',
+      to: '2026-10-31T00:00:00.000Z',
+    })
+    expect(onlyOld.map((item) => item.title)).toEqual(['旧任务'])
+  })
+
   it('reviews approve and reject with rules', async () => {
     const created = await createTask({ input: base })
+    await db.task.update({
+      where: { id: created.id },
+      data: { status: 'AWAITING_REVIEW' },
+    })
+    await db.taskArtifact.create({
+      data: {
+        taskId: created.id,
+        kind: 'file',
+        source: 'run',
+        path: 'docs/reports/review-test.md',
+        label: 'review-test.md',
+      },
+    })
 
     await expect(
       reviewTask({ id: created.id, decision: 'APPROVE' })
     ).resolves.toMatchObject({ status: 'DONE' })
 
     const second = await createTask({ input: { ...base, title: '第二个' } })
+    await db.task.update({
+      where: { id: second.id },
+      data: { status: 'AWAITING_REVIEW' },
+    })
     await expect(
       reviewTask({ id: second.id, decision: 'REJECT' })
     ).rejects.toThrow('打回需要填写原因')
@@ -140,6 +281,26 @@ describe('tasks service', () => {
     })
     expect(rejected.status).toBe('DRAFT')
     expect(rejected.reviewNote).toBe('缺少验证方式')
+    expect(rejected.completedAt).toBeNull()
+  })
+
+  it('refuses to approve a task that produced no artifacts without a note', async () => {
+    const created = await createTask({ input: base })
+    await db.task.update({
+      where: { id: created.id },
+      data: { status: 'AWAITING_REVIEW' },
+    })
+
+    await expect(
+      reviewTask({ id: created.id, decision: 'APPROVE' })
+    ).rejects.toThrow('没有登记任何产物')
+
+    const approved = await reviewTask({
+      id: created.id,
+      decision: 'APPROVE',
+      note: '交付物是 git 改动，没有单独产出文件',
+    })
+    expect(approved.status).toBe('DONE')
   })
 
   it('cancels a task', async () => {
@@ -430,7 +591,15 @@ describe('task pulse', () => {
   it('counts by status for the overview card', async () => {
     const draft = await createTask({ input: base })
     const done = await createTask({ input: { ...base, title: '已完成的' } })
-    await reviewTask({ id: done.id, decision: 'APPROVE' })
+    await db.task.update({
+      where: { id: done.id },
+      data: { status: 'AWAITING_REVIEW' },
+    })
+    await reviewTask({
+      id: done.id,
+      decision: 'APPROVE',
+      note: '交付物是 git 改动，未登记产物',
+    })
 
     const pulse = await taskPulse()
     expect(pulse.completedToday).toBe(1)
@@ -462,7 +631,6 @@ describe('plan mode', () => {
     const dispatched = await dispatchTask({ id: created.id, tool: 'codex' })
     expect(dispatched!.runs[0].mode).toBe('plan')
 
-    // 模拟 agent 把方案写进 docs/plans
     const repoRoot = resolveRepoRoot()
     const run = dispatched!.runs[0]
     appendFileSync(
@@ -475,25 +643,28 @@ describe('plan mode', () => {
           content: [
             {
               type: 'output_text',
-              text: `方案完成\nartifact: docs/plans/${created.id}.md`,
+              text: '# 执行方案\n只修改登录页，补充空状态测试；异常时回退该次修改。',
             },
           ],
         },
-      })}\n`
+      })}\n${JSON.stringify({ type: 'turn.completed' })}\n`
     )
 
     await new Promise((resolve) => setTimeout(resolve, 200))
     const planned = await task({ id: created.id })
 
     expect(planned.status).toBe('AWAITING_APPROVAL')
-    expect(planned.planPath).toBe(`docs/plans/${created.id}.md`)
+    expect(planned.planPath).toBe(`docs/plans/${created.id}/${run.id}.md`)
+    expect(await taskPlanContent({ taskId: created.id })).toContain(
+      '# 执行方案'
+    )
   })
 
   it('requires approval before executing', async () => {
     const created = await createTask({ input: base })
-    await expect(executeTaskPlan({ id: created.id })).rejects.toThrow(
-      '没有待确认的方案'
-    )
+    await expect(
+      executeTaskPlan({ id: created.id, planPath: 'README.md' })
+    ).rejects.toThrow('没有待确认的方案')
   })
 
   it('executes with the approved plan', async () => {
@@ -502,11 +673,14 @@ describe('plan mode', () => {
       where: { id: created.id },
       data: {
         status: 'AWAITING_APPROVAL',
-        planPath: 'docs/plans/demo.md',
+        planPath: 'README.md',
       },
     })
 
-    const executed = await executeTaskPlan({ id: created.id })
+    const executed = await executeTaskPlan({
+      id: created.id,
+      planPath: 'README.md',
+    })
     expect(executed!.status).toBe('DISPATCHED')
     expect(executed!.runs[0].mode).toBe('execute')
   })
@@ -561,5 +735,447 @@ describe('plan revision', () => {
     expect(revised!.status).toBe('DISPATCHED')
     expect(revised!.runs[0].mode).toBe('plan')
     expect(revised!.planNote).toBe('范围缩小到登录页')
+  })
+})
+
+describe('task plan content', () => {
+  beforeEach(async () => {
+    await db.taskArtifact.deleteMany()
+    await db.taskEvent.deleteMany()
+    await db.taskRun.deleteMany()
+    await db.task.deleteMany()
+  })
+
+  it('reads the plan file the task points at', async () => {
+    const created = await createTask({ input: base })
+    await db.task.update({
+      where: { id: created.id },
+      data: { planPath: 'README.md' },
+    })
+
+    const content = await taskPlanContent({ taskId: created.id })
+    expect(content).toContain('个人数字团队')
+  })
+
+  it('rejects tasks without a plan file', async () => {
+    const created = await createTask({ input: base })
+    await expect(taskPlanContent({ taskId: created.id })).rejects.toThrow(
+      '还没有方案文件'
+    )
+  })
+
+  it('guards the plan path like artifact reads', async () => {
+    const created = await createTask({ input: base })
+
+    await db.task.update({
+      where: { id: created.id },
+      data: { planPath: '../.env' },
+    })
+    await expect(taskPlanContent({ taskId: created.id })).rejects.toThrow(
+      '不在仓库内'
+    )
+
+    await db.task.update({
+      where: { id: created.id },
+      data: { planPath: '.git/config' },
+    })
+    await expect(taskPlanContent({ taskId: created.id })).rejects.toThrow(
+      '不允许读取'
+    )
+
+    await db.task.update({
+      where: { id: created.id },
+      data: { planPath: 'docs/plans/not-exists.md' },
+    })
+    await expect(taskPlanContent({ taskId: created.id })).rejects.toThrow(
+      '文件不存在'
+    )
+  })
+})
+
+describe('task run messages', () => {
+  const originalRoot = process.env.DSH_SESSION_ROOT
+  let sessionRoot: string
+  const sessionId = '11111111-2222-3333-4444-555555555555'
+
+  const writeSession = (records: Array<Record<string, unknown>>) => {
+    const dir = path.join(sessionRoot, `session-${sessionId}`)
+    mkdirSync(dir, { recursive: true })
+    const file = path.join(dir, 'session.v4.jsonl.zstd')
+    const lines = records.map((record) => `${JSON.stringify(record)}\n`)
+    // 会话日志是追加写的多帧文件，第一帧单独写入
+    writeFileSync(
+      file,
+      Buffer.concat([
+        zstdCompressSync(Buffer.from(lines[0], 'utf8')),
+        zstdCompressSync(Buffer.from(lines.slice(1).join(''), 'utf8')),
+      ])
+    )
+  }
+
+  beforeEach(async () => {
+    sessionRoot = mkdtempSync(path.join(tmpdir(), 'dsh-session-'))
+    process.env.DSH_SESSION_ROOT = sessionRoot
+    await db.taskArtifact.deleteMany()
+    await db.taskEvent.deleteMany()
+    await db.taskRun.deleteMany()
+    await db.task.deleteMany()
+  })
+
+  afterEach(() => {
+    rmSync(sessionRoot, { recursive: true, force: true })
+    if (originalRoot === undefined) delete process.env.DSH_SESSION_ROOT
+    else process.env.DSH_SESSION_ROOT = originalRoot
+  })
+
+  it('only returns the messages of the run turn', async () => {
+    writeSession([
+      {
+        type: 'user/message',
+        time: 1,
+        data: { turn: 1, content: [{ type: 'text', text: '第一轮需求' }] },
+      },
+      {
+        type: 'assistant/message',
+        time: 2,
+        data: {
+          turn: 1,
+          message: { content: [{ type: 'text', text: '第一轮结论' }] },
+        },
+      },
+      {
+        type: 'user/message',
+        time: 3,
+        data: { turn: 2, content: [{ type: 'text', text: '第二轮需求' }] },
+      },
+      {
+        type: 'assistant/message',
+        time: 4,
+        data: {
+          turn: 2,
+          message: { content: [{ type: 'text', text: '第二轮结论' }] },
+        },
+      },
+    ])
+
+    const run = await db.taskRun.create({
+      data: {
+        title: '会话同步运行',
+        platform: 'deepseek-harness',
+        primaryAgent: 'main-agent',
+        externalReference: `dsh-task:${sessionId}:2`,
+        status: 'COMPLETED',
+      },
+    })
+
+    const messages = await taskRunMessages({ runId: run.id })
+    expect(messages.map((message) => message.content)).toEqual([
+      '第二轮需求',
+      '第二轮结论',
+    ])
+  })
+
+  it('returns an empty list when the reference has no session id', async () => {
+    const run = await db.taskRun.create({
+      data: {
+        title: '没有会话的运行',
+        platform: 'deepseek-harness',
+        primaryAgent: 'main-agent',
+        externalReference: `task:${sessionId}`,
+        status: 'QUEUED',
+      },
+    })
+
+    expect(await taskRunMessages({ runId: run.id })).toEqual([])
+  })
+})
+
+describe('orphan run sweep', () => {
+  beforeEach(async () => {
+    await db.taskArtifact.deleteMany()
+    await db.taskEvent.deleteMany()
+    await db.taskRun.deleteMany()
+    await db.task.deleteMany()
+  })
+
+  it('closes a run whose process died even when its task is already terminal', async () => {
+    const task = await db.task.create({
+      data: {
+        title: '评估任务收尾测试',
+        brief: '测试',
+        acceptance: '测试',
+        agentSlug: 'product-solution-agent',
+        status: 'FAILED',
+        readOnly: true,
+      },
+    })
+    const logRelative = `docs/tasks/logs/${task.id}-orphan-sweep.log`
+    const logAbsolute = path.join(resolveRepoRoot(), logRelative)
+    writeFileSync(
+      logAbsolute,
+      `${JSON.stringify({ type: 'turn.completed' })}\n`
+    )
+
+    const run = await db.taskRun.create({
+      data: {
+        title: task.title,
+        platform: 'codex',
+        primaryAgent: task.agentSlug,
+        status: 'RUNNING',
+        currentStage: 'EXECUTION',
+        taskId: task.id,
+        logPath: logRelative,
+        // 不存在的 pid：模拟进程已经退出
+        pid: 999999,
+      },
+    })
+
+    try {
+      await sweepTasks()
+
+      const closed = await db.taskRun.findUnique({ where: { id: run.id } })
+      expect(closed?.status).toBe('COMPLETED')
+      expect(closed?.completedAt).toBeTruthy()
+      expect(closed?.summary).toBeTruthy()
+    } finally {
+      rmSync(logAbsolute, { force: true })
+    }
+  })
+
+  it('leaves runs alone while their process is still alive', async () => {
+    const task = await db.task.create({
+      data: {
+        title: '存活运行测试',
+        brief: '测试',
+        acceptance: '测试',
+        agentSlug: 'product-solution-agent',
+        status: 'DISPATCHED',
+        readOnly: true,
+      },
+    })
+    const run = await db.taskRun.create({
+      data: {
+        title: task.title,
+        platform: 'codex',
+        primaryAgent: task.agentSlug,
+        status: 'RUNNING',
+        currentStage: 'EXECUTION',
+        taskId: task.id,
+        pid: process.pid,
+        startedAt: new Date(),
+      },
+    })
+
+    await sweepTasks()
+
+    const alive = await db.taskRun.findUnique({ where: { id: run.id } })
+    expect(alive?.status).toBe('RUNNING')
+  })
+})
+
+describe('manual state refresh', () => {
+  beforeEach(async () => {
+    await db.taskArtifact.deleteMany()
+    await db.taskEvent.deleteMany()
+    await db.taskRun.deleteMany()
+    await db.task.deleteMany()
+  })
+
+  it('closes a task whose process already exited', async () => {
+    const task = await db.task.create({
+      data: {
+        title: '手动刷新测试',
+        brief: '测试',
+        acceptance: '测试',
+        agentSlug: 'product-solution-agent',
+        status: 'DISPATCHED',
+        readOnly: true,
+      },
+    })
+    const logRelative = `docs/tasks/logs/${task.id}-refresh.log`
+    const logAbsolute = path.join(resolveRepoRoot(), logRelative)
+    writeFileSync(
+      logAbsolute,
+      `${JSON.stringify({ type: 'turn.completed' })}\n报告已写好\n`
+    )
+
+    const run = await db.taskRun.create({
+      data: {
+        title: task.title,
+        platform: 'codex',
+        primaryAgent: task.agentSlug,
+        status: 'RUNNING',
+        currentStage: 'EXECUTION',
+        taskId: task.id,
+        logPath: logRelative,
+        pid: 999999,
+      },
+    })
+
+    try {
+      const refreshed = await refreshTask({ id: task.id })
+      expect(refreshed?.status).toBe('AWAITING_REVIEW')
+      const closedRun = await db.taskRun.findUnique({ where: { id: run.id } })
+      expect(closedRun?.status).toBe('COMPLETED')
+    } finally {
+      rmSync(logAbsolute, { force: true })
+    }
+  })
+
+  it('closes a synced run whose session is gone', async () => {
+    const sessionRoot = mkdtempSync(path.join(tmpdir(), 'dsh-empty-'))
+    const originalRoot = process.env.DSH_SESSION_ROOT
+    process.env.DSH_SESSION_ROOT = sessionRoot
+
+    try {
+      const run = await db.taskRun.create({
+        data: {
+          title: '会话同步运行',
+          platform: 'deepseek-harness',
+          primaryAgent: 'main-agent',
+          status: 'RUNNING',
+          currentStage: 'EXECUTION',
+          externalReference: 'dsh-task:00000000-0000-0000-0000-000000000000:1',
+        },
+      })
+
+      const refreshed = await refreshRun({ runId: run.id })
+      expect(refreshed?.status).toBe('COMPLETED')
+      expect(refreshed?.completedAt).toBeTruthy()
+    } finally {
+      if (originalRoot === undefined) delete process.env.DSH_SESSION_ROOT
+      else process.env.DSH_SESSION_ROOT = originalRoot
+      rmSync(sessionRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('leaves a run alone while its process is alive and writing', async () => {
+    const task = await db.task.create({
+      data: {
+        title: '存活任务',
+        brief: '测试',
+        acceptance: '测试',
+        agentSlug: 'product-solution-agent',
+        status: 'DISPATCHED',
+        readOnly: true,
+      },
+    })
+    const logRelative = `docs/tasks/logs/${task.id}-alive.log`
+    const logAbsolute = path.join(resolveRepoRoot(), logRelative)
+    writeFileSync(logAbsolute, 'running\n')
+
+    const run = await db.taskRun.create({
+      data: {
+        title: task.title,
+        platform: 'codex',
+        primaryAgent: task.agentSlug,
+        status: 'RUNNING',
+        currentStage: 'EXECUTION',
+        taskId: task.id,
+        logPath: logRelative,
+        pid: process.pid,
+        startedAt: new Date(),
+      },
+    })
+
+    try {
+      const refreshed = await refreshRun({ runId: run.id })
+      expect(refreshed?.status).toBe('RUNNING')
+    } finally {
+      rmSync(logAbsolute, { force: true })
+    }
+  })
+})
+
+describe('deliverable check on completion', () => {
+  beforeEach(async () => {
+    await db.taskArtifact.deleteMany()
+    await db.taskEvent.deleteMany()
+    await db.taskRun.deleteMany()
+    await db.task.deleteMany()
+  })
+
+  it('records missing deliverables named in the acceptance criteria', async () => {
+    const task = await db.task.create({
+      data: {
+        title: '缺交付物测试',
+        brief: '生成一份报告',
+        acceptance: '报告写入 docs/role-evaluations/missing-report-xyz.md',
+        agentSlug: 'product-solution-agent',
+        status: 'DISPATCHED',
+        readOnly: true,
+      },
+    })
+    const logRelative = `docs/tasks/logs/${task.id}-deliverable.log`
+    const logAbsolute = path.join(resolveRepoRoot(), logRelative)
+    writeFileSync(
+      logAbsolute,
+      `${JSON.stringify({ type: 'turn.completed' })}\n做完了\n`
+    )
+    await db.taskRun.create({
+      data: {
+        title: task.title,
+        platform: 'codex',
+        primaryAgent: task.agentSlug,
+        status: 'RUNNING',
+        currentStage: 'EXECUTION',
+        taskId: task.id,
+        logPath: logRelative,
+        pid: 999999,
+      },
+    })
+
+    try {
+      await sweepTasks()
+
+      const after = await db.task.findUnique({ where: { id: task.id } })
+      expect(after?.status).toBe('AWAITING_REVIEW')
+      expect(after?.reviewNote).toContain('缺少验收标准里的交付物')
+      expect(after?.reviewNote).toContain(
+        'docs/role-evaluations/missing-report-xyz.md'
+      )
+    } finally {
+      rmSync(logAbsolute, { force: true })
+    }
+  })
+})
+
+describe('task precheck service', () => {
+  beforeEach(async () => {
+    await db.taskArtifact.deleteMany()
+    await db.taskEvent.deleteMany()
+    await db.taskRun.deleteMany()
+    await db.roleEvaluation.deleteMany()
+    await db.task.deleteMany()
+  })
+
+  it('warns that an evaluation mirror task should run through the evaluation flow', async () => {
+    const task = await db.task.create({
+      data: {
+        title: '岗位评估 · 交互 UI 设计师',
+        brief: '评估岗位能力',
+        acceptance: '报告写入 docs/role-evaluations/x.md',
+        agentSlug: 'role-development-agent',
+        status: 'DRAFT',
+        readOnly: true,
+      },
+    })
+    await db.roleEvaluation.create({
+      data: {
+        agentSlug: 'interaction-ui-designer-agent',
+        agentName: '交互 UI 设计师',
+        projectKey: 'digital-team',
+        projectRoot: '/tmp',
+        tool: 'codex',
+        status: 'failed',
+        reportPath: 'docs/role-evaluations/x.md',
+        logPath: 'docs/role-evaluations/logs/x.log',
+        startedAt: new Date(),
+        taskId: task.id,
+      },
+    })
+
+    const result = await taskPrecheck({ id: task.id })
+    expect(result.warnings.join()).toContain('镜像记录')
   })
 })

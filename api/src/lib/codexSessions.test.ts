@@ -35,7 +35,35 @@ const request = (text: string, iso: string) =>
     },
   })
 
+const taskComplete = (iso: string) =>
+  JSON.stringify({
+    timestamp: iso,
+    type: 'event_msg',
+    payload: { type: 'task_complete', turn_id: 'turn-1' },
+  })
+
 describe('Codex task summary', () => {
+  it('marks a task complete as soon as the session says so', () => {
+    // 刚结束 30 秒：仅靠时间窗会被判成"仍在运行"，有 task_complete 就是已完成
+    const now = Date.parse('2026-11-18T10:18:00.000Z')
+    const tasks = summarizeCodexLines(
+      [
+        meta('/Users/fan/ai-digital-team'),
+        task('2026-11-18T10:13:44.000Z'),
+        request('修一下运行状态', '2026-11-18T10:13:45.000Z'),
+        taskComplete('2026-11-18T10:17:47.000Z'),
+      ],
+      sessionId,
+      now,
+      undefined,
+      teamAgents
+    )
+
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0].status).toBe('COMPLETED')
+    expect(tasks[0].stage).toBe('DELIVERY')
+  })
+
   it('splits a digital team thread into individual requests', () => {
     const tasks = summarizeCodexLines(
       [

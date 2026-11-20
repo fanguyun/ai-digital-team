@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import dayjs from 'dayjs'
+
 import {
   Alert,
   Button,
@@ -9,7 +11,9 @@ import {
   Form,
   Input,
   Modal,
+  DatePicker,
   Popconfirm,
+  Segmented,
   Select,
   Tabs,
   Tag,
@@ -35,8 +39,13 @@ import MarkdownEditor from 'src/components/MarkdownEditor/MarkdownEditor'
 import agentManifest from '../../../../agents/manifest.json'
 
 const TASKS_QUERY = gql`
-  query Tasks($status: String, $agentSlug: String) {
-    tasks(status: $status, agentSlug: $agentSlug) {
+  query Tasks(
+    $status: String
+    $agentSlug: String
+    $from: DateTime
+    $to: DateTime
+  ) {
+    tasks(status: $status, agentSlug: $agentSlug, from: $from, to: $to) {
       id
       title
       brief
@@ -88,6 +97,66 @@ const TASKS_QUERY = gql`
   }
 `
 
+const TASK_BY_ID = gql`
+  query ActionTask($id: ID!) {
+    task(id: $id) {
+      id
+      title
+      brief
+      acceptance
+      agentSlug
+      priority
+      status
+      readOnly
+      mode
+      planPath
+      planNote
+      dueAt
+      createdAt
+      updatedAt
+      completedAt
+      reviewNote
+      reviewedAt
+      artifacts {
+        id
+        kind
+        source
+        path
+        label
+        createdAt
+      }
+      runs {
+        id
+        status
+        currentStage
+        platform
+        mode
+        summary
+        logPath
+        dirtyAtDispatch
+        inputTokens
+        outputTokens
+        cachedTokens
+        startedAt
+        completedAt
+        externalReference
+        events {
+          id
+          eventType
+          summary
+          createdAt
+        }
+      }
+    }
+  }
+`
+
+const TASK_PLAN = gql`
+  query ApprovalPlan($taskId: ID!, $planPath: String) {
+    taskPlanContent(taskId: $taskId, planPath: $planPath)
+  }
+`
+
 const CREATE_TASK = gql`
   mutation CreateTask($input: CreateTaskInput!) {
     createTask(input: $input) {
@@ -117,6 +186,53 @@ const CANCEL_TASK = gql`
   mutation CancelTask($id: ID!) {
     cancelTask(id: $id) {
       id
+    }
+  }
+`
+
+const TASK_PRECHECK = gql`
+  query TaskPrecheck($id: ID!) {
+    taskPrecheck(id: $id) {
+      warnings
+      expectedPaths
+    }
+  }
+`
+
+const { RangePicker } = DatePicker
+
+const TIME_TABS = [
+  { label: '全部', value: 'all' },
+  { label: '今日', value: 'today' },
+  { label: '本周', value: 'week' },
+  { label: '本月', value: 'month' },
+  { label: '自定义', value: 'custom' },
+]
+
+/** 按创建时间给出查询区间：只给起点，避免「到此刻」每次渲染都变导致重复请求 */
+const rangeForTab = (tab, customRange) => {
+  const now = dayjs()
+  if (tab === 'today') return { from: now.startOf('day') }
+  if (tab === 'week') {
+    // 周一为一周起点
+    const mondayOffset = (now.day() + 6) % 7
+    return { from: now.subtract(mondayOffset, 'day').startOf('day') }
+  }
+  if (tab === 'month') return { from: now.startOf('month') }
+  if (tab === 'custom' && customRange?.[0] && customRange?.[1]) {
+    return {
+      from: customRange[0].startOf('day'),
+      to: customRange[1].endOf('day'),
+    }
+  }
+  return {}
+}
+
+const REFRESH_TASK = gql`
+  mutation RefreshTask($id: ID!) {
+    refreshTask(id: $id) {
+      id
+      status
     }
   }
 `
@@ -181,8 +297,8 @@ const REVISE_TASK_PLAN = gql`
 `
 
 const EXECUTE_TASK_PLAN = gql`
-  mutation ExecuteTaskPlan($id: ID!, $tool: String) {
-    executeTaskPlan(id: $id, tool: $tool) {
+  mutation ExecuteTaskPlan($id: ID!, $tool: String, $planPath: String!) {
+    executeTaskPlan(id: $id, tool: $tool, planPath: $planPath) {
       id
       status
     }
@@ -304,8 +420,29 @@ const formatDuration = (start, end) => {
   return `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分`
 }
 
-const TaskBoard = ({ onOpenSidebar, initialAgentFilter = null }) => {
+const TaskBoard = ({
+  onOpenSidebar,
+  initialAgentFilter = null,
+  createRequest = null,
+  onCreateRequestHandled,
+  openRequest = null,
+  onOpenRequestHandled,
+  onTaskChanged,
+}) => {
+  const [timeTab, setTimeTab] = useState('all')
+  const [customRange, setCustomRange] = useState(null)
+  // 依赖里不放 now：区间起点在切换 tab 时才重算，避免轮询触发变量抖动
+  const timeVars = useMemo(() => {
+    const range = rangeForTab(timeTab, customRange)
+    return {
+      ...(range.from ? { from: range.from.toISOString() } : {}),
+      ...(range.to ? { to: range.to.toISOString() } : {}),
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeTab, customRange])
+
   const { data, loading, error, refetch } = useQuery(TASKS_QUERY, {
+    variables: timeVars,
     fetchPolicy: 'cache-and-network',
     pollInterval: 10_000,
   })
@@ -327,6 +464,13 @@ const TaskBoard = ({ onOpenSidebar, initialAgentFilter = null }) => {
   })
   const templates = templateData?.taskTemplates || []
   const [cancelTask] = useMutation(CANCEL_TASK)
+  const [refreshTaskMutation, { loading: refreshingState }] =
+    useMutation(REFRESH_TASK)
+  // @cedarjs/web 没有导出 useLazyQuery：用 skip + refetch 按需触发预检
+  const { refetch: runPrecheck } = useQuery(TASK_PRECHECK, {
+    skip: true,
+    fetchPolicy: 'no-cache',
+  })
   const [reviewTask] = useMutation(REVIEW_TASK)
 
   const [form] = Form.useForm()
@@ -335,6 +479,31 @@ const TaskBoard = ({ onOpenSidebar, initialAgentFilter = null }) => {
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState(null)
   const [openId, setOpenId] = useState(null)
+  const [openSection, setOpenSection] = useState('brief')
+  const [approving, setApproving] = useState(false)
+  const [dispatchTool, setDispatchTool] = useState('codex')
+  const {
+    data: targetData,
+    error: targetError,
+    refetch: refetchTarget,
+  } = useQuery(TASK_BY_ID, {
+    variables: { id: openId },
+    skip: !openId,
+    fetchPolicy: 'network-only',
+    pollInterval: openId ? 10_000 : 0,
+  })
+  useEffect(() => {
+    if (!openRequest?.taskId) return
+    setOpenId(openRequest.taskId)
+    setOpenSection(openRequest.section || 'brief')
+    onOpenRequestHandled?.()
+  }, [openRequest, onOpenRequestHandled])
+
+  const refreshTasks = async () => {
+    await refetch()
+    if (openId) await refetchTarget({ id: openId })
+    onTaskChanged?.()
+  }
   const [agentFilter, setAgentFilter] = useState(initialAgentFilter)
   const [selectedIds, setSelectedIds] = useState([])
   const [templateSaving, setTemplateSaving] = useState(false)
@@ -383,7 +552,10 @@ const TaskBoard = ({ onOpenSidebar, initialAgentFilter = null }) => {
       : all
   }, [data, agentFilter])
 
-  const current = tasks.find((item) => item.id === openId) || null
+  const current =
+    targetData?.task?.id === openId
+      ? targetData.task
+      : tasks.find((item) => item.id === openId) || null
 
   const applyTemplate = (templateId) => {
     const template = templates.find((item) => item.id === templateId)
@@ -463,27 +635,36 @@ const TaskBoard = ({ onOpenSidebar, initialAgentFilter = null }) => {
 
   const batchDispatch = async () => {
     if (!selectedIds.length) return
+    if (
+      tasks.some(
+        (task) => selectedIds.includes(task.id) && task.mode === 'plan'
+      )
+    ) {
+      if (!(await confirmPlanSave())) return
+    }
     setNotice(null)
     try {
-      await dispatchTasks({ variables: { ids: selectedIds, tool: 'codex' } })
+      await dispatchTasks({
+        variables: { ids: selectedIds, tool: dispatchTool },
+      })
       setNotice({
         type: 'success',
-        message: `已派发 ${selectedIds.length} 个任务（同岗位自动排队）`,
+        message: '批量派发已完成；请查看任务状态。',
       })
       setSelectedIds([])
-      await refetch()
+      await refreshTasks()
     } catch (error) {
       setNotice({ type: 'error', message: error.message })
     }
   }
 
-  const openCreate = () => {
+  const openCreate = (agentSlug = 'main-agent') => {
     setEditing(null)
     form.setFieldsValue({
       title: '',
       brief: '',
       acceptance: '',
-      agentSlug: 'main-agent',
+      agentSlug,
       priority: 'P1',
       readOnly: false,
       mode: 'auto',
@@ -491,8 +672,15 @@ const TaskBoard = ({ onOpenSidebar, initialAgentFilter = null }) => {
     setModalOpen(true)
   }
 
+  // 从岗位档案「用该角色发起任务」跳过来时，直接打开新建抽屉并预选岗位
+  useEffect(() => {
+    if (!createRequest?.agentSlug) return
+    openCreate(createRequest.agentSlug)
+    onCreateRequestHandled?.()
+  }, [createRequest, onCreateRequestHandled, openCreate])
+
   const openEdit = (task) => {
-    if (task.status === 'RUNNING') {
+    if (['DISPATCHED', 'RUNNING'].includes(task.status)) {
       setNotice({ type: 'error', message: '任务执行中，不能修改需求' })
       return
     }
@@ -527,7 +715,7 @@ const TaskBoard = ({ onOpenSidebar, initialAgentFilter = null }) => {
         setNotice({ type: 'success', message: '任务已创建' })
       }
       setModalOpen(false)
-      await refetch()
+      await refreshTasks()
     } catch (submitError) {
       setNotice({ type: 'error', message: submitError.message })
     } finally {
@@ -535,28 +723,86 @@ const TaskBoard = ({ onOpenSidebar, initialAgentFilter = null }) => {
     }
   }
 
+  // 派发前预检：把"跑完才发现没法验收"提前到派发前
+  const confirmPrecheck = async (task) => {
+    let precheck
+    try {
+      const { data } = await runPrecheck({ id: task.id })
+      precheck = data?.taskPrecheck
+    } catch {
+      return true // 预检本身失败不阻塞派发
+    }
+    if (!precheck?.warnings?.length) return true
+
+    return new Promise((resolve) => {
+      Modal.confirm({
+        title: `派发前检查到 ${precheck.warnings.length} 个问题`,
+        width: 520,
+        content: (
+          <div>
+            <ul style={{ paddingLeft: 18, margin: '8px 0' }}>
+              {precheck.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+            {precheck.expectedPaths.length > 0 && (
+              <p style={{ margin: 0, color: 'var(--muted, #888)' }}>
+                验收标准提到的交付物：
+                {precheck.expectedPaths.join('、')}
+              </p>
+            )}
+          </div>
+        ),
+        okText: '仍然派发',
+        cancelText: '返回修改',
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false),
+      })
+    })
+  }
+
+  const confirmPlanSave = () =>
+    new Promise((resolve) =>
+      Modal.confirm({
+        title: '生成并保存方案',
+        content:
+          '生成方案会保存方案文件，不会修改业务代码；业务修改需批准方案后执行。',
+        okText: '生成方案',
+        cancelText: '返回',
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false),
+      })
+    )
+
   const run = async (task) => {
     setNotice(null)
+    if (task.mode === 'plan' && !(await confirmPlanSave())) return
+    if (!(await confirmPrecheck(task))) return
     try {
-      await dispatchTask({ variables: { id: task.id, tool: 'codex' } })
+      await dispatchTask({ variables: { id: task.id, tool: dispatchTool } })
       setNotice({ type: 'success', message: `已派发「${task.title}」` })
-      await refetch()
+      await refreshTasks()
     } catch (dispatchError) {
       setNotice({ type: 'error', message: dispatchError.message })
     }
   }
 
-  const approvePlan = async (task) => {
+  const approvePlan = async (task, tool) => {
     setNotice(null)
+    setApproving(true)
     try {
-      await executePlan({ variables: { id: task.id, tool: 'codex' } })
+      await executePlan({
+        variables: { id: task.id, tool, planPath: task.planPath },
+      })
       setNotice({
         type: 'success',
         message: `已按方案开始执行「${task.title}」`,
       })
-      await refetch()
+      await refreshTasks()
     } catch (error) {
       setNotice({ type: 'error', message: error.message })
+    } finally {
+      setApproving(false)
     }
   }
 
@@ -564,9 +810,21 @@ const TaskBoard = ({ onOpenSidebar, initialAgentFilter = null }) => {
     setNotice(null)
     try {
       await cancelTask({ variables: { id: task.id } })
-      await refetch()
+      await refreshTasks()
     } catch (cancelError) {
       setNotice({ type: 'error', message: cancelError.message })
+    }
+  }
+
+  // 本地已经跑完、页面还停在执行中时，手动让后端按日志/会话重新判定状态
+  const refreshState = async (task) => {
+    setNotice(null)
+    try {
+      await refreshTaskMutation({ variables: { id: task.id } })
+      await refreshTasks()
+      setNotice({ type: 'success', message: '已按最近一次执行重新判定状态' })
+    } catch (refreshError) {
+      setNotice({ type: 'error', message: refreshError.message })
     }
   }
 
@@ -574,7 +832,7 @@ const TaskBoard = ({ onOpenSidebar, initialAgentFilter = null }) => {
     setNotice(null)
     try {
       await reviewTask({ variables: { id: task.id, decision, note } })
-      await refetch()
+      await refreshTasks()
     } catch (reviewError) {
       setNotice({ type: 'error', message: reviewError.message })
     }
@@ -597,6 +855,15 @@ const TaskBoard = ({ onOpenSidebar, initialAgentFilter = null }) => {
           <p>布置任务、派发给本地 agent 执行，跑完在这里验收。</p>
         </div>
         <Flex gap={8} style={{ marginLeft: 'auto' }} align="center">
+          <Select
+            aria-label="派发平台"
+            value={dispatchTool}
+            onChange={setDispatchTool}
+            options={[
+              { value: 'codex', label: 'Codex' },
+              { value: 'deepseek-harness', label: 'DeepSeek Harness' },
+            ]}
+          />
           <Select
             allowClear
             placeholder="全部岗位"
@@ -622,6 +889,49 @@ const TaskBoard = ({ onOpenSidebar, initialAgentFilter = null }) => {
             新建任务
           </Button>
         </Flex>
+      </div>
+
+      <div className="task-board-toolbar">
+        <Segmented
+          options={TIME_TABS}
+          value={timeTab}
+          onChange={(value) => {
+            setTimeTab(value)
+            if (value === 'custom' && !customRange) {
+              setCustomRange([dayjs().startOf('day'), dayjs()])
+            }
+          }}
+        />
+        {timeTab === 'custom' && (
+          <RangePicker
+            value={customRange}
+            onChange={setCustomRange}
+            allowClear={false}
+            presets={[
+              {
+                label: '近 7 天',
+                value: [dayjs().subtract(6, 'day'), dayjs()],
+              },
+              {
+                label: '近 30 天',
+                value: [dayjs().subtract(29, 'day'), dayjs()],
+              },
+              {
+                label: '上个月',
+                value: [
+                  dayjs().subtract(1, 'month').startOf('month'),
+                  dayjs().subtract(1, 'month').endOf('month'),
+                ],
+              },
+            ]}
+          />
+        )}
+        <span className="task-muted">按创建时间筛选</span>
+        {!loading && timeTab !== 'all' && tasks.length === 0 && (
+          <span className="task-muted">
+            这个时间范围内没有任务，可以切换时间或新建任务。
+          </span>
+        )}
       </div>
 
       {notice && (
@@ -723,6 +1033,18 @@ const TaskBoard = ({ onOpenSidebar, initialAgentFilter = null }) => {
                       {['DISPATCHED', 'RUNNING', 'QUEUED'].includes(
                         task.status
                       ) && (
+                        <Button
+                          size="small"
+                          type="text"
+                          loading={refreshingState}
+                          onClick={() => refreshState(task)}
+                        >
+                          刷新状态
+                        </Button>
+                      )}
+                      {['DISPATCHED', 'RUNNING', 'QUEUED'].includes(
+                        task.status
+                      ) && (
                         <Popconfirm
                           title="取消这个任务？"
                           okText="取消"
@@ -743,17 +1065,29 @@ const TaskBoard = ({ onOpenSidebar, initialAgentFilter = null }) => {
                         <Button
                           size="small"
                           type="primary"
-                          onClick={() => approvePlan(task)}
+                          onClick={() => {
+                            setOpenSection('plan')
+                            setOpenId(task.id)
+                          }}
                         >
-                          批准并执行
+                          审阅方案
                         </Button>
                       )}
                       {task.status === 'AWAITING_REVIEW' && (
                         <Button
                           size="small"
-                          onClick={() =>
+                          onClick={() => {
+                            if (!task.artifacts.length) {
+                              setOpenId(task.id)
+                              setNotice({
+                                type: 'warning',
+                                message:
+                                  '这次执行没有登记任何产物：请在验收结论里写明交付物在哪，再点通过。',
+                              })
+                              return
+                            }
                             review(task, 'APPROVE', task.reviewNote || '')
-                          }
+                          }}
                         >
                           通过
                         </Button>
@@ -769,21 +1103,26 @@ const TaskBoard = ({ onOpenSidebar, initialAgentFilter = null }) => {
       </div>
 
       <Drawer
-        open={Boolean(current)}
+        open={Boolean(openId)}
         size="var(--drawer-width)"
         onClose={() => setOpenId(null)}
         title={current?.title || '任务详情'}
         destroyOnHidden
       >
-        {current && (
+        {targetError && <Alert type="error" message={targetError.message} />}
+        {!current && !targetError && <p role="status">正在读取任务详情…</p>}
+        {current && !targetError && (
           <TaskDetail
+            key={`${current.id}:${current.planPath || ''}`}
             task={current}
+            initialSection={openSection}
+            approving={approving}
             onEdit={() => openEdit(current)}
             onDispatch={() => run(current)}
             onCancel={() => cancel(current)}
-            onApprove={() => approvePlan(current)}
+            onApprove={(tool) => approvePlan(current, tool)}
             onReview={review}
-            onChanged={refetch}
+            onChanged={refreshTasks}
             setNotice={setNotice}
           />
         )}
@@ -981,8 +1320,41 @@ const TaskDetail = ({
   onReview,
   onChanged,
   setNotice,
+  initialSection = 'brief',
+  approving = false,
 }) => {
-  const [tab, setTab] = useState('brief')
+  const [tab, setTab] = useState(
+    initialSection === 'runs'
+      ? 'runs'
+      : initialSection === 'review'
+        ? 'artifacts'
+        : 'brief'
+  )
+  const latestPlatform = task.runs[0]?.platform || 'codex'
+  const [planTool, setPlanTool] = useState(latestPlatform)
+  useEffect(() => {
+    setPlanTool(latestPlatform)
+  }, [latestPlatform])
+  useEffect(() => {
+    setTab(
+      initialSection === 'runs'
+        ? 'runs'
+        : initialSection === 'review'
+          ? 'artifacts'
+          : 'brief'
+    )
+  }, [initialSection])
+  const {
+    data: planData,
+    loading: planLoading,
+    error: planError,
+  } = useQuery(TASK_PLAN, {
+    variables: { taskId: task.id, planPath: task.planPath },
+    skip: task.status !== 'AWAITING_APPROVAL' || !task.planPath,
+    fetchPolicy: 'network-only',
+  })
+  const planReady =
+    !planLoading && !planError && Boolean(planData?.taskPlanContent?.trim())
   const [note, setNote] = useState(task.reviewNote || '')
   const [artifact, setArtifact] = useState(null)
   const [threadRun, setThreadRun] = useState(null)
@@ -1049,6 +1421,25 @@ const TaskDetail = ({
             <span>方案待确认</span>
             {task.planPath && <code>{task.planPath}</code>}
           </div>
+          <p>
+            生成平台：{task.runs[0]?.platform || '未记录'}；版本：
+            {task.planPath || '无有效方案'}
+          </p>
+          {planLoading && <p role="status">正在读取方案…</p>}
+          {planError && <Alert type="error" message={planError.message} />}
+          {!planLoading && !planReady && !planError && (
+            <Alert type="warning" message="无有效方案正文，请重新生成方案。" />
+          )}
+          {planReady && <MarkdownDocument content={planData.taskPlanContent} />}
+          <Select
+            aria-label="方案执行平台"
+            value={planTool}
+            onChange={setPlanTool}
+            options={[
+              { value: 'codex', label: 'Codex' },
+              { value: 'deepseek-harness', label: 'DeepSeek Harness' },
+            ]}
+          />
           {task.planNote && (
             <p className="task-plan-last">上一版修正意见：{task.planNote}</p>
           )}
@@ -1062,7 +1453,7 @@ const TaskDetail = ({
           <div className="task-plan-actions">
             <Button
               loading={revising}
-              disabled={!planDraft.trim()}
+              disabled={!planDraft.trim() || approving}
               onClick={async () => {
                 setRevising(true)
                 try {
@@ -1070,11 +1461,13 @@ const TaskDetail = ({
                     variables: {
                       id: task.id,
                       note: planDraft.trim(),
-                      tool: 'codex',
+                      tool: planTool,
                     },
                   })
                   setPlanDraft('')
                   await onChanged()
+                } catch (error) {
+                  setNotice({ type: 'error', message: error.message })
                 } finally {
                   setRevising(false)
                 }
@@ -1085,7 +1478,9 @@ const TaskDetail = ({
             <Button
               type="primary"
               icon={<Play size={14} />}
-              onClick={onApprove}
+              disabled={!planReady || revising}
+              loading={approving}
+              onClick={() => onApprove(planTool)}
             >
               批准并执行
             </Button>
@@ -1099,6 +1494,12 @@ const TaskDetail = ({
           <p>{task.brief}</p>
           <h4>验收标准</h4>
           <p>{task.acceptance || '（未填写）'}</p>
+          {['DONE', 'AWAITING_REVIEW'].includes(task.status) &&
+            !task.artifacts.length && (
+              <p className="task-board-empty">
+                这张卡片没有任何产物：验收标准里要求的交付物如果不在产物列表中，请先补充产物或打回重做。
+              </p>
+            )}
           {task.reviewNote && (
             <>
               <h4>最近一次结论</h4>
@@ -1219,16 +1620,26 @@ const TaskDetail = ({
 
       {task.status === 'AWAITING_REVIEW' && (
         <div className="task-review">
+          {!task.artifacts.length && (
+            <p className="task-board-empty">
+              这次执行没有登记任何产物；验收标准要求的交付物如果不在产物里，请在结论中说明它在哪里。
+            </p>
+          )}
           <MarkdownEditor
             value={note}
             onChange={setNote}
             minRows={2}
             maxRows={4}
-            placeholder="验收结论（打回时必填，支持 Markdown）"
+            placeholder={
+              task.artifacts.length
+                ? '验收结论（打回时必填，支持 Markdown）'
+                : '验收结论（没有产物时必填：写明交付物在哪）'
+            }
           />
           <Flex gap={8}>
             <Button
               type="primary"
+              disabled={!task.artifacts.length && !note.trim()}
               onClick={() => onReview(task, 'APPROVE', note)}
             >
               通过

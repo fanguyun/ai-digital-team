@@ -54,6 +54,7 @@ import TaskPulse from 'src/components/TaskPulse/TaskPulse'
 import { resolveMetricsRange } from 'src/components/AgentMetricsOverview/metricsTimeRange'
 import TaskRuntimeCell from 'src/components/TaskRuntimeDashboard/TaskRuntimeDashboard'
 import WeeklyReport from 'src/components/WeeklyReport/WeeklyReport'
+import { copyText } from 'src/lib/clipboard'
 
 import agentManifest from '../../../../agents/manifest.json'
 import { RAFIKI_CREDIT, sceneForAgent } from 'src/illustrations/rafikiScenes'
@@ -141,6 +142,7 @@ const ACTION_CENTER_OVERVIEW = gql`
           primaryAgent
           status
           summary
+          taskId
           updatedAt
         }
       }
@@ -159,6 +161,18 @@ const ACTION_CENTER_OVERVIEW = gql`
       id
       name
       updatable
+    }
+    tasks(statuses: ["AWAITING_APPROVAL", "AWAITING_REVIEW", "FAILED"]) {
+      id
+      title
+      agentSlug
+      priority
+      status
+      updatedAt
+      reviewNote
+      runs {
+        summary
+      }
     }
   }
 `
@@ -189,6 +203,20 @@ const DISPATCH_ROLE_EVALUATION = gql`
     }
   }
 `
+
+const ROLE_EVALUATION_PROBE = gql`
+  query RoleEvaluationProbe($agentSlug: String) {
+    roleEvaluations(agentSlug: $agentSlug) {
+      id
+      status
+      reportPath
+      failureReason
+    }
+  }
+`
+
+/** 派发后只在这个窗口内盯着评估状态，之后交给评估记录与任务看板 */
+const EVALUATION_PROBE_TIMEOUT_MS = 20_000
 
 const EVALUATION_TOOL_STORAGE_KEY = 'pdt.roleEvaluation.tool'
 
@@ -254,6 +282,10 @@ function App() {
   const [runtimeFilter, setRuntimeFilter] = useState('all')
   const [selectedId, setSelectedId] = useState('main')
   const [detailOpen, setDetailOpen] = useState(false)
+  const [taskDraft, setTaskDraft] = useState(null)
+  const [taskOpenRequest, setTaskOpenRequest] = useState(null)
+  const [copyNotice, setCopyNotice] = useState('')
+  const [pendingEvaluation, setPendingEvaluation] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showSkills, setShowSkills] = useState(false)
   const [documentState, setDocumentState] = useState({
@@ -327,6 +359,7 @@ function App() {
   } = useQuery(ACTION_CENTER_OVERVIEW, {
     fetchPolicy: 'cache-and-network',
     nextFetchPolicy: 'cache-first',
+    pollInterval: workspaceView === 'actions' ? 10_000 : 0,
   })
   const {
     data: evaluationToolsData,
@@ -337,11 +370,18 @@ function App() {
     fetchPolicy: 'cache-first',
   })
   const [dispatchRoleEvaluation] = useMutation(DISPATCH_ROLE_EVALUATION)
+  const { data: evaluationProbe } = useQuery(ROLE_EVALUATION_PROBE, {
+    variables: { agentSlug: pendingEvaluation?.agentSlug },
+    skip: !pendingEvaluation,
+    fetchPolicy: 'network-only',
+    pollInterval: 2_000,
+  })
   const evaluationTools = evaluationToolsData?.roleEvaluationTools || []
 
   const actionCenterModel = useMemo(
     () =>
       buildActionCenterModel({
+        tasks: actionCenterData?.tasks || [],
         taskRuns:
           actionCenterData?.taskRuns?.edges?.map((edge) => edge.node) || [],
         runtimeHealth: actionCenterData?.runtimeHealth,
@@ -434,8 +474,14 @@ function App() {
         error: '',
         notice: {
           tone: 'success',
-          text: `已派发到 ${toolName}（PID ${dispatch?.pid ?? '—'}）。报告将写入 ${dispatch?.reportPath || 'docs/role-evaluations/'}，约 20 秒后出现在任务看板。`,
+          text: `已派发到 ${toolName}（PID ${dispatch?.pid ?? '—'}），并已登记到任务看板；报告将写入 ${dispatch?.reportPath || 'docs/role-evaluations/'}，跑完进入待验收。`,
         },
+      })
+      // 盯 20 秒：进程起不来（缺凭据等）时直接把原因显示在面板里
+      setPendingEvaluation({
+        agentSlug: selected.slug,
+        reportPath: dispatch?.reportPath,
+        at: Date.now(),
       })
       await refetchRuntimeStatuses()
     } catch (error) {
@@ -572,6 +618,63 @@ function App() {
         error: `暂时无法读取岗位规则（${error.message}）。请确认应用运行在项目根目录。`,
       })
     }
+  }
+
+  // 派发后短轮询评估状态：启动失败直接给出原因，完成则提示可验收
+  useEffect(() => {
+    if (!pendingEvaluation || !evaluationProbe) return
+
+    const rows = evaluationProbe.roleEvaluations || []
+    const row = rows.find(
+      (item) => item.reportPath === pendingEvaluation.reportPath
+    )
+    const expired =
+      Date.now() - pendingEvaluation.at > EVALUATION_PROBE_TIMEOUT_MS
+
+    if (row?.status === 'failed') {
+      setEvaluation((state) => ({
+        ...state,
+        notice: {
+          tone: 'error',
+          text: `评估进程启动失败：${
+            row.failureReason || '请到「评估记录」查看日志'
+          }`,
+        },
+      }))
+      // 报错可能比进程退出晚一瞬才写进日志：拿不到原因就继续盯到超时
+      if (row.failureReason) setPendingEvaluation(null)
+      else if (expired) setPendingEvaluation(null)
+      return
+    }
+
+    if (row?.status === 'completed') {
+      setEvaluation((state) => ({
+        ...state,
+        notice: {
+          tone: 'success',
+          text: `评估已完成，报告写入 ${row.reportPath}，可在任务看板验收。`,
+        },
+      }))
+      setPendingEvaluation(null)
+      return
+    }
+
+    if (expired) setPendingEvaluation(null)
+  }, [evaluationProbe, pendingEvaluation])
+
+  const startTaskForRole = () => {
+    setTaskDraft({ agentSlug: selected.slug, token: Date.now() })
+    setWorkspaceView('tasks')
+    setDetailOpen(false)
+  }
+
+  const copyInvokeCommand = async () => {
+    const command = `$${selected.slug}`
+    const copied = await copyText(command)
+    setCopyNotice(
+      copied ? `已复制调用指令 ${command}` : `复制失败，请手动输入 ${command}`
+    )
+    window.setTimeout(() => setCopyNotice(''), 3200)
   }
 
   return (
@@ -987,7 +1090,10 @@ function App() {
           <ActionCenter
             model={actionCenterModel}
             loading={actionCenterLoading}
-            onNavigate={setWorkspaceView}
+            onNavigate={(view, request) => {
+              setTaskOpenRequest(request || null)
+              setWorkspaceView(view)
+            }}
             onRefresh={() => refetchActionCenter()}
             onOpenSidebar={() => setSidebarOpen(true)}
           />
@@ -995,6 +1101,11 @@ function App() {
           <TaskBoard
             onOpenSidebar={() => setSidebarOpen(true)}
             initialAgentFilter={initialTaskAgent()}
+            createRequest={taskDraft}
+            onCreateRequestHandled={() => setTaskDraft(null)}
+            openRequest={taskOpenRequest}
+            onOpenRequestHandled={() => setTaskOpenRequest(null)}
+            onTaskChanged={() => void refetchActionCenter()}
           />
         ) : workspaceView === 'market' ? (
           <SkillMarket onOpenSidebar={() => setSidebarOpen(true)} />
@@ -1104,6 +1215,13 @@ function App() {
         >
           {evaluation.submitting ? '正在派发…' : '岗位评估更新'} <span>⌁</span>
         </button>
+        <button className="open-agent secondary" onClick={startTaskForRole}>
+          用该角色发起任务 <span>→</span>
+        </button>
+        <button className="open-agent secondary" onClick={copyInvokeCommand}>
+          复制调用指令 <span>⧉</span>
+        </button>
+        {copyNotice && <p className="detail-dispatch">{copyNotice}</p>}
         {evaluation.notice && (
           <p className={`detail-dispatch ${evaluation.notice.tone || ''}`}>
             {evaluation.notice.text}

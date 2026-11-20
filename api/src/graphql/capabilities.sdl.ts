@@ -58,7 +58,50 @@ export const schema = gql`
     cli: [CapabilityCliCheck!]!
   }
 
+  type CapabilityFixStep {
+    title: String!
+    detail: String
+  }
+
+  type CapabilityFixItem {
+    kind: String!
+    name: String!
+    severity: String!
+    title: String!
+    steps: [CapabilityFixStep!]!
+    canApply: Boolean!
+    blockedReason: String
+    source: String
+    linkPath: String
+  }
+
+  type CapabilityFixPlan {
+    agentSlug: String!
+    agentName: String!
+    items: [CapabilityFixItem!]!
+  }
+
+  type CapabilityFixResult {
+    skill: String!
+    ok: Boolean!
+    changed: Boolean!
+    message: String!
+    linkPath: String!
+    source: String
+  }
+
+  type CapabilityApplyResult {
+    agentSlug: String!
+    applied: [CapabilityFixResult!]!
+  }
+
   type Query {
     capabilityHealth: CapabilityHealth! @requireAuth
+  }
+
+  type Mutation {
+    capabilityFixPlan(agentSlug: String!): CapabilityFixPlan! @requireAuth
+    capabilityApplyFixes(agentSlug: String!): CapabilityApplyResult!
+      @requireAuth
   }
 `

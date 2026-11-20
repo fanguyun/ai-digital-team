@@ -15,14 +15,71 @@ const waitLabel = (minutes) => {
 
 export const buildActionCenterModel = ({
   taskRuns = [],
+  tasks = [],
   runtimeHealth,
   skills = [],
   queryError,
   now = new Date(),
 }) => {
   const items = []
+  const taskTypes = {
+    AWAITING_APPROVAL: [
+      'approval',
+      '方案已生成，请审阅后批准执行。',
+      '审阅方案',
+      'plan',
+    ],
+    AWAITING_REVIEW: [
+      'review',
+      '成果已就绪，请检查产物与验证说明后验收。',
+      '验收成果',
+      'review',
+    ],
+    FAILED: [
+      'failed',
+      '最近一次执行失败，请查看原因后决定是否重试。',
+      '查看失败原因',
+      'runs',
+    ],
+  }
+  for (const task of tasks) {
+    const metadata = taskTypes[task.status]
+    if (!metadata) continue
+    const [type, description, actionLabel, section] = metadata
+    items.push({
+      id: `task-${task.id}`,
+      taskId: task.id,
+      type,
+      priority:
+        task.priority === 'P0'
+          ? 'high'
+          : task.priority === 'P2'
+            ? 'low'
+            : 'medium',
+      title: task.title,
+      agent: task.agentSlug,
+      description:
+        type === 'failed'
+          ? task.runs?.[0]?.summary || task.reviewNote || description
+          : description,
+      meta: waitLabel(minutesSince(task.updatedAt, now)),
+      updatedAt: task.updatedAt,
+      action: 'tasks',
+      section,
+      actionLabel,
+    })
+  }
 
+  const actionableTaskIds = new Set(items.map((item) => item.taskId))
   for (const task of taskRuns) {
+    if (
+      task.taskId &&
+      (task.status === 'FAILED' || actionableTaskIds.has(task.taskId))
+    )
+      continue
+    const destination = task.taskId
+      ? { action: 'tasks', taskId: task.taskId, section: 'runs' }
+      : { action: 'runs' }
     const ageMinutes = minutesSince(task.updatedAt, now)
 
     if (task.status === 'WAITING_CONFIRMATION') {
@@ -34,7 +91,8 @@ export const buildActionCenterModel = ({
         agent: task.primaryAgent,
         description: task.summary || '任务正在等待你的确认后继续。',
         meta: waitLabel(ageMinutes),
-        action: 'runs',
+        updatedAt: task.updatedAt,
+        ...destination,
         actionLabel: '查看运行记录',
       })
       continue
@@ -49,7 +107,8 @@ export const buildActionCenterModel = ({
         agent: task.primaryAgent,
         description: task.summary || '任务执行失败，请查看运行事件定位原因。',
         meta: waitLabel(ageMinutes),
-        action: 'runs',
+        updatedAt: task.updatedAt,
+        ...destination,
         actionLabel: '查看运行记录',
       })
       continue
@@ -65,9 +124,11 @@ export const buildActionCenterModel = ({
         priority: 'medium',
         title: task.title,
         agent: task.primaryAgent,
-        description: '活跃任务长时间没有产生新事件，建议检查执行状态。',
+        description:
+          '活跃任务长时间没有产生新事件：进程退出后 30 秒内会自动收尾；仍在跑可到任务看板取消。',
         meta: waitLabel(ageMinutes),
-        action: 'runs',
+        updatedAt: task.updatedAt,
+        ...destination,
         actionLabel: '查看运行记录',
       })
     }
@@ -94,7 +155,7 @@ export const buildActionCenterModel = ({
     }
   }
 
-  if (queryError && !runtimeHealth) {
+  if (queryError) {
     items.push({
       id: 'health-query',
       type: 'health',
@@ -131,14 +192,22 @@ export const buildActionCenterModel = ({
 
   items.sort(
     (left, right) =>
-      PRIORITY_WEIGHT[right.priority] - PRIORITY_WEIGHT[left.priority]
+      Number(right.type === 'health') - Number(left.type === 'health') ||
+      Number(left.type === 'skills') - Number(right.type === 'skills') ||
+      PRIORITY_WEIGHT[right.priority] - PRIORITY_WEIGHT[left.priority] ||
+      new Date(left.updatedAt || now).getTime() -
+        new Date(right.updatedAt || now).getTime()
   )
 
   return {
     items,
+    taskLimitReached: tasks.length >= 100,
     counts: {
       total: items.length,
-      waiting: items.filter((item) => item.type === 'waiting').length,
+      waiting: items.filter((item) =>
+        ['waiting', 'approval'].includes(item.type)
+      ).length,
+      review: items.filter((item) => item.type === 'review').length,
       failed: items.filter((item) => item.type === 'failed').length,
       stale: items.filter((item) => item.type === 'stale').length,
       system: items.filter((item) =>

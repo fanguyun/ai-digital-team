@@ -59,6 +59,10 @@ model TaskRun {
   cachedTokens      Int?
   dirtyAtDispatch   Boolean       @default(false)
   baselineFiles     Json?
+  /// 派发时的逐文件改动基线，用于扣除派发前已存在的未提交改动
+  baselineDiff      Json?
+  /// 运行期间产生的交付改动统计（文件数/行数，按顶层目录拆分）
+  diffStat          Json?
   task              Task?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
 
   @@index([taskId, startedAt(sort: Desc)])
@@ -136,9 +140,12 @@ model RoleEvaluation {
   logPath     String    @db.VarChar(300)
   startedAt   DateTime  @default(now()) @db.Timestamptz(3)
   finishedAt  DateTime? @db.Timestamptz(3)
+  // 评估同时登记到任务看板，这里保存对应任务 id
+  taskId      String?   @db.Uuid
 
   @@index([projectKey, agentSlug, startedAt(sort: Desc)])
   @@index([status, startedAt(sort: Desc)])
+  @@index([taskId])
 }
 
 

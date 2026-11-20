@@ -41,6 +41,8 @@ export const schema = gql`
     startedAt: DateTime!
     updatedAt: DateTime!
     completedAt: DateTime
+    taskId: ID
+    task: Task @requireAuth
     events: [TaskEvent!]!
   }
 
@@ -130,6 +132,32 @@ export const schema = gql`
     updatedAt: DateTime!
   }
 
+  type DeliveryStat {
+    files: Int!
+    added: Int!
+    removed: Int!
+  }
+
+  type DeliveryDirectoryStat {
+    directory: String!
+    files: Int!
+    added: Int!
+    removed: Int!
+  }
+
+  type TeamDeliveryStat {
+    files: Int!
+    added: Int!
+    removed: Int!
+    byDirectory: [DeliveryDirectoryStat!]!
+    uncategorized: DeliveryStat!
+    """
+    有交付统计的运行数
+    """
+    coveredRuns: Int!
+    totalRuns: Int!
+  }
+
   type TeamWeeklyReport {
     from: DateTime!
     to: DateTime!
@@ -145,6 +173,7 @@ export const schema = gql`
     totalTokens: Float!
     totalTokenCoverage: RuntimeMetricCoverage!
     headline: String!
+    delivery: TeamDeliveryStat!
     contributions: [WeeklyAgentContribution!]!
     completed: [WeeklyTaskItem!]!
     failures: [WeeklyTaskItem!]!
@@ -234,6 +263,24 @@ export const schema = gql`
     duplicate: Boolean!
   }
 
+  type TaskRunTool {
+    name: String!
+    detail: String!
+    result: String!
+    resultTruncated: Boolean!
+    redacted: Boolean!
+    createdAt: DateTime!
+    step: Int
+  }
+
+  type TaskRunTrace {
+    turn: Int
+    source: String!
+    messages: [TaskRunMessage!]!
+    tools: [TaskRunTool!]!
+    truncated: Boolean!
+  }
+
   type Query {
     taskRuns(
       filter: TaskRunFilter
@@ -242,6 +289,7 @@ export const schema = gql`
       skip: Int = 0
     ): TaskRunConnection! @requireSessionOrRuntimeWriter
     taskRun(id: ID!): TaskRun @requireSessionOrRuntimeWriter
+    taskRunTrace(runId: ID!): TaskRunTrace! @requireAuth
     runtimeHealth: RuntimeHealth! @requireAuth
     teamRuntimeOverview(range: RuntimeTimeRange): TeamRuntimeOverview!
       @requireSessionOrTeamReader

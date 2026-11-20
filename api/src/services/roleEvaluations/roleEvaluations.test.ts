@@ -4,17 +4,24 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
+import { db } from 'src/lib/db'
+import { failureReasonFromLog } from 'src/lib/roleEvaluationLog'
+import { syncEvaluationTasks } from 'src/lib/roleEvaluationTasks'
+
 import {
+  RoleEvaluation,
   dispatchRoleEvaluation,
   resolveReportFile,
   roleEvaluationMessages,
   roleEvaluationReport,
   roleEvaluationTools,
+  roleEvaluations,
 } from './roleEvaluations'
 
 const repoRoot = process.cwd()
@@ -212,5 +219,342 @@ describe('role evaluation reading APIs', () => {
     await expect(roleEvaluationMessages({ id: missing })).rejects.toThrow(
       '不存在'
     )
+  })
+})
+
+describe('role evaluation tasks', () => {
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch (error) {
+      return (error as NodeJS.ErrnoException)?.code === 'EPERM'
+    }
+  }
+
+  const latestEvaluation = async (agentSlug: string) =>
+    db.roleEvaluation.findFirst({
+      where: { agentSlug },
+      orderBy: { startedAt: 'desc' },
+    })
+
+  it('registers the dispatch as a task on the board', async () => {
+    const dispatch = await dispatchRoleEvaluation({
+      input: { agentSlug: 'main-agent', tool: 'codex' },
+    })
+    createdFiles.push(dispatch.logPath, dispatch.resultPath)
+    createdFiles.push(dispatch.logPath.replace(/\.log$/, '.json'))
+
+    const evaluation = await latestEvaluation('main-agent')
+    expect(evaluation?.taskId).toBeTruthy()
+
+    const task = await db.task.findUnique({
+      where: { id: evaluation!.taskId! },
+    })
+    expect(task).toMatchObject({
+      agentSlug: 'main-agent',
+      status: 'DISPATCHED',
+      readOnly: true,
+      priority: 'P1',
+      title: '岗位评估 · 数字总经理',
+    })
+    expect(task!.brief).toContain(dispatch.reportPath)
+    expect(task!.acceptance).toContain(dispatch.reportPath)
+  })
+
+  it('moves the task to review with the report artifact when the evaluation ends', async () => {
+    const dispatch = await dispatchRoleEvaluation({
+      input: { agentSlug: 'main-agent', tool: 'codex' },
+    })
+    createdFiles.push(dispatch.logPath, dispatch.resultPath)
+    createdFiles.push(dispatch.logPath.replace(/\.log$/, '.json'))
+
+    if (dispatch.pid) {
+      await waitFor(() => !alive(dispatch.pid as number), 5000)
+    }
+    const reportAbsolute = path.join(repoRoot, dispatch.reportPath)
+    writeFileSync(reportAbsolute, '# 岗位评估\n\n结论：能力匹配。\n')
+    createdFiles.push(dispatch.reportPath)
+
+    const rows = await roleEvaluations({ agentSlug: 'main-agent' })
+    const evaluation = rows.find(
+      (row) => row.reportPath === dispatch.reportPath
+    )
+    expect(evaluation?.status).toBe('completed')
+
+    const task = await db.task.findUnique({
+      where: { id: evaluation!.taskId! },
+      include: { artifacts: true },
+    })
+    expect(task).toMatchObject({ status: 'AWAITING_REVIEW' })
+    expect(task!.artifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: dispatch.reportPath,
+          kind: 'report',
+          source: 'evaluation',
+        }),
+      ])
+    )
+  })
+})
+
+describe('evaluation task self-healing', () => {
+  const createTask = (overrides: Record<string, unknown>) =>
+    db.task.create({
+      data: {
+        title: '岗位评估 · 同步测试',
+        brief: '测试',
+        acceptance: '测试',
+        agentSlug: 'sync-test-agent',
+        status: 'DISPATCHED',
+        readOnly: true,
+        ...overrides,
+      },
+    })
+
+  it('adopts an unlinked evaluation and writes the failure back', async () => {
+    const task = await createTask({})
+    const evaluation = await db.roleEvaluation.create({
+      data: {
+        agentSlug: 'sync-test-agent',
+        agentName: '同步测试',
+        projectKey: 'digital-team',
+        projectRoot: repoRoot,
+        tool: 'codex',
+        status: 'failed',
+        reportPath: 'docs/role-evaluations/sync-test.md',
+        logPath: 'docs/role-evaluations/logs/sync-test.log',
+        startedAt: new Date(task.createdAt.getTime() - 1_000),
+        finishedAt: new Date(),
+      },
+    })
+
+    await syncEvaluationTasks()
+
+    const healed = await db.task.findUnique({ where: { id: task.id } })
+    expect(healed?.status).toBe('FAILED')
+    expect(healed?.completedAt).toBeTruthy()
+
+    const linked = await db.roleEvaluation.findUnique({
+      where: { id: evaluation.id },
+    })
+    expect(linked?.taskId).toBe(task.id)
+  })
+
+  it('does not rewrite a task that already reached the target state', async () => {
+    const task = await createTask({ agentSlug: 'idempotent-test-agent' })
+    const evaluation = await db.roleEvaluation.create({
+      data: {
+        agentSlug: 'idempotent-test-agent',
+        agentName: '幂等测试',
+        projectKey: 'digital-team',
+        projectRoot: repoRoot,
+        tool: 'codex',
+        status: 'failed',
+        reportPath: 'docs/role-evaluations/idempotent-test.md',
+        logPath: 'docs/role-evaluations/logs/idempotent-test.log',
+        startedAt: new Date(task.createdAt.getTime() - 1_000),
+        finishedAt: new Date(),
+        taskId: task.id,
+      },
+    })
+
+    await syncEvaluationTasks()
+    const first = await db.task.findUnique({ where: { id: task.id } })
+    await syncEvaluationTasks()
+    const second = await db.task.findUnique({ where: { id: task.id } })
+
+    expect(first?.status).toBe('FAILED')
+    expect(second?.updatedAt.getTime()).toBe(first?.updatedAt.getTime())
+    expect(evaluation.taskId).toBe(task.id)
+  })
+
+  it('closes a stale task that has no evaluation at all', async () => {
+    const task = await createTask({
+      agentSlug: 'orphan-test-agent',
+      createdAt: new Date(Date.now() - 31 * 60 * 1000),
+    })
+
+    await syncEvaluationTasks()
+
+    const closed = await db.task.findUnique({ where: { id: task.id } })
+    expect(closed?.status).toBe('FAILED')
+    expect(closed?.reviewNote).toContain('自动收尾')
+  })
+
+  it('closes an evaluation that has been running for too long and syncs its task', async () => {
+    const task = await createTask({ agentSlug: 'stale-test-agent' })
+    const startedAt = new Date(Date.now() - 7 * 60 * 60 * 1000)
+    const evaluation = await db.roleEvaluation.create({
+      data: {
+        agentSlug: 'stale-test-agent',
+        agentName: '僵死测试',
+        projectKey: 'digital-team',
+        projectRoot: repoRoot,
+        tool: 'codex',
+        status: 'running',
+        // 用当前进程的 pid 模拟"进程还活着但实际已僵死"
+        pid: process.pid,
+        reportPath: 'docs/role-evaluations/stale-test.md',
+        logPath: 'docs/role-evaluations/logs/stale-test.log',
+        startedAt,
+        taskId: task.id,
+      },
+    })
+
+    const rows = await roleEvaluations({ agentSlug: 'stale-test-agent' })
+    expect(rows[0]).toMatchObject({ status: 'failed' })
+
+    const synced = await db.task.findUnique({ where: { id: task.id } })
+    expect(synced?.status).toBe('FAILED')
+    const closed = await db.roleEvaluation.findUnique({
+      where: { id: evaluation.id },
+    })
+    expect(closed?.finishedAt).toBeTruthy()
+  })
+
+  it('does not overwrite a task that was re-dispatched after the evaluation ended', async () => {
+    const finishedAt = new Date(Date.now() - 60 * 60 * 1000)
+    const task = await createTask({ agentSlug: 'redispatched-agent' })
+
+    await db.roleEvaluation.create({
+      data: {
+        agentSlug: 'redispatched-agent',
+        agentName: '重派测试',
+        projectKey: 'digital-team',
+        projectRoot: repoRoot,
+        tool: 'codex',
+        status: 'failed',
+        reportPath: 'docs/role-evaluations/redispatched.md',
+        logPath: 'docs/role-evaluations/logs/redispatched.log',
+        startedAt: new Date(finishedAt.getTime() - 60_000),
+        finishedAt,
+        taskId: task.id,
+      },
+    })
+    await db.taskRun.create({
+      data: {
+        title: task.title,
+        platform: 'codex',
+        primaryAgent: task.agentSlug,
+        status: 'RUNNING',
+        currentStage: 'EXECUTION',
+        taskId: task.id,
+        pid: 999999,
+        // 新的尝试开始于评估结束之后
+        startedAt: new Date(finishedAt.getTime() + 60_000),
+      },
+    })
+
+    await syncEvaluationTasks()
+
+    const after = await db.task.findUnique({ where: { id: task.id } })
+    expect(after?.status).toBe('DISPATCHED')
+  })
+
+  it('keeps a recent task waiting for its evaluation', async () => {
+    const task = await createTask({ agentSlug: 'fresh-test-agent' })
+
+    await syncEvaluationTasks()
+
+    const untouched = await db.task.findUnique({ where: { id: task.id } })
+    expect(untouched?.status).toBe('DISPATCHED')
+  })
+})
+
+describe('evaluation failure diagnostics', () => {
+  it('reads the last human-readable error line from the log', () => {
+    const logPath = 'docs/role-evaluations/logs/failure-reason-test.log'
+    const absolute = path.join(repoRoot, logPath)
+    writeFileSync(
+      absolute,
+      [
+        JSON.stringify({ type: 'status', phase: 'turn_start' }),
+        'dsh: MISSING_CREDENTIAL: no API key',
+        '',
+      ].join('\n')
+    )
+    createdFiles.push(logPath)
+
+    expect(failureReasonFromLog(logPath)).toBe(
+      'dsh: MISSING_CREDENTIAL: no API key'
+    )
+    expect(failureReasonFromLog('docs/role-evaluations/logs/missing.log')).toBe(
+      ''
+    )
+  })
+
+  it('only reports a reason for failed records', () => {
+    const logPath = 'docs/role-evaluations/logs/failure-reason-test.log'
+    const root = { status: 'completed', logPath }
+
+    expect(RoleEvaluation.failureReason(undefined, { root })).toBeNull()
+    expect(
+      RoleEvaluation.failureReason(undefined, {
+        root: { status: 'failed', logPath },
+      })
+    ).toBe('dsh: MISSING_CREDENTIAL: no API key')
+  })
+})
+
+describe('dispatch liveness guard', () => {
+  it('blocks dispatch when the database still has a live evaluation', async () => {
+    const logPath = 'docs/role-evaluations/logs/guard-live.log'
+    writeFileSync(path.join(repoRoot, logPath), 'streaming\n')
+    createdFiles.push(logPath)
+
+    await db.roleEvaluation.create({
+      data: {
+        agentSlug: 'design-engineer-agent',
+        agentName: '设计实现工程师',
+        projectKey: 'digital-team',
+        projectRoot: repoRoot,
+        tool: 'codex',
+        status: 'running',
+        pid: process.pid,
+        reportPath: 'docs/role-evaluations/guard-live.md',
+        logPath,
+        startedAt: new Date(),
+      },
+    })
+
+    await expect(
+      dispatchRoleEvaluation({
+        input: { agentSlug: 'design-engineer-agent', tool: 'codex' },
+      })
+    ).rejects.toThrow('仍在运行')
+  })
+
+  it('allows dispatch when a stale record only looks alive by pid', async () => {
+    const logPath = 'docs/role-evaluations/logs/guard-stale.log'
+    const absolute = path.join(repoRoot, logPath)
+    writeFileSync(absolute, 'streaming\n')
+    createdFiles.push(logPath)
+    const stale = new Date(Date.now() - 40 * 60 * 1000)
+    utimesSync(absolute, stale, stale)
+
+    await db.roleEvaluation.create({
+      data: {
+        agentSlug: 'legal-compliance-agent',
+        agentName: '法务与合规顾问',
+        projectKey: 'digital-team',
+        projectRoot: repoRoot,
+        tool: 'codex',
+        status: 'running',
+        // pid 活着但日志 40 分钟没动：应判为僵死，允许重新派发
+        pid: process.pid,
+        reportPath: 'docs/role-evaluations/guard-stale.md',
+        logPath,
+        startedAt: stale,
+      },
+    })
+
+    const dispatched = await dispatchRoleEvaluation({
+      input: { agentSlug: 'legal-compliance-agent', tool: 'codex' },
+    })
+    createdFiles.push(dispatched.logPath, dispatched.resultPath)
+    createdFiles.push(dispatched.logPath.replace(/\.log$/, '.json'))
+    expect(dispatched.agentSlug).toBe('legal-compliance-agent')
   })
 })

@@ -31,12 +31,17 @@ import {
   type RoleEvaluationToolId,
   type RoleEvaluationToolStatus,
 } from 'src/lib/roleEvaluationDispatch'
+import { failureReasonFromLog, logAgeMs } from 'src/lib/roleEvaluationLog'
 import {
   discoverSession,
   readThreadMessages,
   sessionIdFromLog,
   type RoleEvaluationToolId as SessionToolId,
 } from 'src/lib/roleEvaluationSessions'
+import {
+  createTaskForEvaluation,
+  syncTaskWithEvaluation,
+} from 'src/lib/roleEvaluationTasks'
 
 const PROBE_TTL_MS = 60_000
 
@@ -44,7 +49,12 @@ type RunningDispatch = {
   pid: number
   tool: RoleEvaluationToolId
   startedAt: Date
+  logPath: string
 }
+
+/** 刚派发的一小段时间内以 pid 为准；之后以日志是否还在写为准 */
+const RECENT_DISPATCH_MS = 2 * 60 * 1000
+const LOG_FRESH_MS = 15 * 60 * 1000
 
 const runningDispatches = new Map<string, RunningDispatch>()
 
@@ -56,6 +66,16 @@ let probeCache: {
 
 const probeCacheKey = () =>
   `${process.env.ROLE_EVAL_CODEX_BIN || ''}|${process.env.ROLE_EVAL_DSH_BIN || ''}`
+
+export const RoleEvaluation = {
+  failureReason: (
+    _obj: unknown,
+    { root }: { root: { status?: string; logPath?: string } }
+  ) =>
+    root?.status === 'failed'
+      ? failureReasonFromLog(root.logPath) || null
+      : null,
+}
 
 export const roleEvaluationTools = (): RoleEvaluationToolStatus[] => {
   const key = probeCacheKey()
@@ -91,15 +111,50 @@ const alive = (pid: number) => {
   }
 }
 
-const assertNotRunning = (slug: string, agentName: string) => {
-  const current = runningDispatches.get(slug)
-  if (!current) return
-  if (alive(current.pid)) {
-    throw new UserInputError(
-      `「${agentName}」的岗位评估仍在运行（PID ${current.pid}，${current.tool}）。请等它结束，或先手动结束该进程后重试。`
-    )
+/**
+ * 判断一次评估是否真的还在跑。
+ * 只看 pid 会被系统复用骗到（进程早退了，pid 被别的进程占用），
+ * 所以超过 2 分钟后改用日志 mtime：模型输出会持续写日志，长时间不动就是僵死。
+ */
+const isEvaluationAlive = (candidate: {
+  pid: number | null
+  tool: string
+  startedAt: Date
+  logPath: string
+}) => {
+  if (!candidate.pid || !alive(candidate.pid)) return false
+  if (Date.now() - candidate.startedAt.getTime() < RECENT_DISPATCH_MS) {
+    return true
   }
-  runningDispatches.delete(slug)
+  const age = logAgeMs(candidate.logPath)
+  // pid 还活着但日志长时间不动 → 认为 pid 已被别的进程复用
+  return age === null ? true : age < LOG_FRESH_MS
+}
+
+const assertNotRunning = async (slug: string, agentName: string) => {
+  const runningMessage = (pid: number | null, tool: string, at: Date) =>
+    `「${agentName}」的岗位评估仍在运行（PID ${pid ?? '—'}，${tool}，开始于 ${at.toLocaleString('zh-CN')}）。请等它结束，或先手动结束该进程后重试。`
+
+  const current = runningDispatches.get(slug)
+  if (current) {
+    if (isEvaluationAlive(current)) {
+      throw new UserInputError(
+        runningMessage(current.pid, current.tool, current.startedAt)
+      )
+    }
+    runningDispatches.delete(slug)
+  }
+
+  // API 重启后内存态会丢，用库里仍在运行的记录兜底，避免同岗位重复评估
+  const row = await db.roleEvaluation.findFirst({
+    where: { agentSlug: slug, status: 'running' },
+    orderBy: { startedAt: 'desc' },
+    select: { pid: true, tool: true, startedAt: true, logPath: true },
+  })
+  if (!row) return
+  if (isEvaluationAlive(row)) {
+    throw new UserInputError(runningMessage(row.pid, row.tool, row.startedAt))
+  }
 }
 
 export type DispatchRoleEvaluationInput = {
@@ -141,7 +196,7 @@ export const dispatchRoleEvaluation = async ({
     throw new UserInputError(`岗位规则文件缺失：${ruleRelPath}`)
   }
 
-  assertNotRunning(agent.slug, agent.name)
+  await assertNotRunning(agent.slug, agent.name)
 
   const probe = probeBinary(tool)
   if (!('bin' in probe)) throw new UserInputError(probe.reason)
@@ -201,7 +256,12 @@ export const dispatchRoleEvaluation = async ({
     throw new UserInputError(`执行进程未能启动，请查看日志：${paths.log}`)
   }
   child.unref()
-  runningDispatches.set(agent.slug, { pid, tool, startedAt })
+  runningDispatches.set(agent.slug, {
+    pid,
+    tool,
+    startedAt,
+    logPath: paths.log,
+  })
 
   const sidecar = {
     id,
@@ -226,6 +286,16 @@ export const dispatchRoleEvaluation = async ({
     logger.warn({ error }, 'failed to write role evaluation sidecar')
   }
 
+  // 同时登记到任务看板：评估进程本身就是执行者，不二次派发。
+  // 任务先建、taskId 随评估记录一次插入，避免"建了任务但没写回关联"的黑洞。
+  const taskId = await createTaskForEvaluation({
+    agentSlug: agent.slug,
+    agentName: agent.name,
+    tool,
+    reportPath,
+    logPath: paths.log,
+  })
+
   const record = await persistEvaluation({
     id,
     agentSlug: agent.slug,
@@ -236,10 +306,11 @@ export const dispatchRoleEvaluation = async ({
     reportPath,
     logPath: paths.log,
     startedAt,
+    taskId,
   })
 
   logger.info(
-    { id, slug: agent.slug, tool, pid, version: probe.version },
+    { id, slug: agent.slug, tool, pid, version: probe.version, taskId },
     'role evaluation dispatched'
   )
 
@@ -277,6 +348,7 @@ const persistEvaluation = async (input: {
   reportPath: string
   logPath: string
   startedAt: Date
+  taskId?: string | null
 }) => {
   try {
     const record = await db.roleEvaluation.create({
@@ -291,6 +363,7 @@ const persistEvaluation = async (input: {
         reportPath: input.reportPath,
         logPath: input.logPath,
         startedAt: input.startedAt,
+        taskId: input.taskId ?? null,
       },
     })
     void captureSession(
@@ -355,6 +428,9 @@ const captureSession = async (
   }
 }
 
+/** 评估最长运行时间：超过就视为僵死（例如 pid 被系统复用） */
+const MAX_RUNTIME_MS = 6 * 60 * 60 * 1000
+
 /** 进程已结束时按报告是否生成来回收状态 */
 const reconcileStatus = async (
   rows: Array<{
@@ -363,32 +439,68 @@ const reconcileStatus = async (
     pid: number | null
     projectRoot: string
     reportPath: string
+    logPath: string
+    startedAt: Date
+    taskId?: string | null
   }>
 ) => {
-  const updates = new Map<string, { status: string; finishedAt: Date }>()
+  const updates = new Map<
+    string,
+    {
+      status: string
+      finishedAt: Date
+      row: (typeof rows)[number]
+    }
+  >()
   for (const row of rows) {
     if (row.status !== 'running') continue
-    if (row.pid && alive(row.pid)) continue
+    const runningTooLong = Date.now() - row.startedAt.getTime() > MAX_RUNTIME_MS
+    if (!runningTooLong && row.pid && alive(row.pid)) continue
     const reportAbsolute = path.join(row.projectRoot, row.reportPath)
     const finishedAt = new Date()
     updates.set(row.id, {
       status: existsSync(reportAbsolute) ? 'completed' : 'failed',
       finishedAt,
+      row,
     })
   }
 
-  for (const [id, data] of updates) {
+  for (const [id, update] of updates) {
     try {
-      await db.roleEvaluation.update({ where: { id }, data })
+      await db.roleEvaluation.update({
+        where: { id },
+        data: { status: update.status, finishedAt: update.finishedAt },
+      })
     } catch (error) {
       logger.warn({ error, id }, 'failed to reconcile role evaluation status')
     }
+
+    // 评估结论写回任务看板；任务已被人工处理过时 syncTaskWithEvaluation 会跳过
+    await syncTaskWithEvaluation({
+      taskId: update.row.taskId ?? null,
+      outcome: update.status === 'completed' ? 'completed' : 'failed',
+      reportPath: update.row.reportPath,
+      logPath: update.row.logPath,
+      finishedAt: update.finishedAt,
+    })
   }
 
   return rows.map((row) => {
     const update = updates.get(row.id)
-    return update ? { ...row, ...update } : row
+    return update
+      ? { ...row, status: update.status, finishedAt: update.finishedAt }
+      : row
   })
+}
+
+/** 后台巡检：由任务定时器带动，没人打开面板也能把评估结论写回任务 */
+export const reconcileRunningEvaluations = async () => {
+  const rows = await db.roleEvaluation.findMany({
+    where: { status: 'running' },
+    orderBy: { startedAt: 'desc' },
+    take: 50,
+  })
+  return reconcileStatus(rows)
 }
 
 export const roleEvaluations = async ({

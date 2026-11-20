@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
-import { closeSync, mkdirSync, openSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { closeSync, existsSync, mkdirSync, openSync } from 'node:fs'
 import path from 'node:path'
 
 import {
@@ -81,8 +82,8 @@ export const buildTaskPrompt = ({
       '5. 验收标准与验证方式',
       '6. 风险与回滚',
       '',
-      `方案写到 docs/plans/${planPath || '<任务名>.md'}，并在结束语用 artifact: 标出该文件。`,
-      '本次只读：不得修改任何仓库文件。'
+      '最终回复直接返回完整 Markdown 方案正文，不要压缩成摘要。',
+      '本次只读：不得修改任何仓库文件。系统会保存方案，无需自行写文件或输出 artifact: 路径。'
     )
 
     if (revisionNote) {
@@ -106,13 +107,17 @@ export const buildTaskPrompt = ({
 
   lines.push(
     '',
-    readOnly
+    readOnly || mode === 'plan'
       ? '## 边界\n本次是只读任务：不得修改仓库文件，只输出结论与建议。'
       : '## 边界\n可以修改仓库文件；改动应最小、可回退，并在结束语说明改了哪些文件。',
     '',
     '## 结束要求',
-    '1. 用 3 行以内说明结果、改动范围和验证情况。',
-    '2. 每个交付物单独一行，格式固定为：artifact: <相对仓库根的路径或链接>',
+    mode === 'plan'
+      ? '1. 最终回复仅包含完整方案正文，包含上述六部分；被阻塞时说明原因，不冒充方案。'
+      : '1. 用 3 行以内说明结果、改动范围和验证情况。',
+    mode === 'plan'
+      ? '2. 方案由系统保存，不声明尚未生成的文件产物。'
+      : '2. 每个交付物单独一行，格式固定为：artifact: <相对仓库根的路径或链接>',
     '3. 若被阻塞或需要人工确认，明确写出「待确认：<问题>」。'
   )
 
@@ -156,7 +161,15 @@ export const buildTaskCommand = ({
 
   return {
     command: bin,
-    args: ['--profile', 'headless', '--json', prompt],
+    args: [
+      '--profile',
+      'headless',
+      ...(readOnly
+        ? ['--patch', path.join(projectRoot, 'dsh/task-readonly.patch.yml')]
+        : []),
+      '--json',
+      prompt,
+    ],
   }
 }
 
@@ -184,6 +197,12 @@ export const spawnTaskAgent = ({
 }): SpawnedAgent => {
   const probe = probeBinary(tool)
   if (!('bin' in probe)) throw new Error(probe.reason)
+
+  if (tool === 'deepseek-harness' && readOnly) {
+    if (!existsSync(path.join(projectRoot, 'dsh/task-readonly.patch.yml'))) {
+      throw new Error('Harness 只读配置不存在，已阻止派发')
+    }
+  }
 
   const { command, args } = buildTaskCommand({
     tool,
@@ -214,11 +233,11 @@ export const spawnTaskAgent = ({
   return { pid: child.pid, command, args, logAbsolute }
 }
 
-/** 任务日志路径：docs/tasks/logs/<taskId>-<时间戳>.log */
+/** 每轮使用独立日志，避免快速重试读到上一轮输出。 */
 export const taskLogPath = (taskId: string, at: Date = new Date()) => {
   const pad = (value: number) => String(value).padStart(2, '0')
   const stamp = `${at.getFullYear()}${pad(at.getMonth() + 1)}${pad(
     at.getDate()
   )}-${pad(at.getHours())}${pad(at.getMinutes())}${pad(at.getSeconds())}`
-  return `docs/tasks/logs/${taskId}-${stamp}.log`
+  return `docs/tasks/logs/${taskId}-${stamp}-${randomUUID()}.log`
 }

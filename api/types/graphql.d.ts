@@ -42,6 +42,17 @@ export type Scalars = {
   Time: { input: Date | string; output: Date | string; }
 };
 
+export type ActiveTaskRun = {
+  __typename?: 'ActiveTaskRun';
+  currentStage: TaskRunStage;
+  id: Scalars['ID']['output'];
+  primaryAgent: Scalars['String']['output'];
+  status: TaskRunStatus;
+  taskId?: Maybe<Scalars['ID']['output']>;
+  title: Scalars['String']['output'];
+  updatedAt: Scalars['DateTime']['output'];
+};
+
 export type AddTaskArtifactInput = {
   kind?: InputMaybe<Scalars['String']['input']>;
   label?: InputMaybe<Scalars['String']['input']>;
@@ -78,9 +89,12 @@ export type AgentRuntimeMetric = {
   latestModelId?: Maybe<Scalars['String']['output']>;
   outputTokenCoverage: RuntimeMetricCoverage;
   outputTokens: Scalars['Float']['output'];
+  queuedCount: Scalars['Int']['output'];
+  runningCount: Scalars['Int']['output'];
   totalTokenCoverage: RuntimeMetricCoverage;
   totalTokens: Scalars['Float']['output'];
   trackedWorkCount: Scalars['Int']['output'];
+  waitingCount: Scalars['Int']['output'];
   workCount: Scalars['Int']['output'];
 };
 
@@ -106,6 +120,12 @@ export type AppendTaskEventResult = {
   taskRun: TaskRun;
 };
 
+export type CapabilityApplyResult = {
+  __typename?: 'CapabilityApplyResult';
+  agentSlug: Scalars['String']['output'];
+  applied: Array<CapabilityFixResult>;
+};
+
 export type CapabilityCliCheck = {
   __typename?: 'CapabilityCliCheck';
   id: Scalars['ID']['output'];
@@ -113,6 +133,42 @@ export type CapabilityCliCheck = {
   name: Scalars['String']['output'];
   path: Scalars['String']['output'];
   status: Scalars['String']['output'];
+};
+
+export type CapabilityFixItem = {
+  __typename?: 'CapabilityFixItem';
+  blockedReason?: Maybe<Scalars['String']['output']>;
+  canApply: Scalars['Boolean']['output'];
+  kind: Scalars['String']['output'];
+  linkPath?: Maybe<Scalars['String']['output']>;
+  name: Scalars['String']['output'];
+  severity: Scalars['String']['output'];
+  source?: Maybe<Scalars['String']['output']>;
+  steps: Array<CapabilityFixStep>;
+  title: Scalars['String']['output'];
+};
+
+export type CapabilityFixPlan = {
+  __typename?: 'CapabilityFixPlan';
+  agentName: Scalars['String']['output'];
+  agentSlug: Scalars['String']['output'];
+  items: Array<CapabilityFixItem>;
+};
+
+export type CapabilityFixResult = {
+  __typename?: 'CapabilityFixResult';
+  changed: Scalars['Boolean']['output'];
+  linkPath: Scalars['String']['output'];
+  message: Scalars['String']['output'];
+  ok: Scalars['Boolean']['output'];
+  skill: Scalars['String']['output'];
+  source?: Maybe<Scalars['String']['output']>;
+};
+
+export type CapabilityFixStep = {
+  __typename?: 'CapabilityFixStep';
+  detail?: Maybe<Scalars['String']['output']>;
+  title: Scalars['String']['output'];
 };
 
 export type CapabilityHealth = {
@@ -213,6 +269,21 @@ export type CreateTaskTemplateInput = {
   title: Scalars['String']['input'];
 };
 
+export type DeliveryDirectoryStat = {
+  __typename?: 'DeliveryDirectoryStat';
+  added: Scalars['Int']['output'];
+  directory: Scalars['String']['output'];
+  files: Scalars['Int']['output'];
+  removed: Scalars['Int']['output'];
+};
+
+export type DeliveryStat = {
+  __typename?: 'DeliveryStat';
+  added: Scalars['Int']['output'];
+  files: Scalars['Int']['output'];
+  removed: Scalars['Int']['output'];
+};
+
 export type DispatchRoleEvaluationInput = {
   agentSlug: Scalars['String']['input'];
   tool: Scalars['String']['input'];
@@ -238,6 +309,8 @@ export type Mutation = {
   addTaskArtifact: Task;
   appendTaskEvent: AppendTaskEventResult;
   cancelTask: Task;
+  capabilityApplyFixes: CapabilityApplyResult;
+  capabilityFixPlan: CapabilityFixPlan;
   createRemoteApp: RemoteApp;
   createTask: Task;
   createTaskRun: TaskRun;
@@ -248,6 +321,10 @@ export type Mutation = {
   dispatchTask: Task;
   dispatchTasks: Array<Task>;
   executeTaskPlan: Task;
+  /** 手动刷新运行状态：重新读取会话快照，必要时按已结束收尾 */
+  refreshRun: TaskRun;
+  /** 手动刷新任务状态：进程已退出/日志不动时按日志收尾并推进任务 */
+  refreshTask: Task;
   removeTaskArtifact: Task;
   reviewTask: Task;
   reviseTaskPlan: Task;
@@ -274,6 +351,16 @@ export type MutationappendTaskEventArgs = {
 
 export type MutationcancelTaskArgs = {
   id: Scalars['ID']['input'];
+};
+
+
+export type MutationcapabilityApplyFixesArgs = {
+  agentSlug: Scalars['String']['input'];
+};
+
+
+export type MutationcapabilityFixPlanArgs = {
+  agentSlug: Scalars['String']['input'];
 };
 
 
@@ -326,7 +413,18 @@ export type MutationdispatchTasksArgs = {
 
 export type MutationexecuteTaskPlanArgs = {
   id: Scalars['ID']['input'];
+  planPath: Scalars['String']['input'];
   tool?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type MutationrefreshRunArgs = {
+  runId: Scalars['ID']['input'];
+};
+
+
+export type MutationrefreshTaskArgs = {
+  id: Scalars['ID']['input'];
 };
 
 
@@ -404,12 +502,16 @@ export type Query = {
   task?: Maybe<Task>;
   taskArtifactContent: Scalars['String']['output'];
   taskImageDataUrl: Scalars['String']['output'];
+  taskPlanContent: Scalars['String']['output'];
+  taskPrecheck: TaskPrecheck;
   taskPulse: TaskPulse;
   taskRun?: Maybe<TaskRun>;
   taskRunLog: Scalars['String']['output'];
   taskRunMessages: Array<TaskRunMessage>;
+  taskRunTrace: TaskRunTrace;
   taskRuns: TaskRunConnection;
   taskTemplates: Array<TaskTemplate>;
+  /** 按创建时间筛选：from/to 为 ISO 时间 */
   tasks: Array<Task>;
   teamRuntimeOverview: TeamRuntimeOverview;
   teamWeeklyReport: TeamWeeklyReport;
@@ -460,6 +562,19 @@ export type QuerytaskImageDataUrlArgs = {
 
 
 /** About the Cedar queries. */
+export type QuerytaskPlanContentArgs = {
+  planPath?: InputMaybe<Scalars['String']['input']>;
+  taskId: Scalars['ID']['input'];
+};
+
+
+/** About the Cedar queries. */
+export type QuerytaskPrecheckArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+/** About the Cedar queries. */
 export type QuerytaskRunArgs = {
   id: Scalars['ID']['input'];
 };
@@ -478,6 +593,12 @@ export type QuerytaskRunMessagesArgs = {
 
 
 /** About the Cedar queries. */
+export type QuerytaskRunTraceArgs = {
+  runId: Scalars['ID']['input'];
+};
+
+
+/** About the Cedar queries. */
 export type QuerytaskRunsArgs = {
   after?: InputMaybe<Scalars['String']['input']>;
   filter?: InputMaybe<TaskRunFilter>;
@@ -489,7 +610,10 @@ export type QuerytaskRunsArgs = {
 /** About the Cedar queries. */
 export type QuerytasksArgs = {
   agentSlug?: InputMaybe<Scalars['String']['input']>;
+  from?: InputMaybe<Scalars['DateTime']['input']>;
   status?: InputMaybe<Scalars['String']['input']>;
+  statuses?: InputMaybe<Array<Scalars['String']['input']>>;
+  to?: InputMaybe<Scalars['DateTime']['input']>;
 };
 
 
@@ -537,6 +661,8 @@ export type RoleEvaluation = {
   __typename?: 'RoleEvaluation';
   agentName: Scalars['String']['output'];
   agentSlug: Scalars['String']['output'];
+  /** 失败时从日志尾部取到的真实报错（成功或运行中为 null） */
+  failureReason?: Maybe<Scalars['String']['output']>;
   finishedAt?: Maybe<Scalars['DateTime']['output']>;
   id: Scalars['ID']['output'];
   logPath: Scalars['String']['output'];
@@ -547,6 +673,7 @@ export type RoleEvaluation = {
   sessionId?: Maybe<Scalars['String']['output']>;
   startedAt: Scalars['DateTime']['output'];
   status: Scalars['String']['output'];
+  taskId?: Maybe<Scalars['ID']['output']>;
   tool: Scalars['String']['output'];
 };
 
@@ -682,6 +809,12 @@ export type TaskImage = {
   url: Scalars['String']['output'];
 };
 
+export type TaskPrecheck = {
+  __typename?: 'TaskPrecheck';
+  expectedPaths: Array<Scalars['String']['output']>;
+  warnings: Array<Scalars['String']['output']>;
+};
+
 export type TaskPulse = {
   __typename?: 'TaskPulse';
   awaitingReview: Scalars['Int']['output'];
@@ -709,6 +842,8 @@ export type TaskRun = {
   startedAt: Scalars['DateTime']['output'];
   status: TaskRunStatus;
   summary?: Maybe<Scalars['String']['output']>;
+  task?: Maybe<Task>;
+  taskId?: Maybe<Scalars['ID']['output']>;
   title: Scalars['String']['output'];
   updatedAt: Scalars['DateTime']['output'];
   version: Scalars['Int']['output'];
@@ -740,6 +875,7 @@ export type TaskRunMessage = {
   content: Scalars['String']['output'];
   createdAt: Scalars['DateTime']['output'];
   role: Scalars['String']['output'];
+  step?: Maybe<Scalars['Int']['output']>;
 };
 
 export type TaskRunPageInfo = {
@@ -769,6 +905,26 @@ export type TaskRunStatusCount = {
   status: TaskRunStatus;
 };
 
+export type TaskRunTool = {
+  __typename?: 'TaskRunTool';
+  createdAt: Scalars['DateTime']['output'];
+  detail: Scalars['String']['output'];
+  name: Scalars['String']['output'];
+  redacted: Scalars['Boolean']['output'];
+  result: Scalars['String']['output'];
+  resultTruncated: Scalars['Boolean']['output'];
+  step?: Maybe<Scalars['Int']['output']>;
+};
+
+export type TaskRunTrace = {
+  __typename?: 'TaskRunTrace';
+  messages: Array<TaskRunMessage>;
+  source: Scalars['String']['output'];
+  tools: Array<TaskRunTool>;
+  truncated: Scalars['Boolean']['output'];
+  turn?: Maybe<Scalars['Int']['output']>;
+};
+
 export type TaskTemplate = {
   __typename?: 'TaskTemplate';
   acceptance: Scalars['String']['output'];
@@ -782,8 +938,21 @@ export type TaskTemplate = {
   title: Scalars['String']['output'];
 };
 
+export type TeamDeliveryStat = {
+  __typename?: 'TeamDeliveryStat';
+  added: Scalars['Int']['output'];
+  byDirectory: Array<DeliveryDirectoryStat>;
+  /** 有交付统计的运行数 */
+  coveredRuns: Scalars['Int']['output'];
+  files: Scalars['Int']['output'];
+  removed: Scalars['Int']['output'];
+  totalRuns: Scalars['Int']['output'];
+  uncategorized: DeliveryStat;
+};
+
 export type TeamRuntimeOverview = {
   __typename?: 'TeamRuntimeOverview';
+  activeTasks: Array<ActiveTaskRun>;
   agents: Array<AgentRuntimeMetric>;
   cachedTokenCoverage: RuntimeMetricCoverage;
   cachedTokens: Scalars['Float']['output'];
@@ -791,11 +960,14 @@ export type TeamRuntimeOverview = {
   inputTokens: Scalars['Float']['output'];
   outputTokenCoverage: RuntimeMetricCoverage;
   outputTokens: Scalars['Float']['output'];
+  queuedCount: Scalars['Int']['output'];
+  runningCount: Scalars['Int']['output'];
   totalTaskCount: Scalars['Int']['output'];
   totalTokenCoverage: RuntimeMetricCoverage;
   totalTokens: Scalars['Float']['output'];
   totalWorkCount: Scalars['Int']['output'];
   trackedWorkCount: Scalars['Int']['output'];
+  waitingCount: Scalars['Int']['output'];
 };
 
 export type TeamWeeklyReport = {
@@ -805,6 +977,7 @@ export type TeamWeeklyReport = {
   completed: Array<WeeklyTaskItem>;
   completedTasks: Scalars['Int']['output'];
   contributions: Array<WeeklyAgentContribution>;
+  delivery: TeamDeliveryStat;
   failedTasks: Scalars['Int']['output'];
   failures: Array<WeeklyTaskItem>;
   from: Scalars['DateTime']['output'];
@@ -948,6 +1121,7 @@ export type DirectiveResolverFn<TResult = Record<PropertyKey, never>, TParent = 
 
 /** Mapping between all available schema types and the resolvers types */
 export type ResolversTypes = {
+  ActiveTaskRun: ResolverTypeWrapper<ActiveTaskRun>;
   AddTaskArtifactInput: AddTaskArtifactInput;
   AgentCapabilityHealth: ResolverTypeWrapper<AgentCapabilityHealth>;
   AgentRuntimeMetric: ResolverTypeWrapper<AgentRuntimeMetric>;
@@ -956,7 +1130,12 @@ export type ResolversTypes = {
   BigInt: ResolverTypeWrapper<Scalars['BigInt']['output']>;
   Boolean: ResolverTypeWrapper<Scalars['Boolean']['output']>;
   Byte: ResolverTypeWrapper<Scalars['Byte']['output']>;
+  CapabilityApplyResult: ResolverTypeWrapper<CapabilityApplyResult>;
   CapabilityCliCheck: ResolverTypeWrapper<CapabilityCliCheck>;
+  CapabilityFixItem: ResolverTypeWrapper<CapabilityFixItem>;
+  CapabilityFixPlan: ResolverTypeWrapper<CapabilityFixPlan>;
+  CapabilityFixResult: ResolverTypeWrapper<CapabilityFixResult>;
+  CapabilityFixStep: ResolverTypeWrapper<CapabilityFixStep>;
   CapabilityHealth: ResolverTypeWrapper<CapabilityHealth>;
   CapabilityPlatformReport: ResolverTypeWrapper<CapabilityPlatformReport>;
   CapabilitySkillCheck: ResolverTypeWrapper<CapabilitySkillCheck>;
@@ -969,6 +1148,8 @@ export type ResolversTypes = {
   CreateTaskTemplateInput: CreateTaskTemplateInput;
   Date: ResolverTypeWrapper<Scalars['Date']['output']>;
   DateTime: ResolverTypeWrapper<Scalars['DateTime']['output']>;
+  DeliveryDirectoryStat: ResolverTypeWrapper<DeliveryDirectoryStat>;
+  DeliveryStat: ResolverTypeWrapper<DeliveryStat>;
   DispatchRoleEvaluationInput: DispatchRoleEvaluationInput;
   File: ResolverTypeWrapper<Scalars['File']['output']>;
   Float: ResolverTypeWrapper<Scalars['Float']['output']>;
@@ -995,6 +1176,7 @@ export type ResolversTypes = {
   TaskArtifact: ResolverTypeWrapper<MergePrismaWithSdlTypes<PrismaTaskArtifact, MakeRelationsOptional<TaskArtifact, AllMappedModels>, AllMappedModels>>;
   TaskEvent: ResolverTypeWrapper<MergePrismaWithSdlTypes<PrismaTaskEvent, MakeRelationsOptional<TaskEvent, AllMappedModels>, AllMappedModels>>;
   TaskImage: ResolverTypeWrapper<MergePrismaWithSdlTypes<PrismaTaskImage, MakeRelationsOptional<TaskImage, AllMappedModels>, AllMappedModels>>;
+  TaskPrecheck: ResolverTypeWrapper<TaskPrecheck>;
   TaskPulse: ResolverTypeWrapper<TaskPulse>;
   TaskRun: ResolverTypeWrapper<MergePrismaWithSdlTypes<PrismaTaskRun, MakeRelationsOptional<TaskRun, AllMappedModels>, AllMappedModels>>;
   TaskRunConnection: ResolverTypeWrapper<Omit<TaskRunConnection, 'edges'> & { edges: Array<ResolversTypes['TaskRunEdge']> }>;
@@ -1005,7 +1187,10 @@ export type ResolversTypes = {
   TaskRunStage: TaskRunStage;
   TaskRunStatus: TaskRunStatus;
   TaskRunStatusCount: ResolverTypeWrapper<TaskRunStatusCount>;
+  TaskRunTool: ResolverTypeWrapper<TaskRunTool>;
+  TaskRunTrace: ResolverTypeWrapper<TaskRunTrace>;
   TaskTemplate: ResolverTypeWrapper<MergePrismaWithSdlTypes<PrismaTaskTemplate, MakeRelationsOptional<TaskTemplate, AllMappedModels>, AllMappedModels>>;
+  TeamDeliveryStat: ResolverTypeWrapper<TeamDeliveryStat>;
   TeamRuntimeOverview: ResolverTypeWrapper<TeamRuntimeOverview>;
   TeamWeeklyReport: ResolverTypeWrapper<TeamWeeklyReport>;
   Time: ResolverTypeWrapper<Scalars['Time']['output']>;
@@ -1021,6 +1206,7 @@ export type ResolversTypes = {
 
 /** Mapping between all available schema types and the resolvers parents */
 export type ResolversParentTypes = {
+  ActiveTaskRun: ActiveTaskRun;
   AddTaskArtifactInput: AddTaskArtifactInput;
   AgentCapabilityHealth: AgentCapabilityHealth;
   AgentRuntimeMetric: AgentRuntimeMetric;
@@ -1029,7 +1215,12 @@ export type ResolversParentTypes = {
   BigInt: Scalars['BigInt']['output'];
   Boolean: Scalars['Boolean']['output'];
   Byte: Scalars['Byte']['output'];
+  CapabilityApplyResult: CapabilityApplyResult;
   CapabilityCliCheck: CapabilityCliCheck;
+  CapabilityFixItem: CapabilityFixItem;
+  CapabilityFixPlan: CapabilityFixPlan;
+  CapabilityFixResult: CapabilityFixResult;
+  CapabilityFixStep: CapabilityFixStep;
   CapabilityHealth: CapabilityHealth;
   CapabilityPlatformReport: CapabilityPlatformReport;
   CapabilitySkillCheck: CapabilitySkillCheck;
@@ -1042,6 +1233,8 @@ export type ResolversParentTypes = {
   CreateTaskTemplateInput: CreateTaskTemplateInput;
   Date: Scalars['Date']['output'];
   DateTime: Scalars['DateTime']['output'];
+  DeliveryDirectoryStat: DeliveryDirectoryStat;
+  DeliveryStat: DeliveryStat;
   DispatchRoleEvaluationInput: DispatchRoleEvaluationInput;
   File: Scalars['File']['output'];
   Float: Scalars['Float']['output'];
@@ -1067,6 +1260,7 @@ export type ResolversParentTypes = {
   TaskArtifact: MergePrismaWithSdlTypes<PrismaTaskArtifact, MakeRelationsOptional<TaskArtifact, AllMappedModels>, AllMappedModels>;
   TaskEvent: MergePrismaWithSdlTypes<PrismaTaskEvent, MakeRelationsOptional<TaskEvent, AllMappedModels>, AllMappedModels>;
   TaskImage: MergePrismaWithSdlTypes<PrismaTaskImage, MakeRelationsOptional<TaskImage, AllMappedModels>, AllMappedModels>;
+  TaskPrecheck: TaskPrecheck;
   TaskPulse: TaskPulse;
   TaskRun: MergePrismaWithSdlTypes<PrismaTaskRun, MakeRelationsOptional<TaskRun, AllMappedModels>, AllMappedModels>;
   TaskRunConnection: Omit<TaskRunConnection, 'edges'> & { edges: Array<ResolversParentTypes['TaskRunEdge']> };
@@ -1075,7 +1269,10 @@ export type ResolversParentTypes = {
   TaskRunMessage: TaskRunMessage;
   TaskRunPageInfo: TaskRunPageInfo;
   TaskRunStatusCount: TaskRunStatusCount;
+  TaskRunTool: TaskRunTool;
+  TaskRunTrace: TaskRunTrace;
   TaskTemplate: MergePrismaWithSdlTypes<PrismaTaskTemplate, MakeRelationsOptional<TaskTemplate, AllMappedModels>, AllMappedModels>;
+  TeamDeliveryStat: TeamDeliveryStat;
   TeamRuntimeOverview: TeamRuntimeOverview;
   TeamWeeklyReport: TeamWeeklyReport;
   Time: Scalars['Time']['output'];
@@ -1103,9 +1300,33 @@ export type requireSessionOrRuntimeWriterDirectiveArgs = { };
 
 export type requireSessionOrRuntimeWriterDirectiveResolver<Result, Parent, ContextType = CedarGraphQLContext, Args = requireSessionOrRuntimeWriterDirectiveArgs> = DirectiveResolverFn<Result, Parent, ContextType, Args>;
 
+export type requireSessionOrTeamReaderDirectiveArgs = { };
+
+export type requireSessionOrTeamReaderDirectiveResolver<Result, Parent, ContextType = CedarGraphQLContext, Args = requireSessionOrTeamReaderDirectiveArgs> = DirectiveResolverFn<Result, Parent, ContextType, Args>;
+
 export type skipAuthDirectiveArgs = { };
 
 export type skipAuthDirectiveResolver<Result, Parent, ContextType = CedarGraphQLContext, Args = skipAuthDirectiveArgs> = DirectiveResolverFn<Result, Parent, ContextType, Args>;
+
+export type ActiveTaskRunResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['ActiveTaskRun'] = ResolversParentTypes['ActiveTaskRun']> = {
+  currentStage: OptArgsResolverFn<ResolversTypes['TaskRunStage'], ParentType, ContextType>;
+  id: OptArgsResolverFn<ResolversTypes['ID'], ParentType, ContextType>;
+  primaryAgent: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  status: OptArgsResolverFn<ResolversTypes['TaskRunStatus'], ParentType, ContextType>;
+  taskId: OptArgsResolverFn<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
+  title: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  updatedAt: OptArgsResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
+};
+
+export type ActiveTaskRunRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['ActiveTaskRun'] = ResolversParentTypes['ActiveTaskRun']> = {
+  currentStage?: RequiredResolverFn<ResolversTypes['TaskRunStage'], ParentType, ContextType>;
+  id?: RequiredResolverFn<ResolversTypes['ID'], ParentType, ContextType>;
+  primaryAgent?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  status?: RequiredResolverFn<ResolversTypes['TaskRunStatus'], ParentType, ContextType>;
+  taskId?: RequiredResolverFn<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
+  title?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  updatedAt?: RequiredResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
+};
 
 export type AgentCapabilityHealthResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['AgentCapabilityHealth'] = ResolversParentTypes['AgentCapabilityHealth']> = {
   agentInstalled: OptArgsResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
@@ -1152,9 +1373,12 @@ export type AgentRuntimeMetricResolvers<ContextType = CedarGraphQLContext, Paren
   latestModelId: OptArgsResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   outputTokenCoverage: OptArgsResolverFn<ResolversTypes['RuntimeMetricCoverage'], ParentType, ContextType>;
   outputTokens: OptArgsResolverFn<ResolversTypes['Float'], ParentType, ContextType>;
+  queuedCount: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  runningCount: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
   totalTokenCoverage: OptArgsResolverFn<ResolversTypes['RuntimeMetricCoverage'], ParentType, ContextType>;
   totalTokens: OptArgsResolverFn<ResolversTypes['Float'], ParentType, ContextType>;
   trackedWorkCount: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  waitingCount: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
   workCount: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
 };
 
@@ -1169,9 +1393,12 @@ export type AgentRuntimeMetricRelationResolvers<ContextType = CedarGraphQLContex
   latestModelId?: RequiredResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   outputTokenCoverage?: RequiredResolverFn<ResolversTypes['RuntimeMetricCoverage'], ParentType, ContextType>;
   outputTokens?: RequiredResolverFn<ResolversTypes['Float'], ParentType, ContextType>;
+  queuedCount?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  runningCount?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
   totalTokenCoverage?: RequiredResolverFn<ResolversTypes['RuntimeMetricCoverage'], ParentType, ContextType>;
   totalTokens?: RequiredResolverFn<ResolversTypes['Float'], ParentType, ContextType>;
   trackedWorkCount?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  waitingCount?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
   workCount?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
 };
 
@@ -1195,6 +1422,16 @@ export interface ByteScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes
   name: 'Byte';
 }
 
+export type CapabilityApplyResultResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['CapabilityApplyResult'] = ResolversParentTypes['CapabilityApplyResult']> = {
+  agentSlug: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  applied: OptArgsResolverFn<Array<ResolversTypes['CapabilityFixResult']>, ParentType, ContextType>;
+};
+
+export type CapabilityApplyResultRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['CapabilityApplyResult'] = ResolversParentTypes['CapabilityApplyResult']> = {
+  agentSlug?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  applied?: RequiredResolverFn<Array<ResolversTypes['CapabilityFixResult']>, ParentType, ContextType>;
+};
+
 export type CapabilityCliCheckResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['CapabilityCliCheck'] = ResolversParentTypes['CapabilityCliCheck']> = {
   id: OptArgsResolverFn<ResolversTypes['ID'], ParentType, ContextType>;
   message: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
@@ -1209,6 +1446,70 @@ export type CapabilityCliCheckRelationResolvers<ContextType = CedarGraphQLContex
   name?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
   path?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
   status?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+};
+
+export type CapabilityFixItemResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['CapabilityFixItem'] = ResolversParentTypes['CapabilityFixItem']> = {
+  blockedReason: OptArgsResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  canApply: OptArgsResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  kind: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  linkPath: OptArgsResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  name: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  severity: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  source: OptArgsResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  steps: OptArgsResolverFn<Array<ResolversTypes['CapabilityFixStep']>, ParentType, ContextType>;
+  title: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+};
+
+export type CapabilityFixItemRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['CapabilityFixItem'] = ResolversParentTypes['CapabilityFixItem']> = {
+  blockedReason?: RequiredResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  canApply?: RequiredResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  kind?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  linkPath?: RequiredResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  name?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  severity?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  source?: RequiredResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  steps?: RequiredResolverFn<Array<ResolversTypes['CapabilityFixStep']>, ParentType, ContextType>;
+  title?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+};
+
+export type CapabilityFixPlanResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['CapabilityFixPlan'] = ResolversParentTypes['CapabilityFixPlan']> = {
+  agentName: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  agentSlug: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  items: OptArgsResolverFn<Array<ResolversTypes['CapabilityFixItem']>, ParentType, ContextType>;
+};
+
+export type CapabilityFixPlanRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['CapabilityFixPlan'] = ResolversParentTypes['CapabilityFixPlan']> = {
+  agentName?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  agentSlug?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  items?: RequiredResolverFn<Array<ResolversTypes['CapabilityFixItem']>, ParentType, ContextType>;
+};
+
+export type CapabilityFixResultResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['CapabilityFixResult'] = ResolversParentTypes['CapabilityFixResult']> = {
+  changed: OptArgsResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  linkPath: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  message: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  ok: OptArgsResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  skill: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  source: OptArgsResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+};
+
+export type CapabilityFixResultRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['CapabilityFixResult'] = ResolversParentTypes['CapabilityFixResult']> = {
+  changed?: RequiredResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  linkPath?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  message?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  ok?: RequiredResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  skill?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  source?: RequiredResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+};
+
+export type CapabilityFixStepResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['CapabilityFixStep'] = ResolversParentTypes['CapabilityFixStep']> = {
+  detail: OptArgsResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  title: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+};
+
+export type CapabilityFixStepRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['CapabilityFixStep'] = ResolversParentTypes['CapabilityFixStep']> = {
+  detail?: RequiredResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  title?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
 };
 
 export type CapabilityHealthResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['CapabilityHealth'] = ResolversParentTypes['CapabilityHealth']> = {
@@ -1299,6 +1600,32 @@ export interface DateTimeScalarConfig extends GraphQLScalarTypeConfig<ResolversT
   name: 'DateTime';
 }
 
+export type DeliveryDirectoryStatResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['DeliveryDirectoryStat'] = ResolversParentTypes['DeliveryDirectoryStat']> = {
+  added: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  directory: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  files: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  removed: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+};
+
+export type DeliveryDirectoryStatRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['DeliveryDirectoryStat'] = ResolversParentTypes['DeliveryDirectoryStat']> = {
+  added?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  directory?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  files?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  removed?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+};
+
+export type DeliveryStatResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['DeliveryStat'] = ResolversParentTypes['DeliveryStat']> = {
+  added: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  files: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  removed: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+};
+
+export type DeliveryStatRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['DeliveryStat'] = ResolversParentTypes['DeliveryStat']> = {
+  added?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  files?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  removed?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+};
+
 export interface FileScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes['File'], any> {
   name: 'File';
 }
@@ -1343,6 +1670,8 @@ export type MutationResolvers<ContextType = CedarGraphQLContext, ParentType exte
   addTaskArtifact?: Resolver<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationaddTaskArtifactArgs, 'input' | 'taskId'>>;
   appendTaskEvent?: Resolver<ResolversTypes['AppendTaskEventResult'], ParentType, ContextType, RequireFields<MutationappendTaskEventArgs, 'input' | 'taskRunId'>>;
   cancelTask?: Resolver<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationcancelTaskArgs, 'id'>>;
+  capabilityApplyFixes?: Resolver<ResolversTypes['CapabilityApplyResult'], ParentType, ContextType, RequireFields<MutationcapabilityApplyFixesArgs, 'agentSlug'>>;
+  capabilityFixPlan?: Resolver<ResolversTypes['CapabilityFixPlan'], ParentType, ContextType, RequireFields<MutationcapabilityFixPlanArgs, 'agentSlug'>>;
   createRemoteApp?: Resolver<ResolversTypes['RemoteApp'], ParentType, ContextType, RequireFields<MutationcreateRemoteAppArgs, 'input'>>;
   createTask?: Resolver<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationcreateTaskArgs, 'input'>>;
   createTaskRun?: Resolver<ResolversTypes['TaskRun'], ParentType, ContextType, RequireFields<MutationcreateTaskRunArgs, 'input'>>;
@@ -1352,7 +1681,9 @@ export type MutationResolvers<ContextType = CedarGraphQLContext, ParentType exte
   dispatchRoleEvaluation?: Resolver<ResolversTypes['RoleEvaluationDispatch'], ParentType, ContextType, RequireFields<MutationdispatchRoleEvaluationArgs, 'input'>>;
   dispatchTask?: Resolver<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationdispatchTaskArgs, 'id'>>;
   dispatchTasks?: Resolver<Array<ResolversTypes['Task']>, ParentType, ContextType, RequireFields<MutationdispatchTasksArgs, 'ids'>>;
-  executeTaskPlan?: Resolver<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationexecuteTaskPlanArgs, 'id'>>;
+  executeTaskPlan?: Resolver<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationexecuteTaskPlanArgs, 'id' | 'planPath'>>;
+  refreshRun?: Resolver<ResolversTypes['TaskRun'], ParentType, ContextType, RequireFields<MutationrefreshRunArgs, 'runId'>>;
+  refreshTask?: Resolver<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationrefreshTaskArgs, 'id'>>;
   removeTaskArtifact?: Resolver<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationremoveTaskArtifactArgs, 'id'>>;
   reviewTask?: Resolver<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationreviewTaskArgs, 'decision' | 'id'>>;
   reviseTaskPlan?: Resolver<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationreviseTaskPlanArgs, 'id' | 'note'>>;
@@ -1368,6 +1699,8 @@ export type MutationRelationResolvers<ContextType = CedarGraphQLContext, ParentT
   addTaskArtifact?: RequiredResolverFn<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationaddTaskArtifactArgs, 'input' | 'taskId'>>;
   appendTaskEvent?: RequiredResolverFn<ResolversTypes['AppendTaskEventResult'], ParentType, ContextType, RequireFields<MutationappendTaskEventArgs, 'input' | 'taskRunId'>>;
   cancelTask?: RequiredResolverFn<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationcancelTaskArgs, 'id'>>;
+  capabilityApplyFixes?: RequiredResolverFn<ResolversTypes['CapabilityApplyResult'], ParentType, ContextType, RequireFields<MutationcapabilityApplyFixesArgs, 'agentSlug'>>;
+  capabilityFixPlan?: RequiredResolverFn<ResolversTypes['CapabilityFixPlan'], ParentType, ContextType, RequireFields<MutationcapabilityFixPlanArgs, 'agentSlug'>>;
   createRemoteApp?: RequiredResolverFn<ResolversTypes['RemoteApp'], ParentType, ContextType, RequireFields<MutationcreateRemoteAppArgs, 'input'>>;
   createTask?: RequiredResolverFn<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationcreateTaskArgs, 'input'>>;
   createTaskRun?: RequiredResolverFn<ResolversTypes['TaskRun'], ParentType, ContextType, RequireFields<MutationcreateTaskRunArgs, 'input'>>;
@@ -1377,7 +1710,9 @@ export type MutationRelationResolvers<ContextType = CedarGraphQLContext, ParentT
   dispatchRoleEvaluation?: RequiredResolverFn<ResolversTypes['RoleEvaluationDispatch'], ParentType, ContextType, RequireFields<MutationdispatchRoleEvaluationArgs, 'input'>>;
   dispatchTask?: RequiredResolverFn<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationdispatchTaskArgs, 'id'>>;
   dispatchTasks?: RequiredResolverFn<Array<ResolversTypes['Task']>, ParentType, ContextType, RequireFields<MutationdispatchTasksArgs, 'ids'>>;
-  executeTaskPlan?: RequiredResolverFn<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationexecuteTaskPlanArgs, 'id'>>;
+  executeTaskPlan?: RequiredResolverFn<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationexecuteTaskPlanArgs, 'id' | 'planPath'>>;
+  refreshRun?: RequiredResolverFn<ResolversTypes['TaskRun'], ParentType, ContextType, RequireFields<MutationrefreshRunArgs, 'runId'>>;
+  refreshTask?: RequiredResolverFn<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationrefreshTaskArgs, 'id'>>;
   removeTaskArtifact?: RequiredResolverFn<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationremoveTaskArtifactArgs, 'id'>>;
   reviewTask?: RequiredResolverFn<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationreviewTaskArgs, 'decision' | 'id'>>;
   reviseTaskPlan?: RequiredResolverFn<ResolversTypes['Task'], ParentType, ContextType, RequireFields<MutationreviseTaskPlanArgs, 'id' | 'note'>>;
@@ -1404,10 +1739,13 @@ export type QueryResolvers<ContextType = CedarGraphQLContext, ParentType extends
   task?: Resolver<Maybe<ResolversTypes['Task']>, ParentType, ContextType, RequireFields<QuerytaskArgs, 'id'>>;
   taskArtifactContent?: Resolver<ResolversTypes['String'], ParentType, ContextType, RequireFields<QuerytaskArtifactContentArgs, 'id'>>;
   taskImageDataUrl?: Resolver<ResolversTypes['String'], ParentType, ContextType, RequireFields<QuerytaskImageDataUrlArgs, 'id'>>;
+  taskPlanContent?: Resolver<ResolversTypes['String'], ParentType, ContextType, RequireFields<QuerytaskPlanContentArgs, 'taskId'>>;
+  taskPrecheck?: Resolver<ResolversTypes['TaskPrecheck'], ParentType, ContextType, RequireFields<QuerytaskPrecheckArgs, 'id'>>;
   taskPulse?: OptArgsResolverFn<ResolversTypes['TaskPulse'], ParentType, ContextType>;
   taskRun?: Resolver<Maybe<ResolversTypes['TaskRun']>, ParentType, ContextType, RequireFields<QuerytaskRunArgs, 'id'>>;
   taskRunLog?: Resolver<ResolversTypes['String'], ParentType, ContextType, RequireFields<QuerytaskRunLogArgs, 'runId'>>;
   taskRunMessages?: Resolver<Array<ResolversTypes['TaskRunMessage']>, ParentType, ContextType, RequireFields<QuerytaskRunMessagesArgs, 'runId'>>;
+  taskRunTrace?: Resolver<ResolversTypes['TaskRunTrace'], ParentType, ContextType, RequireFields<QuerytaskRunTraceArgs, 'runId'>>;
   taskRuns?: Resolver<ResolversTypes['TaskRunConnection'], ParentType, ContextType, RequireFields<QuerytaskRunsArgs, 'first' | 'skip'>>;
   taskTemplates?: OptArgsResolverFn<Array<ResolversTypes['TaskTemplate']>, ParentType, ContextType>;
   tasks?: Resolver<Array<ResolversTypes['Task']>, ParentType, ContextType, Partial<QuerytasksArgs>>;
@@ -1431,10 +1769,13 @@ export type QueryRelationResolvers<ContextType = CedarGraphQLContext, ParentType
   task?: RequiredResolverFn<Maybe<ResolversTypes['Task']>, ParentType, ContextType, RequireFields<QuerytaskArgs, 'id'>>;
   taskArtifactContent?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType, RequireFields<QuerytaskArtifactContentArgs, 'id'>>;
   taskImageDataUrl?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType, RequireFields<QuerytaskImageDataUrlArgs, 'id'>>;
+  taskPlanContent?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType, RequireFields<QuerytaskPlanContentArgs, 'taskId'>>;
+  taskPrecheck?: RequiredResolverFn<ResolversTypes['TaskPrecheck'], ParentType, ContextType, RequireFields<QuerytaskPrecheckArgs, 'id'>>;
   taskPulse?: RequiredResolverFn<ResolversTypes['TaskPulse'], ParentType, ContextType>;
   taskRun?: RequiredResolverFn<Maybe<ResolversTypes['TaskRun']>, ParentType, ContextType, RequireFields<QuerytaskRunArgs, 'id'>>;
   taskRunLog?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType, RequireFields<QuerytaskRunLogArgs, 'runId'>>;
   taskRunMessages?: RequiredResolverFn<Array<ResolversTypes['TaskRunMessage']>, ParentType, ContextType, RequireFields<QuerytaskRunMessagesArgs, 'runId'>>;
+  taskRunTrace?: RequiredResolverFn<ResolversTypes['TaskRunTrace'], ParentType, ContextType, RequireFields<QuerytaskRunTraceArgs, 'runId'>>;
   taskRuns?: RequiredResolverFn<ResolversTypes['TaskRunConnection'], ParentType, ContextType, RequireFields<QuerytaskRunsArgs, 'first' | 'skip'>>;
   taskTemplates?: RequiredResolverFn<Array<ResolversTypes['TaskTemplate']>, ParentType, ContextType>;
   tasks?: RequiredResolverFn<Array<ResolversTypes['Task']>, ParentType, ContextType, Partial<QuerytasksArgs>>;
@@ -1476,6 +1817,7 @@ export type RemoteAppRelationResolvers<ContextType = CedarGraphQLContext, Parent
 export type RoleEvaluationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['RoleEvaluation'] = ResolversParentTypes['RoleEvaluation']> = {
   agentName: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
   agentSlug: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  failureReason: OptArgsResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   finishedAt: OptArgsResolverFn<Maybe<ResolversTypes['DateTime']>, ParentType, ContextType>;
   id: OptArgsResolverFn<ResolversTypes['ID'], ParentType, ContextType>;
   logPath: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
@@ -1486,12 +1828,14 @@ export type RoleEvaluationResolvers<ContextType = CedarGraphQLContext, ParentTyp
   sessionId: OptArgsResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   startedAt: OptArgsResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
   status: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  taskId: OptArgsResolverFn<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
   tool: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
 };
 
 export type RoleEvaluationRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['RoleEvaluation'] = ResolversParentTypes['RoleEvaluation']> = {
   agentName?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
   agentSlug?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  failureReason?: RequiredResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   finishedAt?: RequiredResolverFn<Maybe<ResolversTypes['DateTime']>, ParentType, ContextType>;
   id?: RequiredResolverFn<ResolversTypes['ID'], ParentType, ContextType>;
   logPath?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
@@ -1502,6 +1846,7 @@ export type RoleEvaluationRelationResolvers<ContextType = CedarGraphQLContext, P
   sessionId?: RequiredResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   startedAt?: RequiredResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
   status?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  taskId?: RequiredResolverFn<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
   tool?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
 };
 
@@ -1719,6 +2064,16 @@ export type TaskImageRelationResolvers<ContextType = CedarGraphQLContext, Parent
   url?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
 };
 
+export type TaskPrecheckResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TaskPrecheck'] = ResolversParentTypes['TaskPrecheck']> = {
+  expectedPaths: OptArgsResolverFn<Array<ResolversTypes['String']>, ParentType, ContextType>;
+  warnings: OptArgsResolverFn<Array<ResolversTypes['String']>, ParentType, ContextType>;
+};
+
+export type TaskPrecheckRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TaskPrecheck'] = ResolversParentTypes['TaskPrecheck']> = {
+  expectedPaths?: RequiredResolverFn<Array<ResolversTypes['String']>, ParentType, ContextType>;
+  warnings?: RequiredResolverFn<Array<ResolversTypes['String']>, ParentType, ContextType>;
+};
+
 export type TaskPulseResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TaskPulse'] = ResolversParentTypes['TaskPulse']> = {
   awaitingReview: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
   completedToday: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
@@ -1752,6 +2107,8 @@ export type TaskRunResolvers<ContextType = CedarGraphQLContext, ParentType exten
   startedAt: OptArgsResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
   status: OptArgsResolverFn<ResolversTypes['TaskRunStatus'], ParentType, ContextType>;
   summary: OptArgsResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  task: OptArgsResolverFn<Maybe<ResolversTypes['Task']>, ParentType, ContextType>;
+  taskId: OptArgsResolverFn<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
   title: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
   updatedAt: OptArgsResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
   version: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
@@ -1774,6 +2131,8 @@ export type TaskRunRelationResolvers<ContextType = CedarGraphQLContext, ParentTy
   startedAt?: RequiredResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
   status?: RequiredResolverFn<ResolversTypes['TaskRunStatus'], ParentType, ContextType>;
   summary?: RequiredResolverFn<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  task?: RequiredResolverFn<Maybe<ResolversTypes['Task']>, ParentType, ContextType>;
+  taskId?: RequiredResolverFn<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
   title?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
   updatedAt?: RequiredResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
   version?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
@@ -1807,12 +2166,14 @@ export type TaskRunMessageResolvers<ContextType = CedarGraphQLContext, ParentTyp
   content: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
   createdAt: OptArgsResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
   role: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  step: OptArgsResolverFn<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
 };
 
 export type TaskRunMessageRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TaskRunMessage'] = ResolversParentTypes['TaskRunMessage']> = {
   content?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
   createdAt?: RequiredResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
   role?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  step?: RequiredResolverFn<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
 };
 
 export type TaskRunPageInfoResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TaskRunPageInfo'] = ResolversParentTypes['TaskRunPageInfo']> = {
@@ -1833,6 +2194,42 @@ export type TaskRunStatusCountResolvers<ContextType = CedarGraphQLContext, Paren
 export type TaskRunStatusCountRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TaskRunStatusCount'] = ResolversParentTypes['TaskRunStatusCount']> = {
   count?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
   status?: RequiredResolverFn<ResolversTypes['TaskRunStatus'], ParentType, ContextType>;
+};
+
+export type TaskRunToolResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TaskRunTool'] = ResolversParentTypes['TaskRunTool']> = {
+  createdAt: OptArgsResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
+  detail: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  name: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  redacted: OptArgsResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  result: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  resultTruncated: OptArgsResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  step: OptArgsResolverFn<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+};
+
+export type TaskRunToolRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TaskRunTool'] = ResolversParentTypes['TaskRunTool']> = {
+  createdAt?: RequiredResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
+  detail?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  name?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  redacted?: RequiredResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  result?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  resultTruncated?: RequiredResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  step?: RequiredResolverFn<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+};
+
+export type TaskRunTraceResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TaskRunTrace'] = ResolversParentTypes['TaskRunTrace']> = {
+  messages: OptArgsResolverFn<Array<ResolversTypes['TaskRunMessage']>, ParentType, ContextType>;
+  source: OptArgsResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  tools: OptArgsResolverFn<Array<ResolversTypes['TaskRunTool']>, ParentType, ContextType>;
+  truncated: OptArgsResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  turn: OptArgsResolverFn<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+};
+
+export type TaskRunTraceRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TaskRunTrace'] = ResolversParentTypes['TaskRunTrace']> = {
+  messages?: RequiredResolverFn<Array<ResolversTypes['TaskRunMessage']>, ParentType, ContextType>;
+  source?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
+  tools?: RequiredResolverFn<Array<ResolversTypes['TaskRunTool']>, ParentType, ContextType>;
+  truncated?: RequiredResolverFn<ResolversTypes['Boolean'], ParentType, ContextType>;
+  turn?: RequiredResolverFn<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
 };
 
 export type TaskTemplateResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TaskTemplate'] = ResolversParentTypes['TaskTemplate']> = {
@@ -1859,7 +2256,28 @@ export type TaskTemplateRelationResolvers<ContextType = CedarGraphQLContext, Par
   title?: RequiredResolverFn<ResolversTypes['String'], ParentType, ContextType>;
 };
 
+export type TeamDeliveryStatResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TeamDeliveryStat'] = ResolversParentTypes['TeamDeliveryStat']> = {
+  added: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  byDirectory: OptArgsResolverFn<Array<ResolversTypes['DeliveryDirectoryStat']>, ParentType, ContextType>;
+  coveredRuns: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  files: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  removed: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  totalRuns: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  uncategorized: OptArgsResolverFn<ResolversTypes['DeliveryStat'], ParentType, ContextType>;
+};
+
+export type TeamDeliveryStatRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TeamDeliveryStat'] = ResolversParentTypes['TeamDeliveryStat']> = {
+  added?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  byDirectory?: RequiredResolverFn<Array<ResolversTypes['DeliveryDirectoryStat']>, ParentType, ContextType>;
+  coveredRuns?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  files?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  removed?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  totalRuns?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  uncategorized?: RequiredResolverFn<ResolversTypes['DeliveryStat'], ParentType, ContextType>;
+};
+
 export type TeamRuntimeOverviewResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TeamRuntimeOverview'] = ResolversParentTypes['TeamRuntimeOverview']> = {
+  activeTasks: OptArgsResolverFn<Array<ResolversTypes['ActiveTaskRun']>, ParentType, ContextType>;
   agents: OptArgsResolverFn<Array<ResolversTypes['AgentRuntimeMetric']>, ParentType, ContextType>;
   cachedTokenCoverage: OptArgsResolverFn<ResolversTypes['RuntimeMetricCoverage'], ParentType, ContextType>;
   cachedTokens: OptArgsResolverFn<ResolversTypes['Float'], ParentType, ContextType>;
@@ -1867,14 +2285,18 @@ export type TeamRuntimeOverviewResolvers<ContextType = CedarGraphQLContext, Pare
   inputTokens: OptArgsResolverFn<ResolversTypes['Float'], ParentType, ContextType>;
   outputTokenCoverage: OptArgsResolverFn<ResolversTypes['RuntimeMetricCoverage'], ParentType, ContextType>;
   outputTokens: OptArgsResolverFn<ResolversTypes['Float'], ParentType, ContextType>;
+  queuedCount: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  runningCount: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
   totalTaskCount: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
   totalTokenCoverage: OptArgsResolverFn<ResolversTypes['RuntimeMetricCoverage'], ParentType, ContextType>;
   totalTokens: OptArgsResolverFn<ResolversTypes['Float'], ParentType, ContextType>;
   totalWorkCount: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
   trackedWorkCount: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  waitingCount: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
 };
 
 export type TeamRuntimeOverviewRelationResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TeamRuntimeOverview'] = ResolversParentTypes['TeamRuntimeOverview']> = {
+  activeTasks?: RequiredResolverFn<Array<ResolversTypes['ActiveTaskRun']>, ParentType, ContextType>;
   agents?: RequiredResolverFn<Array<ResolversTypes['AgentRuntimeMetric']>, ParentType, ContextType>;
   cachedTokenCoverage?: RequiredResolverFn<ResolversTypes['RuntimeMetricCoverage'], ParentType, ContextType>;
   cachedTokens?: RequiredResolverFn<ResolversTypes['Float'], ParentType, ContextType>;
@@ -1882,11 +2304,14 @@ export type TeamRuntimeOverviewRelationResolvers<ContextType = CedarGraphQLConte
   inputTokens?: RequiredResolverFn<ResolversTypes['Float'], ParentType, ContextType>;
   outputTokenCoverage?: RequiredResolverFn<ResolversTypes['RuntimeMetricCoverage'], ParentType, ContextType>;
   outputTokens?: RequiredResolverFn<ResolversTypes['Float'], ParentType, ContextType>;
+  queuedCount?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  runningCount?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
   totalTaskCount?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
   totalTokenCoverage?: RequiredResolverFn<ResolversTypes['RuntimeMetricCoverage'], ParentType, ContextType>;
   totalTokens?: RequiredResolverFn<ResolversTypes['Float'], ParentType, ContextType>;
   totalWorkCount?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
   trackedWorkCount?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
+  waitingCount?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
 };
 
 export type TeamWeeklyReportResolvers<ContextType = CedarGraphQLContext, ParentType extends ResolversParentTypes['TeamWeeklyReport'] = ResolversParentTypes['TeamWeeklyReport']> = {
@@ -1895,6 +2320,7 @@ export type TeamWeeklyReportResolvers<ContextType = CedarGraphQLContext, ParentT
   completed: OptArgsResolverFn<Array<ResolversTypes['WeeklyTaskItem']>, ParentType, ContextType>;
   completedTasks: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
   contributions: OptArgsResolverFn<Array<ResolversTypes['WeeklyAgentContribution']>, ParentType, ContextType>;
+  delivery: OptArgsResolverFn<ResolversTypes['TeamDeliveryStat'], ParentType, ContextType>;
   failedTasks: OptArgsResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
   failures: OptArgsResolverFn<Array<ResolversTypes['WeeklyTaskItem']>, ParentType, ContextType>;
   from: OptArgsResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
@@ -1916,6 +2342,7 @@ export type TeamWeeklyReportRelationResolvers<ContextType = CedarGraphQLContext,
   completed?: RequiredResolverFn<Array<ResolversTypes['WeeklyTaskItem']>, ParentType, ContextType>;
   completedTasks?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
   contributions?: RequiredResolverFn<Array<ResolversTypes['WeeklyAgentContribution']>, ParentType, ContextType>;
+  delivery?: RequiredResolverFn<ResolversTypes['TeamDeliveryStat'], ParentType, ContextType>;
   failedTasks?: RequiredResolverFn<ResolversTypes['Int'], ParentType, ContextType>;
   failures?: RequiredResolverFn<Array<ResolversTypes['WeeklyTaskItem']>, ParentType, ContextType>;
   from?: RequiredResolverFn<ResolversTypes['DateTime'], ParentType, ContextType>;
@@ -1992,12 +2419,18 @@ export type WorkspaceStatusRelationResolvers<ContextType = CedarGraphQLContext, 
 };
 
 export type Resolvers<ContextType = CedarGraphQLContext> = {
+  ActiveTaskRun: ActiveTaskRunResolvers<ContextType>;
   AgentCapabilityHealth: AgentCapabilityHealthResolvers<ContextType>;
   AgentRuntimeMetric: AgentRuntimeMetricResolvers<ContextType>;
   AppendTaskEventResult: AppendTaskEventResultResolvers<ContextType>;
   BigInt: GraphQLScalarType;
   Byte: GraphQLScalarType;
+  CapabilityApplyResult: CapabilityApplyResultResolvers<ContextType>;
   CapabilityCliCheck: CapabilityCliCheckResolvers<ContextType>;
+  CapabilityFixItem: CapabilityFixItemResolvers<ContextType>;
+  CapabilityFixPlan: CapabilityFixPlanResolvers<ContextType>;
+  CapabilityFixResult: CapabilityFixResultResolvers<ContextType>;
+  CapabilityFixStep: CapabilityFixStepResolvers<ContextType>;
   CapabilityHealth: CapabilityHealthResolvers<ContextType>;
   CapabilityPlatformReport: CapabilityPlatformReportResolvers<ContextType>;
   CapabilitySkillCheck: CapabilitySkillCheckResolvers<ContextType>;
@@ -2006,6 +2439,8 @@ export type Resolvers<ContextType = CedarGraphQLContext> = {
   Cedar: CedarResolvers<ContextType>;
   Date: GraphQLScalarType;
   DateTime: GraphQLScalarType;
+  DeliveryDirectoryStat: DeliveryDirectoryStatResolvers<ContextType>;
+  DeliveryStat: DeliveryStatResolvers<ContextType>;
   File: GraphQLScalarType;
   InstalledSkill: InstalledSkillResolvers<ContextType>;
   JSON: GraphQLScalarType;
@@ -2025,6 +2460,7 @@ export type Resolvers<ContextType = CedarGraphQLContext> = {
   TaskArtifact: TaskArtifactResolvers<ContextType>;
   TaskEvent: TaskEventResolvers<ContextType>;
   TaskImage: TaskImageResolvers<ContextType>;
+  TaskPrecheck: TaskPrecheckResolvers<ContextType>;
   TaskPulse: TaskPulseResolvers<ContextType>;
   TaskRun: TaskRunResolvers<ContextType>;
   TaskRunConnection: TaskRunConnectionResolvers<ContextType>;
@@ -2032,7 +2468,10 @@ export type Resolvers<ContextType = CedarGraphQLContext> = {
   TaskRunMessage: TaskRunMessageResolvers<ContextType>;
   TaskRunPageInfo: TaskRunPageInfoResolvers<ContextType>;
   TaskRunStatusCount: TaskRunStatusCountResolvers<ContextType>;
+  TaskRunTool: TaskRunToolResolvers<ContextType>;
+  TaskRunTrace: TaskRunTraceResolvers<ContextType>;
   TaskTemplate: TaskTemplateResolvers<ContextType>;
+  TeamDeliveryStat: TeamDeliveryStatResolvers<ContextType>;
   TeamRuntimeOverview: TeamRuntimeOverviewResolvers<ContextType>;
   TeamWeeklyReport: TeamWeeklyReportResolvers<ContextType>;
   Time: GraphQLScalarType;
@@ -2046,5 +2485,6 @@ export type DirectiveResolvers<ContextType = CedarGraphQLContext> = {
   requireAuth: requireAuthDirectiveResolver<any, any, ContextType>;
   requireRuntimeWriter: requireRuntimeWriterDirectiveResolver<any, any, ContextType>;
   requireSessionOrRuntimeWriter: requireSessionOrRuntimeWriterDirectiveResolver<any, any, ContextType>;
+  requireSessionOrTeamReader: requireSessionOrTeamReaderDirectiveResolver<any, any, ContextType>;
   skipAuth: skipAuthDirectiveResolver<any, any, ContextType>;
 };
