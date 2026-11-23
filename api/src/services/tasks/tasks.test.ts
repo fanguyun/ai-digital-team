@@ -65,6 +65,106 @@ describe('dispatch concurrency with PostgreSQL', () => {
   })
   afterEach(() => jest.restoreAllMocks())
 
+  it('relaunches a completed task without losing history and restores completion if startup fails', async () => {
+    const created = await createTask({ input: base })
+    const completedAt = new Date('2026-11-19T12:00:00Z')
+    await db.task.update({
+      where: { id: created.id },
+      data: {
+        status: 'DONE',
+        completedAt,
+        reviewedAt: completedAt,
+        reviewNote: '原验收通过',
+      },
+    })
+    await db.taskRun.create({
+      data: {
+        taskId: created.id,
+        title: base.title,
+        platform: 'codex',
+        primaryAgent: base.agentSlug,
+        status: 'COMPLETED',
+        completedAt,
+        summary: '已完成的部分',
+      },
+    })
+    await addTaskArtifact({ taskId: created.id, input: { path: 'README.md' } })
+    await updateTask({ id: created.id, input: { brief: '修改后的需求' } })
+    jest.mocked(agentDispatch.spawnTaskAgent).mockImplementationOnce(() => {
+      throw new Error('启动失败')
+    })
+    await expect(
+      dispatchTask({ id: created.id, note: '继续补充' })
+    ).rejects.toThrow('派发失败')
+    const restored = await task({ id: created.id })
+    expect(restored).toMatchObject({
+      status: 'DONE',
+      completedAt,
+      reviewedAt: completedAt,
+      reviewNote: '原验收通过',
+    })
+    const result = await dispatchTask({ id: created.id, note: '继续补充' })
+    expect(result).toMatchObject({
+      id: created.id,
+      status: 'DISPATCHED',
+      completedAt: null,
+      reviewedAt: null,
+    })
+    expect(result.artifacts).toHaveLength(1)
+    expect(result.runs).toHaveLength(3)
+    expect(result.runs[0]).toMatchObject({
+      projectKey: 'digital-team',
+      projectName: '个人数字团队',
+      dispatchContext: expect.objectContaining({
+        note: '继续补充',
+        previousReviewNote: '原验收通过',
+      }),
+    })
+  })
+
+  it('persists queued plan mode, platform and note and prohibits editing or duplicate submission', async () => {
+    const busy = await createTask({ input: base })
+    await dispatchTask({ id: busy.id })
+    const next = await createTask({ input: { ...base, mode: 'plan' } })
+    const queued = await dispatchTask({
+      id: next.id,
+      tool: 'deepseek-harness',
+      note: '更新方案范围',
+    })
+    expect(queued.pendingDispatch).toMatchObject({
+      tool: 'deepseek-harness',
+      mode: 'plan',
+      note: '更新方案范围',
+    })
+    await expect(
+      updateTask({ id: next.id, input: { brief: '修改' } })
+    ).rejects.toThrow('不能修改')
+    await expect(dispatchTask({ id: next.id })).rejects.toThrow('已在排队')
+    await db.taskRun.updateMany({
+      where: { taskId: busy.id },
+      data: { status: 'COMPLETED', pid: null },
+    })
+    await db.task.update({ where: { id: busy.id }, data: { status: 'DONE' } })
+    await sweepTasks()
+    const started = await db.task.findUniqueOrThrow({
+      where: { id: next.id },
+      include: { runs: true },
+    })
+    expect(started.pendingDispatch).toBeNull()
+    expect(started.runs).toHaveLength(1)
+    expect(started.runs[0]).toMatchObject({
+      platform: 'deepseek-harness',
+      mode: 'plan',
+      dispatchContext: expect.objectContaining({ note: '更新方案范围' }),
+    })
+    expect(
+      jest.mocked(agentDispatch.spawnTaskAgent).mock.calls.at(-1)[0]
+    ).toMatchObject({
+      readOnly: true,
+      prompt: expect.stringContaining('更新方案范围'),
+    })
+  })
+
   it('reserves only one run for simultaneous dispatches of the same task', async () => {
     const created = await createTask({ input: base })
     const results = await Promise.allSettled([
@@ -419,7 +519,11 @@ describe('tasks service', () => {
     })
 
     await expect(
-      reviewTask({ id: created.id, decision: 'APPROVE' })
+      reviewTask({
+        id: created.id,
+        decision: 'APPROVE',
+        note: '确认沿用已登记成果，完成本轮验收',
+      })
     ).resolves.toMatchObject({ status: 'DONE' })
 
     const second = await createTask({ input: { ...base, title: '第二个' } })
@@ -450,7 +554,7 @@ describe('tasks service', () => {
 
     await expect(
       reviewTask({ id: created.id, decision: 'APPROVE' })
-    ).rejects.toThrow('没有登记任何产物')
+    ).rejects.toThrow('没有本轮交付')
 
     const approved = await reviewTask({
       id: created.id,
@@ -474,7 +578,10 @@ describe('tasks service', () => {
     })
 
     expect(dispatched.runs[0]?.mode).toBe('auto')
-    expect(dispatched.reviewNote).toBe('把接入范围收窄到任务派发链路')
+    expect(dispatched.reviewNote).toBeNull()
+    expect(dispatched.runs[0]?.dispatchContext).toMatchObject({
+      note: '把接入范围收窄到任务派发链路',
+    })
   })
 
   it('cancels a task', async () => {

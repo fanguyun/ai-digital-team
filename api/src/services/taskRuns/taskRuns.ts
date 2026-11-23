@@ -598,7 +598,39 @@ export const teamWeeklyReport = async (
   const merged = mergeRunDiffStats(
     periodTasks.map((task) => (task.diffStat as RunDiffStat | null) ?? null)
   )
+  const projectGroups = new Map<string, typeof periodTasks>()
+  for (const run of periodTasks) {
+    const key = run.projectKey || ''
+    const bucket = projectGroups.get(key) || []
+    bucket.push(run)
+    projectGroups.set(key, bucket)
+  }
+  const byProject = [...projectGroups.entries()]
+    .map(([projectKey, runs]) => {
+      const stat = mergeRunDiffStats(
+        runs.map((run) => run.diffStat as RunDiffStat | null)
+      )
+      return {
+        projectKey: projectKey || null,
+        projectName: projectKey
+          ? runs.find((run) => run.projectName)?.projectName || projectKey
+          : '未归属项目',
+        files: stat.files,
+        added: stat.added,
+        removed: stat.removed,
+        byDirectory: Object.entries(stat.byDirectory).map(
+          ([directory, value]) => ({ directory, ...value })
+        ),
+        uncategorized: stat.uncategorized,
+        coveredRuns: stat.covered,
+        totalRuns: runs.length,
+      }
+    })
+    .sort(
+      (a, b) => b.files - a.files || a.projectName.localeCompare(b.projectName)
+    )
   const delivery = {
+    byProject,
     files: merged.files,
     added: merged.added,
     removed: merged.removed,
@@ -915,6 +947,19 @@ export const appendTaskEvent = async (
 }
 
 export const TaskRun = {
+  continuationStatus: (_args, { root }) => {
+    const info = root.dispatchContext
+    if (!info?.sourceRunIds?.length) return null
+    return [
+      info.historyUnavailable
+        ? '历史会话不可用，已使用摘要续接'
+        : '已复用历史结果与产物',
+      info.truncated ? '部分历史内容已裁剪，可查询全部任务产物' : '',
+    ]
+      .filter(Boolean)
+      .join('；')
+  },
+
   events: (_obj: unknown, { root }: { root: { id: string } }) =>
     db.taskEvent.findMany({
       where: { taskRunId: root.id },

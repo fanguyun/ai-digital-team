@@ -734,6 +734,8 @@ describe('teamWeeklyReport delivery stats', () => {
 
   it('sums files and lines per directory and reports coverage', async () => {
     await run({
+      projectKey: 'digital-team',
+      projectName: '个人数字团队',
       diffStat: {
         files: 3,
         added: 20,
@@ -764,6 +766,23 @@ describe('teamWeeklyReport delivery stats', () => {
       },
     })
 
+    expect(report.delivery.byProject).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          projectKey: 'digital-team',
+          projectName: '个人数字团队',
+          files: 3,
+          coveredRuns: 1,
+        }),
+        expect.objectContaining({
+          projectKey: null,
+          projectName: '未归属项目',
+          files: 2,
+          totalRuns: 2,
+          coveredRuns: 1,
+        }),
+      ])
+    )
     expect(report.delivery.files).toBe(5)
     expect(report.delivery.added).toBe(29)
     expect(report.delivery.removed).toBe(10)

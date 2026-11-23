@@ -46,6 +46,26 @@ const WEEKLY_REPORT_QUERY = gql`
         removed
         coveredRuns
         totalRuns
+        byProject {
+          projectKey
+          projectName
+          files
+          added
+          removed
+          coveredRuns
+          totalRuns
+          byDirectory {
+            directory
+            files
+            added
+            removed
+          }
+          uncategorized {
+            files
+            added
+            removed
+          }
+        }
         byDirectory {
           directory
           files
@@ -365,7 +385,11 @@ const WeeklyReport = ({ onOpenSidebar }) => {
             </Card>
             <Card>
               <span>交付文件</span>
-              <strong>{report.delivery?.files ?? 0}</strong>
+              <strong>
+                {report.delivery?.coveredRuns
+                  ? report.delivery.files
+                  : '未采集'}
+              </strong>
               <small>本期运行改动</small>
             </Card>
             <Card>
@@ -384,17 +408,27 @@ const WeeklyReport = ({ onOpenSidebar }) => {
             className="weekly-section weekly-delivery"
             title={
               <>
-                <FileCode2 size={16} /> 交付物统计（按项目目录）
+                <FileCode2 size={16} /> 交付物统计（按所属项目）
               </>
             }
           >
-            {!report.delivery || report.delivery.files === 0 ? (
-              <p className="weekly-empty">
-                {meta.scope}还没有记录到交付改动。
-                {report.delivery &&
-                  report.delivery.totalRuns > 0 &&
-                  `（${report.delivery.totalRuns} 个运行尚未产生交付统计）`}
-              </p>
+            {!report.delivery || report.delivery.coveredRuns === 0 ? (
+              <div>
+                <p className="weekly-empty">
+                  {meta.scope}尚未采集交付统计。
+                  {report.delivery &&
+                    report.delivery.totalRuns > 0 &&
+                    `（${report.delivery.totalRuns} 个运行尚未产生交付统计）`}
+                </p>
+                {(report.delivery?.byProject || []).map((project) => (
+                  <p
+                    className="weekly-note"
+                    key={project.projectKey || 'unknown'}
+                  >
+                    {project.projectName} · 未采集（{project.totalRuns} 个运行）
+                  </p>
+                ))}
+              </div>
             ) : (
               <>
                 <div className="weekly-delivery-total">
@@ -423,42 +457,56 @@ const WeeklyReport = ({ onOpenSidebar }) => {
                   </div>
                 </div>
 
-                <table className="weekly-delivery-table">
-                  <thead>
-                    <tr>
-                      <th>项目目录</th>
-                      <th>文件</th>
-                      <th>新增</th>
-                      <th>删除</th>
-                      <th>净变化</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.delivery.byDirectory.map((row) => (
-                      <tr key={row.directory}>
-                        <td>
-                          <code>{row.directory}/</code>
-                        </td>
-                        <td>{row.files}</td>
-                        <td className="added">+{row.added}</td>
-                        <td className="removed">−{row.removed}</td>
-                        <td>
-                          {row.added - row.removed >= 0 ? '+' : ''}
-                          {row.added - row.removed}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                {report.delivery.uncategorized?.files > 0 && (
-                  <p className="weekly-note">
-                    未分类（仓库根目录文件）：
-                    {report.delivery.uncategorized.files} 个文件， +
-                    {report.delivery.uncategorized.added} / −
-                    {report.delivery.uncategorized.removed} 行
-                  </p>
-                )}
+                {(report.delivery.byProject || []).map((project) => (
+                  <div key={project.projectKey || 'unknown'}>
+                    <h4>
+                      {project.projectName} ·{' '}
+                      {project.coveredRuns
+                        ? `${project.files} 个文件，+${project.added} / −${project.removed} 行`
+                        : '未采集'}
+                    </h4>
+                    <p className="weekly-note">
+                      已采集 {project.coveredRuns} / {project.totalRuns} 个运行
+                      {project.coveredRuns > 0 && project.files === 0
+                        ? '；已采集且没有变化'
+                        : ''}
+                    </p>
+                    <table className="weekly-delivery-table">
+                      <thead>
+                        <tr>
+                          <th>项目内目录</th>
+                          <th>文件</th>
+                          <th>新增</th>
+                          <th>删除</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {project.byDirectory.map((row) => (
+                          <tr key={row.directory}>
+                            <td>
+                              <code>{row.directory}/</code>
+                            </td>
+                            <td>{row.files}</td>
+                            <td className="added">+{row.added}</td>
+                            <td className="removed">−{row.removed}</td>
+                          </tr>
+                        ))}
+                        {project.uncategorized.files > 0 && (
+                          <tr>
+                            <td>根目录文件</td>
+                            <td>{project.uncategorized.files}</td>
+                            <td className="added">
+                              +{project.uncategorized.added}
+                            </td>
+                            <td className="removed">
+                              −{project.uncategorized.removed}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
 
                 {report.delivery.coveredRuns < report.delivery.totalRuns && (
                   <p className="weekly-note">
@@ -469,7 +517,8 @@ const WeeklyReport = ({ onOpenSidebar }) => {
                 )}
 
                 <p className="weekly-note">
-                  口径：按运行统计工作区相对 HEAD
+                  口径：按运行累计，同文件多轮修改分别计入各轮；统计工作区相对
+                  HEAD
                   的改动，并扣掉派发前已存在的未提交改动；日志、构建产物、软链接与二进制文件不计入。
                 </p>
               </>

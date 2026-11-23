@@ -184,14 +184,15 @@
       "icon": "⌘",
       "role": "从产品需求形成页面结构、交互和视觉方案。",
       "scope": "项目要求分析、页面设计、页面实现、交互优化、UI 验证",
-      "skills": ["ui-ux-pro-max", "frontend-design", "web-design-guidelines"],
+      "skills": ["ui-ux-pro-max", "frontend-design", "web-design-guidelines", "fixing-accessibility"],
       "status": "在线",
       "trigger": "页面设计、交互优化、UI 审查",
       "capabilityRequirements": {
         "requiredSkills": [
           "frontend-design",
           "ui-ux-pro-max",
-          "web-design-guidelines"
+          "web-design-guidelines",
+          "fixing-accessibility"
         ],
         "optionalSkills": [],
         "requiredTools": [],
@@ -560,6 +561,7 @@
           "critique",
           "how-computers-work-coach",
           "reverse-thinking-mindset",
+          "socratic-tutor",
           "the-fool"
         ],
         "requiredTools": [],

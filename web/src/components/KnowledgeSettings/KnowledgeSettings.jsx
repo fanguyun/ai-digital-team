@@ -15,6 +15,8 @@ import {
 
 import { useMutation, useQuery } from '@cedarjs/web'
 
+import KnowledgePublisher from 'src/components/KnowledgePublisher/KnowledgePublisher'
+
 const RAG_SOURCE_QUERY = gql`
   query RagKnowledgeSource {
     ragKnowledgeSource {
@@ -262,6 +264,8 @@ const KnowledgeSettings = () => {
           description={error.message}
         />
       )}
+
+      <KnowledgePublisher />
 
       <div className="knowledge-settings-grid">
         <label

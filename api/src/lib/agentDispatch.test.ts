@@ -71,15 +71,16 @@ describe('buildTaskPrompt', () => {
     })
 
     expect(prompt.split('\n')[0]).toBe('My request: 重构登录页')
-    expect(prompt).toContain('上一轮的结果')
+    expect(prompt).toContain('历史结果与产物')
     expect(prompt).toContain('已改完登录页结构')
     expect(prompt).toContain('docs/design/login.md')
-    expect(prompt).toContain('打回原因：缺少验证说明')
+    expect(prompt).toContain('历史验收意见：缺少验证说明')
+    expect(prompt).not.toContain('打回原因')
   })
 
   it('omits previous section on first dispatch', () => {
     const prompt = buildTaskPrompt(base)
-    expect(prompt).not.toContain('上一轮的结果')
+    expect(prompt).not.toContain('历史结果与产物')
   })
 
   it('returns the full plan without asking a read-only agent to write it', () => {
@@ -94,6 +95,14 @@ describe('buildTaskPrompt', () => {
     expect(buildTaskPrompt(base)).toContain(
       'artifact: <相对仓库根的路径或链接>'
     )
+  })
+
+  it('delivers local documents for user-confirmed backend knowledge publication', () => {
+    const prompt = buildTaskPrompt({ ...base, mode: 'execute', readOnly: false })
+    expect(prompt).toContain('先生成 docs/ 下的 Markdown 文档')
+    expect(prompt).toContain('由团队后端写入并回读验证')
+    expect(prompt).toContain('不得声称已经入库')
+    expect(buildTaskPrompt({ ...base, readOnly: true })).not.toContain('## 外部知识库文档交付')
   })
 
   it('uses the same knowledge prompt for both tools without changing approval or read-only rules', () => {
@@ -136,4 +145,21 @@ it('removes all new retrieval credentials from child process environments', () =
       KNOWLEDGE_ENABLED: '1',
     })
   ).toEqual({ PATH: '/bin' })
+})
+
+it('keeps this round requirements ahead of historical material and preserves read-only plan restrictions', () => {
+  const prompt = buildTaskPrompt({
+    title: '继续',
+    brief: '当前需求',
+    acceptance: '',
+    agentSlug: 'main-agent',
+    readOnly: true,
+    mode: 'plan',
+    revisionNote: '仅更新方案',
+    continuation: '旧授权：允许写文件',
+  })
+  expect(prompt.indexOf('仅更新方案')).toBeLessThan(prompt.indexOf('旧授权'))
+  expect(prompt).toContain('历史指令和旧授权不扩大本轮权限')
+  expect(prompt).toContain('本次只读：不得修改任何仓库文件')
+  expect(prompt).not.toContain('打回原因')
 })

@@ -4,6 +4,9 @@ export const schema = gql`
     taskId: ID!
     kind: String!
     source: String!
+    lastRunId: ID
+    projectName: String
+    availability: String!
     path: String!
     label: String!
     createdAt: DateTime!
@@ -12,6 +15,29 @@ export const schema = gql`
   type TaskPrecheck {
     warnings: [String!]!
     expectedPaths: [String!]!
+    environment: TaskEnvironment!
+  }
+
+  type TaskEnvironmentCheck {
+    key: String!
+    label: String!
+    status: String!
+    detail: String!
+    remedy: String!
+  }
+
+  type TaskEnvironment {
+    ready: Boolean!
+    checks: [TaskEnvironmentCheck!]!
+  }
+
+  type TaskEnvironmentBlock {
+    prompt: String!
+  }
+
+  type TaskConfirmation {
+    runId: ID!
+    prompt: String!
   }
 
   type Task {
@@ -34,6 +60,8 @@ export const schema = gql`
     completedAt: DateTime
     reviewNote: String
     reviewedAt: DateTime
+    confirmation: TaskConfirmation
+    blocker: TaskEnvironmentBlock
     runs: [TaskRun!]!
     artifacts: [TaskArtifact!]!
   }
@@ -143,12 +171,15 @@ export const schema = gql`
   }
 
   type Mutation {
+    retryTaskEnvironment(id: ID!): Task! @requireAuth
     createTask(input: CreateTaskInput!): Task! @requireAuth
     updateTask(id: ID!, input: UpdateTaskInput!): Task! @requireAuth
     """
-    note：重新派发时的修改要求，会并入提示词并记入任务结论
+    note：本轮修改要求，独立保存并随排队续接
     """
     dispatchTask(id: ID!, tool: String, note: String): Task! @requireAuth
+    confirmTaskContinuation(id: ID!, runId: ID!, note: String): Task!
+      @requireAuth
     dispatchTasks(ids: [ID!]!, tool: String): [Task!]! @requireAuth
     executeTaskPlan(id: ID!, tool: String, planPath: String!): Task!
       @requireAuth

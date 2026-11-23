@@ -43,7 +43,11 @@ export const buildActionCenterModel = ({
     ],
   }
   for (const task of tasks) {
-    const metadata = taskTypes[task.status]
+    const metadata = task.blocker
+      ? ['blocked', task.blocker.prompt, '检查执行环境', 'runs']
+      : task.confirmation
+        ? ['waiting', task.confirmation.prompt, '查看并确认', 'runs']
+        : taskTypes[task.status]
     if (!metadata) continue
     const [type, description, actionLabel, section] = metadata
     items.push({
@@ -51,7 +55,7 @@ export const buildActionCenterModel = ({
       taskId: task.id,
       type,
       priority:
-        task.priority === 'P0'
+        task.blocker || task.confirmation || task.priority === 'P0'
           ? 'high'
           : task.priority === 'P2'
             ? 'low'

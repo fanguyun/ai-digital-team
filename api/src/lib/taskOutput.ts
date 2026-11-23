@@ -6,7 +6,35 @@ const LOG_READ_LIMIT = 2_000_000
 const SUMMARY_MAX = 500
 const ARTIFACT_PATTERN = /^\s*artifact:\s*(\S+)\s*$/gim
 
+export const confirmationRequestFromText = (value: string) => {
+  const request = value
+    .match(
+      /^\s*(?:[-*]\s+)?待确认[：:]\s*([^\n]+(?:\n(?!\s*artifact:)[^\n]+)*)/m
+    )?.[1]
+    ?.trim()
+  return request &&
+    !/^(无|无须|无需|不需要|无待确认事项)[。！.!\s]*$/.test(request)
+    ? request.slice(0, 2000)
+    : undefined
+}
+
 type LogRecord = Record<string, unknown>
+export const environmentBlockFromText = (value: string): string | undefined => {
+  const explicit = value
+    .match(
+      /^\s*(?:[-*]\s+)?环境阻塞[：:]\s*([^\n]+(?:\n(?!\s*artifact:)[^\n]+)*)/m
+    )?.[1]
+    ?.trim()
+  if (explicit && !/^(无|无需|无须)[。.!！\s]*$/.test(explicit))
+    return explicit.slice(0, 2000)
+  const legacy = confirmationRequestFromText(value)
+  return legacy &&
+    /宿主机环境|沙箱.*(?:拒绝|限制|无法|不允许)|(?:无法|不能|缺少|缺失).*(?:连接|访问|配置|令牌|凭证)|ECONNREFUSED|ENETUNREACH|EACCES|EPERM/i.test(
+      legacy
+    )
+    ? legacy
+    : undefined
+}
 
 const parseLine = (line: string): LogRecord | null => {
   const trimmed = line.trim()
@@ -88,6 +116,8 @@ export type TaskUsage = {
 
 export type TaskRunOutput = {
   summary: string
+  confirmationRequest?: string
+  environmentBlock?: string
   completed?: boolean
   finalText?: string
   usage?: TaskUsage
@@ -122,8 +152,7 @@ const findError = (raw: string): string | undefined => {
     if (record) {
       if (record.type === 'turn.completed') error = undefined
       const status = record.reason as
-        | { kind?: string; error?: unknown }
-        | undefined
+        { kind?: string; error?: unknown } | undefined
       if (status?.kind === 'error') {
         const detail = status.error as { message?: string } | undefined
         error = detail?.message || '执行返回错误状态'
@@ -198,6 +227,9 @@ export const parseTaskRunOutput = ({
   }
 
   const finalText = lastAgentText(raw, tool)
+  const request = confirmationRequestFromText(finalText)
+  const environmentBlock = environmentBlockFromText(finalText)
+  const confirmationRequest = environmentBlock ? undefined : request
   const usage = readUsage(raw)
   const seen = new Set<string>()
   const artifacts: TaskRunOutput['artifacts'] = []
@@ -221,6 +253,8 @@ export const parseTaskRunOutput = ({
 
   return {
     summary: finalText.slice(0, SUMMARY_MAX),
+    ...(confirmationRequest ? { confirmationRequest } : {}),
+    ...(environmentBlock ? { environmentBlock } : {}),
     completed: raw.split('\n').some((line) => {
       const record = parseLine(line)
       return tool === 'codex'

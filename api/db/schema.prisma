@@ -63,6 +63,10 @@ model TaskRun {
   baselineDiff      Json?
   /// 运行期间产生的交付改动统计（文件数/行数，按顶层目录拆分）
   diffStat          Json?
+  dispatchContext   Json?
+  projectKey        String?       @db.VarChar(60)
+  projectName       String?       @db.VarChar(120)
+  deliveredArtifacts TaskArtifact[] @relation("ArtifactLastRun")
   task              Task?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
 
   @@index([taskId, startedAt(sort: Desc)])
@@ -195,6 +199,7 @@ model Task {
   reviewedAt  DateTime?      @db.Timestamptz(3)
   runs        TaskRun[]
   artifacts   TaskArtifact[]
+  pendingDispatch Json?
 
   @@index([status, updatedAt(sort: Desc)])
   @@index([agentSlug, updatedAt(sort: Desc)])
@@ -209,8 +214,11 @@ model TaskArtifact {
   label     String   @db.VarChar(200)
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  lastRunId String?  @db.Uuid
+  lastRun   TaskRun? @relation("ArtifactLastRun", fields: [lastRunId], references: [id], onDelete: SetNull)
 
   @@index([taskId, createdAt])
+  @@index([lastRunId])
 }
 
 model TaskImage {
@@ -222,6 +230,32 @@ model TaskImage {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([createdAt])
+}
+
+model KnowledgePublication {
+  id                String    @id @default(uuid()) @db.Uuid
+  requestKey        String    @unique @db.VarChar(64)
+  targetKey         String    @unique @db.VarChar(64)
+  taskId            String?   @db.Uuid
+  artifactId        String?   @db.Uuid
+  createdBy         String    @db.Uuid
+  title             String    @db.VarChar(120)
+  markdown          String    @db.Text
+  contentHash       String    @db.VarChar(64)
+  sourceFingerprint String    @db.VarChar(64)
+  notebookId        String    @db.VarChar(32)
+  documentPath      String    @db.VarChar(500)
+  status            String    @default("PREPARED") @db.VarChar(24)
+  documentId        String?   @db.VarChar(32)
+  error             String?   @db.VarChar(500)
+  confirmedAt       DateTime? @db.Timestamptz(3)
+  attemptedAt       DateTime? @db.Timestamptz(3)
+  verifiedAt        DateTime? @db.Timestamptz(3)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([taskId, createdAt(sort: Desc)])
+  @@index([createdBy, createdAt(sort: Desc)])
 }
 
 model TaskTemplate {

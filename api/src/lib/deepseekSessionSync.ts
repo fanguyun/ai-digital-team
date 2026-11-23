@@ -1,3 +1,7 @@
+import path from 'node:path'
+
+import type { Prisma } from 'api/db/generated/prisma/client.mts'
+
 import { db } from 'src/lib/db'
 import { logger } from 'src/lib/logger'
 import { publishTaskRun, type TaskRuntimePubSub } from 'src/lib/runtimeEvents'
@@ -8,7 +12,8 @@ import {
   summarizeDeepSeekLines,
   type DeepSeekSessionSnapshot,
 } from './deepseekSessions'
-import { findDshSessionFile } from './roleEvaluationSessions'
+import { resolveRepoRoot } from './roleEvaluationDispatch'
+import { findDshSessionFile, sessionIdFromLog } from './roleEvaluationSessions'
 import { parseSessionReference } from './sessionTrace'
 import { readZstdLines } from './zstdLines'
 
@@ -44,14 +49,65 @@ const sameInstant = (
   return left.getTime() === right.getTime()
 }
 
-export const upsertDeepSeekSession = async (
+const findDispatchedRun = async (
+  transaction: Prisma.TransactionClient,
+  snapshot: DeepSeekSessionSnapshot
+) => {
+  const [rawSessionId, turn] = snapshot.sessionId.split(':')
+  if (turn && turn !== '1') return null
+  const sessionId =
+    snapshot.platform === 'deepseek-harness'
+      ? rawSessionId.replace(/^session-/, '')
+      : rawSessionId
+  if (!sessionId) return null
+  const sessionIds =
+    snapshot.platform === 'deepseek-harness'
+      ? [sessionId, `session-${sessionId}`]
+      : [sessionId]
+  const captured = await transaction.taskRun.findFirst({
+    where: {
+      platform: snapshot.platform,
+      taskId: { not: null },
+      OR: sessionIds.map((candidate) => ({
+        externalReference: { startsWith: 'task:', endsWith: `:${candidate}` },
+      })),
+    },
+    orderBy: { startedAt: 'desc' },
+  })
+  if (captured) return captured
+
+  const uncaptured = await transaction.taskRun.findMany({
+    where: {
+      platform: snapshot.platform,
+      taskId: { not: null },
+      logPath: { not: null },
+      externalReference: { startsWith: 'task:' },
+    },
+    orderBy: { startedAt: 'desc' },
+  })
+  return (
+    uncaptured.find(
+      (run) =>
+        !parseSessionReference(run.externalReference).sessionId &&
+        run.logPath &&
+        sessionIds.includes(
+          sessionIdFromLog(
+            path.join(resolveRepoRoot(), run.logPath),
+            snapshot.platform
+          ) ?? ''
+        )
+    ) ?? null
+  )
+}
+
+const syncSession = async (
   snapshot: DeepSeekSessionSnapshot,
-  pubSub?: TaskRuntimePubSub
+  transaction: Prisma.TransactionClient
 ) => {
   const externalReference = referenceFor(snapshot)
   const createdKey = `${externalReference}:created`
   const usageKey = `${externalReference}:usage`
-  const existingEvent = await db.taskEvent.findUnique({
+  const existingEvent = await transaction.taskEvent.findUnique({
     where: { idempotencyKey: createdKey },
     include: { taskRun: true },
   })
@@ -72,10 +128,101 @@ export const upsertDeepSeekSession = async (
     modelId: snapshot.modelId ?? null,
   }
 
+  const dispatched = await findDispatchedRun(transaction, snapshot)
+  if (dispatched) {
+    const mirror = existingEvent?.taskRun
+    const mirrorId = mirror?.id ?? dispatched.id
+    await transaction.$queryRaw`SELECT "id" FROM "TaskRun" WHERE "id" IN (${dispatched.id}::uuid, ${mirrorId}::uuid) ORDER BY "id" FOR UPDATE`
+    const current = await transaction.taskRun.findUniqueOrThrow({
+      where: { id: dispatched.id },
+    })
+    if (mirror && mirror.id !== dispatched.id) {
+      const safeMirror = await transaction.taskRun.findFirst({
+        where: {
+          id: mirror.id,
+          externalReference,
+          platform: snapshot.platform,
+          taskId: null,
+          logPath: null,
+          pid: null,
+          deliveredArtifacts: { none: {} },
+          events: { every: { idempotencyKey: { in: [createdKey, usageKey] } } },
+        },
+      })
+      if (!safeMirror) return { taskRun: current, changed: false }
+    }
+
+    const latestEvent = await transaction.taskEvent.findFirst({
+      where: { taskRunId: current.id },
+      orderBy: { sequence: 'desc' },
+    })
+    if (current.status === 'QUEUED' && !latestEvent) {
+      return { taskRun: current, changed: false }
+    }
+    const usage = await transaction.taskEvent.findUnique({
+      where: { idempotencyKey: usageKey },
+    })
+    const usageData = {
+      status: current.status,
+      stage: current.currentStage,
+      agent: current.primaryAgent,
+      summary: '已同步模型与 Token',
+      inputTokens: tokens.inputTokens ?? usage?.inputTokens ?? null,
+      outputTokens: tokens.outputTokens ?? usage?.outputTokens ?? null,
+      cachedTokens: tokens.cachedTokens ?? usage?.cachedTokens ?? null,
+      modelId: tokens.modelId ?? usage?.modelId ?? null,
+    }
+    const hasTokens = Object.values(tokens).some((value) => value !== null)
+    const moving = usage && usage.taskRunId !== dispatched.id
+    let changed = false
+    if (hasTokens || usage) {
+      const destination = {
+        taskRunId: dispatched.id,
+        sequence: (latestEvent?.sequence ?? 0) + 1,
+      }
+      if (!usage) {
+        await transaction.taskEvent.create({
+          data: {
+            ...destination,
+            eventType: 'usage.synced',
+            skills: [],
+            idempotencyKey: usageKey,
+            ...usageData,
+          },
+        })
+        changed = true
+      } else if (
+        moving ||
+        Object.entries(usageData).some(([key, value]) => usage[key] !== value)
+      ) {
+        await transaction.taskEvent.update({
+          where: { id: usage.id },
+          data: { ...(moving ? destination : {}), ...usageData },
+        })
+        changed = true
+      }
+    }
+    if (mirror && mirror.id !== dispatched.id) {
+      await transaction.taskEvent.deleteMany({
+        where: { taskRunId: mirror.id, idempotencyKey: createdKey },
+      })
+      await transaction.taskRun.deleteMany({
+        where: {
+          id: mirror.id,
+          taskId: null,
+          events: { none: {} },
+          deliveredArtifacts: { none: {} },
+        },
+      })
+      changed = true
+    }
+    return { taskRun: current, changed }
+  }
+
   let taskRun
   let taskRunChanged = false
   if (!existingEvent) {
-    taskRun = await db.taskRun.create({
+    taskRun = await transaction.taskRun.create({
       data: {
         ...taskRunData,
         platform: snapshot.platform,
@@ -108,14 +255,14 @@ export const upsertDeepSeekSession = async (
       current.summary !== taskRunData.summary ||
       !sameInstant(current.completedAt, taskRunData.completedAt)
     taskRun = taskRunChanged
-      ? await db.taskRun.update({
+      ? await transaction.taskRun.update({
           where: { id: current.id },
           data: taskRunData,
         })
       : current
   }
 
-  const usage = await db.taskEvent.findUnique({
+  const usage = await transaction.taskEvent.findUnique({
     where: { idempotencyKey: usageKey },
   })
   const usageData = {
@@ -142,10 +289,13 @@ export const upsertDeepSeekSession = async (
       usage.outputTokens !== usageData.outputTokens ||
       usage.cachedTokens !== usageData.cachedTokens
     if (usageChanged) {
-      await db.taskEvent.update({ where: { id: usage.id }, data: usageData })
+      await transaction.taskEvent.update({
+        where: { id: usage.id },
+        data: usageData,
+      })
     }
   } else if (hasTokenData) {
-    await db.taskEvent.create({
+    await transaction.taskEvent.create({
       data: {
         taskRunId: taskRun.id,
         sequence: 2,
@@ -158,10 +308,19 @@ export const upsertDeepSeekSession = async (
     usageChanged = true
   }
 
-  if (taskRunChanged || usageChanged) {
-    await publishTaskRun(pubSub, taskRun)
-  }
-  return taskRun
+  return { taskRun, changed: taskRunChanged || usageChanged }
+}
+
+export const upsertDeepSeekSession = async (
+  snapshot: DeepSeekSessionSnapshot,
+  pubSub?: TaskRuntimePubSub
+) => {
+  const result = await db.$transaction(async (transaction) => {
+    await transaction.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${referenceFor(snapshot)}))::text`
+    return syncSession(snapshot, transaction)
+  })
+  if (result.changed) await publishTaskRun(pubSub, result.taskRun)
+  return result.taskRun
 }
 
 /** 按运行记录的 externalReference 找回它对应的会话快照（找不到说明会话已被清理） */

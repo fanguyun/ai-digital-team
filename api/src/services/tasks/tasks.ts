@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 
+import { Prisma } from 'api/db/generated/prisma/client.mts'
+
 import { UserInputError } from '@cedarjs/graphql-server'
 
 import {
@@ -33,7 +35,18 @@ import {
   parseSessionReference,
   readSessionTurnTrace,
 } from 'src/lib/sessionTrace'
-import { parseTaskRunOutput, type TaskRunOutput } from 'src/lib/taskOutput'
+import {
+  artifactAvailability,
+  buildTaskContinuation,
+  normalizeArtifactPath,
+} from 'src/lib/taskContinuation'
+import { checkTaskEnvironment } from 'src/lib/taskEnvironment'
+import {
+  confirmationRequestFromText,
+  environmentBlockFromText,
+  parseTaskRunOutput,
+  type TaskRunOutput,
+} from 'src/lib/taskOutput'
 import { saveTaskPlan } from 'src/lib/taskPlans'
 import { missingDeliverables, precheckTask } from 'src/lib/taskPrecheck'
 import { startTaskTicker } from 'src/lib/taskTicker'
@@ -51,6 +64,8 @@ const STATUS = {
   DISPATCHED: 'DISPATCHED',
   RUNNING: 'RUNNING',
   QUEUED: 'QUEUED',
+  WAITING_CONFIRMATION: 'WAITING_CONFIRMATION',
+  ENVIRONMENT_BLOCKED: 'ENVIRONMENT_BLOCKED',
   AWAITING_APPROVAL: 'AWAITING_APPROVAL',
   AWAITING_REVIEW: 'AWAITING_REVIEW',
   DONE: 'DONE',
@@ -66,6 +81,9 @@ const DISPATCHABLE = new Set([
   STATUS.FAILED,
   STATUS.AWAITING_REVIEW,
   STATUS.CANCELLED,
+  STATUS.DONE,
+  STATUS.WAITING_CONFIRMATION,
+  STATUS.ENVIRONMENT_BLOCKED,
 ])
 const ARTIFACT_KINDS = new Set(['file', 'dir', 'url', 'report'])
 const CONTENT_MAX_BYTES = 200_000
@@ -111,6 +129,7 @@ const reconcileTask = async (
     acceptance?: string
     status: string
     updatedAt: Date
+    planPath?: string | null
     runs: Array<{
       id: string
       pid: number | null
@@ -123,6 +142,7 @@ const reconcileTask = async (
       baselineDiff?: unknown
       diffStat?: unknown
       startedAt: Date
+      dispatchContext?: unknown
     }>
   },
   options: { force?: boolean } = {}
@@ -161,7 +181,13 @@ const reconcileTask = async (
     output.error = '方案生成未正常结束，请重新生成方案'
   }
   let planPath: string | undefined
-  if (isPlanRun && !output.error && run.status !== 'CANCELLED') {
+  if (
+    isPlanRun &&
+    !output.error &&
+    !output.confirmationRequest &&
+    !output.environmentBlock &&
+    run.status !== 'CANCELLED'
+  ) {
     try {
       planPath = saveTaskPlan({
         repoRoot,
@@ -175,7 +201,13 @@ const reconcileTask = async (
       output.artifacts = []
     }
   }
+  const blocked =
+    !output.error &&
+    run.status !== 'CANCELLED' &&
+    Boolean(output.environmentBlock)
   const failed = Boolean(output.error)
+  const waiting =
+    !failed && run.status !== 'CANCELLED' && Boolean(output.confirmationRequest)
 
   // 产物兜底：比较工作区快照，把这次真正改动过的文件登记为产物
   if (run.baselineFiles && !isPlanRun) {
@@ -224,57 +256,110 @@ const reconcileTask = async (
     ? STATUS.FAILED
     : run.status === 'CANCELLED'
       ? STATUS.CANCELLED
-      : isPlanRun
-        ? STATUS.AWAITING_APPROVAL
-        : STATUS.AWAITING_REVIEW
+      : blocked
+        ? STATUS.ENVIRONMENT_BLOCKED
+        : waiting
+          ? STATUS.WAITING_CONFIRMATION
+          : isPlanRun
+            ? STATUS.AWAITING_APPROVAL
+            : STATUS.AWAITING_REVIEW
   const runStatus =
     nextStatus === STATUS.CANCELLED
       ? 'CANCELLED'
-      : failed
+      : failed || blocked
         ? 'FAILED'
-        : 'COMPLETED'
+        : waiting
+          ? 'WAITING_CONFIRMATION'
+          : 'COMPLETED'
   const changed = await db.$transaction(async (transaction) => {
     const claimed = await transaction.task.updateMany({
       where: { id: task.id, status: task.status, updatedAt: task.updatedAt },
       data: {
         status: nextStatus,
-        ...(isPlanRun ? { planPath: planPath || null } : {}),
+        ...(isPlanRun && !waiting && !blocked
+          ? { planPath: planPath || null }
+          : {}),
         ...(failed
           ? { reviewNote: output.error }
-          : missing.length
-            ? { reviewNote: `缺少验收标准里的交付物：${missing.join('、')}` }
-            : {}),
+          : blocked
+            ? { reviewNote: output.environmentBlock }
+            : waiting
+              ? { reviewNote: output.confirmationRequest }
+              : missing.length
+                ? {
+                    reviewNote: `缺少验收标准里的交付物：${missing.join('、')}`,
+                  }
+                : {}),
+        ...(blocked
+          ? {
+              pendingDispatch: {
+                ...(run.dispatchContext &&
+                typeof run.dispatchContext === 'object' &&
+                !Array.isArray(run.dispatchContext)
+                  ? run.dispatchContext
+                  : {}),
+                tool: run.platform,
+                mode: run.mode,
+                expectedPlanPath: task.planPath,
+                sourceRunIds: [run.id],
+                originalStatus: task.status,
+                submittedAt: new Date().toISOString(),
+              },
+            }
+          : {}),
       },
     })
     if (!claimed.count) return false
 
+    await transaction.$queryRaw`SELECT "id" FROM "TaskRun" WHERE "id" = ${run.id}::uuid FOR UPDATE`
     await transaction.taskRun.update({
       where: { id: run.id },
       data: {
         status: runStatus,
-        completedAt: finishedAt,
+        completedAt: waiting ? null : finishedAt,
         summary: output.error || output.summary || run.summary || null,
         inputTokens: output.usage?.inputTokens ?? null,
         outputTokens: output.usage?.outputTokens ?? null,
         cachedTokens: output.usage?.cachedTokens ?? null,
       },
     })
+    await transaction.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`task-artifact:${task.id}`}))::text`
     const existing = await transaction.taskArtifact.findMany({
       where: { taskId: task.id },
       select: { path: true },
     })
-    const known = new Set(existing.map((item) => item.path))
-    const fresh = output.artifacts.filter((item) => !known.has(item.path))
-    if (fresh.length) {
-      await transaction.taskArtifact.createMany({
-        data: fresh.map((item) => ({
-          taskId: task.id,
-          kind: item.kind,
-          source: item.source || 'item',
-          path: item.path,
-          label: item.label,
-        })),
-      })
+    const known = new Set(
+      existing.map((item) => normalizeArtifactPath(item.path))
+    )
+    const delivered = [
+      ...new Map(
+        output.artifacts.map((item) => [normalizeArtifactPath(item.path), item])
+      ).entries(),
+    ]
+    for (const [artifactPath, item] of delivered) {
+      if (known.has(artifactPath)) {
+        const matching = existing.filter(
+          (artifact) => normalizeArtifactPath(artifact.path) === artifactPath
+        )
+        await transaction.taskArtifact.updateMany({
+          where: {
+            taskId: task.id,
+            path: { in: matching.map((artifact) => artifact.path) },
+          },
+          data: { lastRunId: run.id },
+        })
+      } else {
+        await transaction.taskArtifact.create({
+          data: {
+            taskId: task.id,
+            kind: item.kind,
+            source: item.source || 'item',
+            path: artifactPath,
+            label: item.label,
+            lastRunId: run.id,
+          },
+        })
+      }
     }
     const lastEvent = await transaction.taskEvent.findFirst({
       where: { taskRunId: run.id },
@@ -284,11 +369,21 @@ const reconcileTask = async (
       data: {
         taskRunId: run.id,
         sequence: (lastEvent?.sequence || 0) + 1,
-        eventType: 'task.finished',
+        eventType: blocked
+          ? 'task.environment_blocked'
+          : waiting
+            ? 'task.waiting_confirmation'
+            : 'task.finished',
         status: runStatus,
         stage: isPlanRun ? 'PLANNING' : 'DELIVERY',
         agent: task.agentSlug,
-        summary: output.error || output.summary || '执行结束',
+        summary: (
+          output.error ||
+          output.environmentBlock ||
+          output.confirmationRequest ||
+          output.summary ||
+          '执行结束'
+        ).slice(0, 1000),
         idempotencyKey: `${run.id}:finished`,
       },
     })
@@ -311,7 +406,10 @@ const reconcileTask = async (
 
 const withRelations = {
   runs: { orderBy: { startedAt: 'desc' as const }, take: 5 },
-  artifacts: { orderBy: { createdAt: 'asc' as const } },
+  artifacts: {
+    orderBy: { createdAt: 'asc' as const },
+    include: { lastRun: { select: { projectName: true } } },
+  },
 }
 
 const EVALUATION_SYNC_INTERVAL_MS = 5_000
@@ -450,9 +548,15 @@ export const updateTask = async ({
   id: string
   input: Partial<CreateTaskInput>
 }) => {
-  const row = await db.task.findUnique({ where: { id } })
+  const row = await db.task.findUnique({
+    where: { id },
+    include: withRelations,
+  })
   if (!row) throw new UserInputError('任务不存在')
-  if (ACTIVE_STATUSES.has(row.status as never)) {
+  if (
+    ACTIVE_STATUSES.has(row.status as never) ||
+    row.status === STATUS.QUEUED
+  ) {
     throw new UserInputError('任务执行中，不能修改需求')
   }
 
@@ -496,6 +600,17 @@ export const updateTask = async ({
       'mode',
     ] as const
   ).some((field) => data[field] !== undefined && data[field] !== row[field])
+  if (changesPlan && pendingTaskConfirmation(row)) {
+    throw new UserInputError(
+      '任务有待确认事项，请先确认或取消任务后再修改执行需求'
+    )
+  }
+  if (changesPlan && taskEnvironmentBlock(row)) {
+    data.status = STATUS.DRAFT
+    data.planPath = null
+    data.pendingDispatch = Prisma.DbNull
+    data.reviewNote = null
+  }
   if (changesPlan && row.status === STATUS.AWAITING_APPROVAL) {
     data.status = STATUS.DRAFT
     data.planPath = null
@@ -508,6 +623,126 @@ export const updateTask = async ({
   return db.task.findUnique({ where: { id }, include: withRelations })
 }
 
+const taskEnvironmentBlock = (row: {
+  status: string
+  reviewNote?: string | null
+  runs: Array<{
+    id: string
+    status: string
+    summary?: string | null
+    logPath?: string | null
+    platform: string
+  }>
+}) => {
+  if (row.status === STATUS.ENVIRONMENT_BLOCKED)
+    return { prompt: row.reviewNote || '请检查执行环境后重试。' }
+  if (
+    ![STATUS.AWAITING_REVIEW, STATUS.WAITING_CONFIRMATION].includes(
+      row.status as never
+    )
+  )
+    return null
+  const latest = row.runs[0]
+  if (!latest || !['COMPLETED', 'WAITING_CONFIRMATION'].includes(latest.status))
+    return null
+  const output = latest.logPath
+    ? parseTaskRunOutput({
+        logPath: path.join(resolveRepoRoot(), latest.logPath),
+        tool: latest.platform as AgentToolId,
+      })
+    : null
+  const prompt =
+    output?.environmentBlock ||
+    environmentBlockFromText(latest.summary || '') ||
+    (row.status === STATUS.WAITING_CONFIRMATION
+      ? environmentBlockFromText(`待确认：${row.reviewNote || ''}`)
+      : undefined)
+  return prompt ? { prompt } : null
+}
+
+const pendingTaskConfirmation = (row: {
+  status: string
+  reviewNote?: string | null
+  runs: Array<{
+    id: string
+    status: string
+    summary?: string | null
+    logPath?: string | null
+    platform: string
+    mode?: string
+  }>
+}) => {
+  if (taskEnvironmentBlock(row)) return null
+  const latest = row.runs[0]
+  if (
+    !latest ||
+    ![STATUS.WAITING_CONFIRMATION, STATUS.AWAITING_REVIEW].includes(
+      row.status as never
+    )
+  )
+    return null
+  if (!['WAITING_CONFIRMATION', 'COMPLETED'].includes(latest.status))
+    return null
+  if (row.status === STATUS.WAITING_CONFIRMATION && row.reviewNote) {
+    return { runId: latest.id, prompt: row.reviewNote }
+  }
+  const output = latest.logPath
+    ? parseTaskRunOutput({
+        logPath: path.join(resolveRepoRoot(), latest.logPath),
+        tool: latest.platform as AgentToolId,
+      })
+    : null
+  if (output?.error) return null
+  const prompt =
+    output?.confirmationRequest ||
+    confirmationRequestFromText(latest.summary || '')
+  return prompt ? { runId: latest.id, prompt } : null
+}
+
+export const confirmTaskContinuation = async ({
+  id,
+  runId,
+  note,
+}: {
+  id: string
+  runId: string
+  note?: string | null
+}) => {
+  const row = await db.task.findUnique({
+    where: { id },
+    include: withRelations,
+  })
+  if (!row) throw new UserInputError('任务不存在')
+  if (pendingTaskConfirmation(row)?.runId !== runId) {
+    throw new UserInputError('待确认事项已变化，请刷新后重新确认')
+  }
+  const latest = row.runs[0]
+  return dispatchTask({
+    id,
+    confirmationRunId: runId,
+    mode: latest.mode as TaskMode,
+    expectedPlanPath: row.planPath,
+    tool: latest.platform,
+    note: text(note, 1500, '确认意见') || '同意按所列待确认事项继续。',
+  })
+}
+
+export const retryTaskEnvironment = async ({ id }: { id: string }) => {
+  const row = await db.task.findUnique({
+    where: { id },
+    include: withRelations,
+  })
+  if (!row || !taskEnvironmentBlock(row))
+    throw new UserInputError('环境阻塞状态已变化，请刷新后重试')
+  return dispatchTask({
+    id,
+    retryEnvironment: true,
+    tool: row.runs[0]?.platform,
+    mode: row.runs[0]?.mode as TaskMode,
+    expectedPlanPath: row.planPath,
+  })
+}
+
 /** 派发：生成一次 TaskRun 并拉起本地 agent */
 export const dispatchTask = async ({
   id,
@@ -516,13 +751,19 @@ export const dispatchTask = async ({
   revisionNote,
   expectedPlanPath,
   note,
+  resumeQueued = false,
+  confirmationRunId,
+  retryEnvironment = false,
 }: {
   id: string
   tool?: string
   mode?: TaskMode
   revisionNote?: string
   expectedPlanPath?: string | null
-  /** 重新派发时写的本轮修改要求，会并入提示词并记到任务结论里 */
+  resumeQueued?: boolean
+  confirmationRunId?: string
+  retryEnvironment?: boolean
+  /** 本轮修改要求独立保存，不占用验收意见。 */
   note?: string | null
 }) => {
   const row = await db.task.findUnique({
@@ -530,6 +771,77 @@ export const dispatchTask = async ({
     include: withRelations,
   })
   if (!row) throw new UserInputError('任务不存在')
+  if (row.status === STATUS.QUEUED && !resumeQueued) {
+    throw new UserInputError('任务已在排队，请等待启动或先取消排队')
+  }
+  const environmentBlock = taskEnvironmentBlock(row)
+  if (retryEnvironment && !environmentBlock)
+    throw new UserInputError('环境阻塞状态已变化，请刷新后重试')
+  let saved = (
+    [STATUS.QUEUED, STATUS.ENVIRONMENT_BLOCKED].includes(row.status as never)
+      ? row.pendingDispatch
+      : null
+  ) as {
+    tool: string
+    mode: TaskMode
+    note: string
+    revisionNote?: string
+    expectedPlanPath?: string
+    sourceRunIds: string[]
+    previousReviewNote?: string
+    originalStatus: string
+    submittedAt: string
+    confirmationRunId?: string
+  } | null
+  if (retryEnvironment && environmentBlock && !saved && row.runs[0]) {
+    const previous = row.runs[0]
+    const context = previous.dispatchContext as Record<string, unknown> | null
+    saved = {
+      tool: previous.platform,
+      mode: previous.mode as TaskMode,
+      note: typeof context?.note === 'string' ? context.note : '',
+      revisionNote:
+        typeof context?.revisionNote === 'string'
+          ? context.revisionNote
+          : undefined,
+      expectedPlanPath:
+        typeof context?.expectedPlanPath === 'string'
+          ? context.expectedPlanPath
+          : row.planPath,
+      sourceRunIds: [previous.id],
+      previousReviewNote:
+        typeof context?.previousReviewNote === 'string'
+          ? context.previousReviewNote
+          : undefined,
+      confirmationRunId:
+        typeof context?.confirmationRunId === 'string'
+          ? context.confirmationRunId
+          : undefined,
+      originalStatus: row.status,
+      submittedAt: new Date().toISOString(),
+    }
+  }
+  if (saved) {
+    tool = saved.tool
+    mode = saved.mode
+    note = saved.note
+    revisionNote = saved.revisionNote
+    expectedPlanPath = saved.expectedPlanPath
+    confirmationRunId = saved.confirmationRunId
+  }
+  const confirmation = pendingTaskConfirmation(row)
+  if (environmentBlock && !retryEnvironment)
+    throw new UserInputError('请先检查环境并使用环境重试入口')
+  if (confirmation && !confirmationRunId) {
+    throw new UserInputError('请先查看待确认事项并确认后继续')
+  }
+  if (
+    confirmationRunId &&
+    !saved &&
+    confirmation?.runId !== confirmationRunId
+  ) {
+    throw new UserInputError('待确认事项已变化，请刷新后重新确认')
+  }
   tool = tool || row.runs[0]?.platform || 'codex'
   if (!['codex', 'deepseek-harness'].includes(tool)) {
     throw new UserInputError('不支持的执行平台')
@@ -543,7 +855,13 @@ export const dispatchTask = async ({
     throw new UserInputError('方案待确认：请先批准方案再执行')
   }
   if (runMode === 'execute') {
-    if (row.status !== STATUS.AWAITING_APPROVAL || !row.planPath) {
+    if (
+      (row.status !== STATUS.AWAITING_APPROVAL &&
+        !confirmationRunId &&
+        !environmentBlock &&
+        !(saved?.mode === 'execute')) ||
+      !row.planPath
+    ) {
       throw new UserInputError('没有可批准的方案')
     }
     if (!expectedPlanPath || row.planPath !== expectedPlanPath) {
@@ -557,7 +875,43 @@ export const dispatchTask = async ({
   const { repoRoot } = requireAgent(row.agentSlug)
   const reworkNote = text(note, 2000, '修改要求')
 
-  const promptInput = {
+  const sourceRuns = await db.taskRun.findMany({
+    where: {
+      taskId: id,
+      ...(saved ? { id: { in: saved.sourceRunIds } } : {}),
+      status: {
+        in: ['COMPLETED', 'FAILED', 'CANCELLED', 'WAITING_CONFIRMATION'],
+      },
+    },
+    orderBy: { startedAt: 'desc' },
+    take: 5,
+  })
+  const totalRuns = await db.taskRun.count({
+    where: {
+      taskId: id,
+      status: {
+        in: ['COMPLETED', 'FAILED', 'CANCELLED', 'WAITING_CONFIRMATION'],
+      },
+    },
+  })
+  const request = saved || {
+    tool,
+    mode: runMode,
+    note: reworkNote,
+    revisionNote,
+    expectedPlanPath,
+    sourceRunIds: sourceRuns.map((run) => run.id),
+    previousReviewNote: confirmation?.prompt || row.reviewNote,
+    originalStatus: row.status,
+    submittedAt: new Date().toISOString(),
+    ...(confirmationRunId ? { confirmationRunId } : {}),
+  }
+  // JSON 快照保存续接依据和确认范围，不保存完整提示词、会话或文件正文。
+  const requestJson = JSON.parse(JSON.stringify(request))
+  const startedAt = new Date()
+  const logRelative = taskLogPath(row.id, startedAt)
+  const logAbsolute = path.join(repoRoot, logRelative)
+  let promptInput = {
     title: row.title,
     brief: row.brief,
     acceptance: row.acceptance,
@@ -566,31 +920,115 @@ export const dispatchTask = async ({
     mode: runMode,
     planPath: row.planPath,
     revisionNote: revisionNote || reworkNote || undefined,
-    reviewNote: reworkNote || row.reviewNote,
-    previousSummary: row.runs[0]?.summary,
-    previousArtifacts: row.artifacts.map((item) => item.path),
+    continuation: '',
   }
-
-  const startedAt = new Date()
-  // 派发前记一次工作区快照，结束时对比得到真实改动
-  const baseline = await snapshotWorkspace(repoRoot)
-  // 同时记下行数基线，用于扣除派发前就存在的未提交改动
-  const baselineDiff = await snapshotDiffStat(repoRoot)
-  const logRelative = taskLogPath(row.id, startedAt)
-  const logAbsolute = path.join(repoRoot, logRelative)
 
   // 需求/验收标准里引用的图片 → codex --image 附件
   const images = await resolveTaskImages(`${row.brief}\n${row.acceptance}`)
+  const environment = await checkTaskEnvironment(
+    { ...row, mode: runMode },
+    repoRoot
+  )
   let spawned
   let knowledge: KnowledgeResult | undefined
   const run = await db.$transaction(async (transaction) => {
     await transaction.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`task-agent:${row.agentSlug}`}))::text`
+    const recordConfirmation = async () => {
+      if (!confirmationRunId || saved) return
+      await transaction.$queryRaw`SELECT "id" FROM "TaskRun" WHERE "id" = ${confirmationRunId}::uuid FOR UPDATE`
+      const currentRun = await transaction.taskRun.findUnique({
+        where: { id: confirmationRunId },
+      })
+      if (
+        !currentRun ||
+        currentRun.taskId !== row.id ||
+        currentRun.status !== row.runs[0]?.status ||
+        !['WAITING_CONFIRMATION', 'COMPLETED'].includes(currentRun.status)
+      ) {
+        throw new UserInputError('待确认运行状态已变化，请刷新后重新确认')
+      }
+      await transaction.taskRun.updateMany({
+        where: {
+          id: confirmationRunId,
+          taskId: row.id,
+          status: 'WAITING_CONFIRMATION',
+        },
+        data: { status: 'COMPLETED', completedAt: startedAt },
+      })
+      const last = await transaction.taskEvent.findFirst({
+        where: { taskRunId: confirmationRunId },
+        orderBy: { sequence: 'desc' },
+      })
+      await transaction.taskEvent.create({
+        data: {
+          taskRunId: confirmationRunId,
+          sequence: (last?.sequence || 0) + 1,
+          eventType: 'task.confirmed',
+          status: 'COMPLETED',
+          stage: row.runs[0]?.currentStage || 'EXECUTION',
+          agent: row.agentSlug,
+          summary: `人工确认：${reworkNote}`.slice(0, 1000),
+          idempotencyKey: `${confirmationRunId}:confirmed`,
+        },
+      })
+    }
+    const closeLegacyEnvironmentWait = async () => {
+      const previous = row.runs[0]
+      if (!retryEnvironment || previous?.status !== 'WAITING_CONFIRMATION')
+        return
+      await transaction.$queryRaw`SELECT "id" FROM "TaskRun" WHERE "id" = ${previous.id}::uuid FOR UPDATE`
+      const closed = await transaction.taskRun.updateMany({
+        where: {
+          id: previous.id,
+          taskId: row.id,
+          status: 'WAITING_CONFIRMATION',
+        },
+        data: { status: 'FAILED', completedAt: startedAt },
+      })
+      if (!closed.count)
+        throw new UserInputError('环境阻塞运行状态已变化，请刷新后重试')
+      const last = await transaction.taskEvent.findFirst({
+        where: { taskRunId: previous.id },
+        orderBy: { sequence: 'desc' },
+      })
+      await transaction.taskEvent.create({
+        data: {
+          taskRunId: previous.id,
+          sequence: (last?.sequence || 0) + 1,
+          eventType: 'task.environment_retry',
+          status: 'FAILED',
+          stage: previous.currentStage || 'EXECUTION',
+          agent: row.agentSlug,
+          summary: '环境阻塞已转为修复后重试，结束旧的等待记录。',
+          idempotencyKey: `${previous.id}:environment-retry`,
+        },
+      })
+    }
     const active = await transaction.taskRun.findMany({
       where: {
         primaryAgent: row.agentSlug,
         status: { in: ['QUEUED', 'RUNNING'] },
       },
     })
+    if (!environment.ready) {
+      const stopped = await transaction.task.updateMany({
+        where: { id: row.id, status: row.status, updatedAt: row.updatedAt },
+        data: {
+          status: STATUS.ENVIRONMENT_BLOCKED,
+          pendingDispatch: requestJson,
+          reviewNote: environment.checks
+            .filter((check) => check.status === 'BLOCKED')
+            .map((check) => `${check.label}：${check.detail}\n${check.remedy}`)
+            .join('\n')
+            .slice(0, 2000),
+        },
+      })
+      if (!stopped.count)
+        throw new UserInputError('任务状态已变化，请刷新后重试')
+      await recordConfirmation()
+      await closeLegacyEnvironmentWait()
+      return null
+    }
     if (
       active.some(
         (candidate) =>
@@ -598,15 +1036,21 @@ export const dispatchTask = async ({
           (candidate.status === 'QUEUED' && !candidate.pid)
       )
     ) {
-      if (runMode !== 'auto') {
-        throw new UserInputError('该岗位忙碌，方案状态已保留，请稍后重试')
-      }
+      if (row.status === STATUS.QUEUED) return null
       const queued = await transaction.task.updateMany({
         where: { id: row.id, status: row.status, updatedAt: row.updatedAt },
-        data: { status: STATUS.QUEUED },
+        data: {
+          status: STATUS.QUEUED,
+          pendingDispatch: requestJson,
+          completedAt: null,
+          reviewedAt: null,
+          reviewNote: null,
+        },
       })
       if (!queued.count)
         throw new UserInputError('任务状态已变化，请刷新后重试')
+      await recordConfirmation()
+      await closeLegacyEnvironmentWait()
       return null
     }
     const claimed = await transaction.task.updateMany({
@@ -615,11 +1059,15 @@ export const dispatchTask = async ({
         status: STATUS.DISPATCHED,
         ...(runMode === 'plan' ? { planPath: null } : {}),
         ...(revisionNote ? { planNote: revisionNote } : {}),
-        // 重新派发时把修改要求写进结论，下一轮和验收时都能看到依据
-        ...(reworkNote ? { reviewNote: reworkNote } : {}),
+        completedAt: null,
+        reviewedAt: null,
+        reviewNote: null,
+        pendingDispatch: Prisma.DbNull,
       },
     })
     if (!claimed.count) throw new UserInputError('任务状态已变化，请刷新后重试')
+    await recordConfirmation()
+    await closeLegacyEnvironmentWait()
     const reserved = await transaction.taskRun.create({
       data: {
         title: row.title,
@@ -630,9 +1078,9 @@ export const dispatchTask = async ({
         taskId: row.id,
         logPath: logRelative,
         mode: runMode,
-        dirtyAtDispatch: Object.keys(baseline).length > 0,
-        baselineFiles: baseline,
-        baselineDiff: baselineDiff as never,
+        dispatchContext: requestJson,
+        projectKey: 'digital-team',
+        projectName: '个人数字团队',
         externalReference: `task:${row.id}`,
         startedAt,
       },
@@ -645,6 +1093,22 @@ export const dispatchTask = async ({
   if (!run)
     return db.task.findUnique({ where: { id: row.id }, include: withRelations })
   try {
+    const continuation = await buildTaskContinuation({
+      taskId: id,
+      runs: sourceRuns,
+      totalRuns,
+      artifacts: row.artifacts,
+      note: reworkNote,
+      reviewNote: request.previousReviewNote,
+      repoRoot,
+    })
+    promptInput = { ...promptInput, continuation: continuation.text }
+    await db.taskRun.update({
+      where: { id: run.id },
+      data: {
+        dispatchContext: { ...requestJson, ...continuation.metadata },
+      },
+    })
     // 任务里关掉知识库时不发起检索，按"未启用"记录，派发照常继续
     knowledge =
       row.useKnowledge === false
@@ -677,12 +1141,28 @@ export const dispatchTask = async ({
     }
     const prompt = buildTaskPrompt({
       ...promptInput,
+      ...(confirmationRunId
+        ? {
+            revisionNote: `人工确认（仅针对运行 ${confirmationRunId} 的待确认事项）：\n待确认范围：${request.previousReviewNote || ''}\n确认意见：${reworkNote || '同意按所列待确认事项继续。'}\n本次确认不扩大原只读、沙箱、目录及外部系统权限；缺少配置或环境权限时继续明确说明阻塞。`,
+          }
+        : {}),
       knowledge: knowledgeContext(knowledge).prompt,
     })
     const promptWithImages =
       tool === 'codex' || !images.length
         ? prompt
         : `${prompt}\n\n## 参考图片（本地路径）\n${images.map((file) => `- ${file}`).join('\n')}`
+    // 实际启动前采集，排队期间和检索等待期间的改动不归本轮。
+    const baseline = await snapshotWorkspace(repoRoot)
+    const baselineDiff = await snapshotDiffStat(repoRoot)
+    await db.taskRun.update({
+      where: { id: run.id },
+      data: {
+        baselineFiles: baseline,
+        baselineDiff: (baselineDiff ?? Prisma.DbNull) as never,
+        dirtyAtDispatch: Object.keys(baseline).length > 0,
+      },
+    })
     spawned = spawnTaskAgent({
       tool: tool as AgentToolId,
       projectRoot: repoRoot,
@@ -746,18 +1226,17 @@ export const dispatchTask = async ({
         updatedAt: run.taskVersion,
         runs: { some: { id: run.id } },
       },
-      data:
-        runMode === 'plan'
-          ? {
-              status: STATUS.FAILED,
-              planPath: null,
-              reviewNote: `方案生成失败：${String(error).slice(0, 1000)}`,
-            }
-          : {
-              status: row.status,
-              planPath: row.planPath,
-              planNote: row.planNote,
-            },
+      data: {
+        status: saved || confirmationRunId ? STATUS.FAILED : row.status,
+        planPath: row.planPath,
+        planNote: row.planNote,
+        completedAt: row.completedAt,
+        reviewedAt: row.reviewedAt,
+        reviewNote: saved
+          ? `派发失败：${String(error).slice(0, 1000)}`
+          : row.reviewNote,
+        pendingDispatch: Prisma.DbNull,
+      },
     })
     if (knowledge && knowledge.status !== 'disabled') {
       await db.taskEvent.create({
@@ -847,7 +1326,7 @@ const promoteQueuedFor = async (agentSlug: string) => {
       where: { agentSlug, status: STATUS.QUEUED },
       orderBy: { createdAt: 'asc' },
     })
-    if (next) await dispatchTask({ id: next.id })
+    if (next) await dispatchTask({ id: next.id, resumeQueued: true })
   } catch (error) {
     logger.warn({ error, agentSlug }, 'promote queued task failed')
   } finally {
@@ -1066,13 +1545,16 @@ export const cancelTask = async ({ id }: { id: string }) => {
   await db.$transaction(async (transaction) => {
     const cancelled = await transaction.task.updateMany({
       where: { id, status: row.status, updatedAt: row.updatedAt },
-      data: { status: STATUS.CANCELLED },
+      data: { status: STATUS.CANCELLED, pendingDispatch: Prisma.DbNull },
     })
     if (!cancelled.count)
       throw new UserInputError('任务状态已变化，请刷新后重试')
     if (run) {
       await transaction.taskRun.updateMany({
-        where: { id: run.id, status: { in: ['QUEUED', 'RUNNING'] } },
+        where: {
+          id: run.id,
+          status: { in: ['QUEUED', 'RUNNING', 'WAITING_CONFIRMATION'] },
+        },
         data: { status: 'CANCELLED', completedAt: new Date() },
       })
     }
@@ -1109,6 +1591,12 @@ export const reviewTask = async ({
   if (row.status !== STATUS.AWAITING_REVIEW) {
     throw new UserInputError('只有待验收的任务才能提交验收结论')
   }
+  if (
+    decision === 'APPROVE' &&
+    (pendingTaskConfirmation(row) || taskEnvironmentBlock(row))
+  ) {
+    throw new UserInputError('任务仍有待确认事项，请先确认并继续执行')
+  }
   const reviewedAt = new Date()
   const saveReview = async (data: {
     status: string
@@ -1126,10 +1614,14 @@ export const reviewTask = async ({
 
   if (decision === 'APPROVE') {
     // 验收通过不能悄悄放过"零产物"：要么把产物补上，要么在结论里说明交付物在哪
-    const artifactCount = await db.taskArtifact.count({ where: { taskId: id } })
+    const artifactCount = row.runs[0]
+      ? await db.taskArtifact.count({
+          where: { taskId: id, lastRunId: row.runs[0].id },
+        })
+      : 0
     if (artifactCount === 0 && !reviewNote) {
       throw new UserInputError(
-        '这次执行没有登记任何产物：请在验收结论里写明交付物在哪（例如 git 改动），或先补充产物再通过。'
+        '这次执行没有本轮交付（可能只有历史产物）：请在验收结论里说明本轮完成内容、交付物在哪或沿用了哪些历史成果，再通过。'
       )
     }
 
@@ -1170,13 +1662,30 @@ export const addTaskArtifact = async ({
     throw new UserInputError('产物类型只能是 file / dir / url / report')
   }
 
-  const artifactPath = text(input?.path, 500, '产物路径')
-  if (!artifactPath) throw new UserInputError('产物路径不能为空')
+  const rawPath = text(input?.path, 500, '产物路径')
+  if (!rawPath) throw new UserInputError('产物路径不能为空')
+  const artifactPath = normalizeArtifactPath(rawPath)
 
   const label = text(input?.label, 200, '名称') || path.basename(artifactPath)
 
-  await db.taskArtifact.create({
-    data: { taskId, kind, path: artifactPath, label, source: 'manual' },
+  await db.$transaction(async (transaction) => {
+    await transaction.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`task-artifact:${taskId}`}))::text`
+    const existing = await transaction.taskArtifact.findMany({
+      where: { taskId },
+    })
+    const matching = existing.filter(
+      (item) => normalizeArtifactPath(item.path) === artifactPath
+    )
+    if (matching.length) {
+      await transaction.taskArtifact.updateMany({
+        where: { id: { in: matching.map((item) => item.id) } },
+        data: { label, kind },
+      })
+    } else {
+      await transaction.taskArtifact.create({
+        data: { taskId, kind, path: artifactPath, label, source: 'manual' },
+      })
+    }
   })
 
   return db.task.findUnique({ where: { id: taskId }, include: withRelations })
@@ -1407,11 +1916,16 @@ export const taskPrecheck = async ({ id }: { id: string }) => {
       acceptance: true,
       readOnly: true,
       agentSlug: true,
+      useKnowledge: true,
+      mode: true,
     },
   })
   if (!row) throw new UserInputError('任务不存在')
 
-  const result = precheckTask(row, resolveRepoRoot())
+  const result = {
+    ...precheckTask(row, resolveRepoRoot()),
+    environment: await checkTaskEnvironment(row, resolveRepoRoot()),
+  }
 
   // 岗位评估的镜像任务：直接用普通任务派发不会走评估流程，也就不会产出报告
   const evaluation = await db.roleEvaluation.findFirst({
@@ -1458,4 +1972,53 @@ if (
     )
     await syncEvaluationTasks()
   })
+}
+
+export const Task = {
+  blocker: async (_args, { root }) => {
+    const row = root.runs
+      ? root
+      : await db.task.findUnique({
+          where: { id: root.id },
+          include: withRelations,
+        })
+    return row ? taskEnvironmentBlock(row) : null
+  },
+  confirmation: async (_args, { root }) => {
+    const row = root.runs
+      ? root
+      : await db.task.findUnique({
+          where: { id: root.id },
+          include: withRelations,
+        })
+    return row ? pendingTaskConfirmation(row) : null
+  },
+  artifacts: async (_args, { root }) => {
+    const artifacts =
+      root.artifacts ||
+      (await db.taskArtifact.findMany({
+        where: { taskId: root.id },
+        orderBy: { createdAt: 'asc' },
+      }))
+    return [
+      ...new Map(
+        artifacts.map((item) => [normalizeArtifactPath(item.path), item])
+      ).values(),
+    ]
+  },
+}
+
+export const TaskArtifact = {
+  projectName: async (_args, { root }) =>
+    root.lastRun?.projectName ||
+    (root.lastRunId
+      ? (
+          await db.taskRun.findUnique({
+            where: { id: root.lastRunId },
+            select: { projectName: true },
+          })
+        )?.projectName
+      : null),
+  availability: (_args, { root }) =>
+    artifactAvailability(root.path, resolveRepoRoot()),
 }

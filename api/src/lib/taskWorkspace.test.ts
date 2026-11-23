@@ -9,6 +9,7 @@ import {
   computeRunDiffStat,
   diffStatDelta,
   snapshotDiffStat,
+  snapshotWorkspace,
   summarizeDiffStat,
 } from './taskWorkspace'
 
@@ -165,5 +166,34 @@ describe('snapshotDiffStat', () => {
     expect(stat?.files).toBe(1)
     expect(stat?.added).toBe(1)
     expect(stat?.byDirectory.web).toEqual({ files: 1, added: 1, removed: 0 })
+  })
+})
+
+it('detects content changes while a tracked file remains M across consecutive runs', async () => {
+  const root = fs.mkdtempSync(path.join(tmpdir(), 'task-fingerprint-'))
+  try {
+    execFileSync('git', ['init', '-q'], { cwd: root })
+    fs.writeFileSync(path.join(root, '中文 文件.ts'), 'original')
+    execFileSync('git', ['add', '.'], { cwd: root })
+    fs.writeFileSync(path.join(root, '中文 文件.ts'), 'first round')
+    const first = await snapshotWorkspace(root)
+    expect(changedFiles(first, await snapshotWorkspace(root))).toEqual([])
+    fs.writeFileSync(path.join(root, '中文 文件.ts'), 'second round')
+    const second = await snapshotWorkspace(root)
+    expect(changedFiles(first, second)).toEqual(['中文 文件.ts'])
+    expect(changedFiles({ '中文 文件.ts': 'AM' }, second)).toEqual([])
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+it('distinguishes unavailable statistics from a successful zero delta', async () => {
+  expect(
+    await computeRunDiffStat({ repoRoot: '/missing-task-repo', baseline: {} })
+  ).toBeNull()
+  expect(summarizeDiffStat({}, process.cwd())).toMatchObject({
+    files: 0,
+    added: 0,
+    removed: 0,
   })
 })

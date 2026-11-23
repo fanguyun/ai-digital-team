@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import dayjs from 'dayjs'
-
 import {
   Alert,
   Button,
@@ -20,6 +18,7 @@ import {
   Tree,
   notification,
 } from 'antd'
+import dayjs from 'dayjs'
 import {
   Bell,
   BellOff,
@@ -37,12 +36,13 @@ import {
 
 import { useMutation, useQuery } from '@cedarjs/web'
 
-import CodePreview from 'src/components/CodePreview/CodePreview'
 import {
   buildArtifactTree,
   isMarkdownPath,
   languageForPath,
 } from 'src/components/CodePreview/artifactTree'
+import CodePreview from 'src/components/CodePreview/CodePreview'
+import KnowledgePublisher from 'src/components/KnowledgePublisher/KnowledgePublisher'
 import MarkdownDocument from 'src/components/MarkdownDocument/MarkdownDocument'
 import MarkdownEditor from 'src/components/MarkdownEditor/MarkdownEditor'
 
@@ -74,10 +74,20 @@ const TASKS_QUERY = gql`
       completedAt
       reviewNote
       reviewedAt
+      blocker {
+        prompt
+      }
+      confirmation {
+        runId
+        prompt
+      }
       artifacts {
         id
         kind
         source
+        lastRunId
+        availability
+        projectName
         path
         label
         createdAt
@@ -91,6 +101,8 @@ const TASKS_QUERY = gql`
         summary
         logPath
         dirtyAtDispatch
+        projectName
+        continuationStatus
         inputTokens
         outputTokens
         cachedTokens
@@ -129,10 +141,20 @@ const TASK_BY_ID = gql`
       completedAt
       reviewNote
       reviewedAt
+      blocker {
+        prompt
+      }
+      confirmation {
+        runId
+        prompt
+      }
       artifacts {
         id
         kind
         source
+        lastRunId
+        availability
+        projectName
         path
         label
         createdAt
@@ -146,6 +168,8 @@ const TASK_BY_ID = gql`
         summary
         logPath
         dirtyAtDispatch
+        projectName
+        continuationStatus
         inputTokens
         outputTokens
         cachedTokens
@@ -194,6 +218,15 @@ const DISPATCH_TASK = gql`
   }
 `
 
+const CONFIRM_TASK_CONTINUATION = gql`
+  mutation ConfirmTaskContinuation($id: ID!, $runId: ID!, $note: String) {
+    confirmTaskContinuation(id: $id, runId: $runId, note: $note) {
+      id
+      status
+    }
+  }
+`
+
 const CANCEL_TASK = gql`
   mutation CancelTask($id: ID!) {
     cancelTask(id: $id) {
@@ -207,6 +240,25 @@ const TASK_PRECHECK = gql`
     taskPrecheck(id: $id) {
       warnings
       expectedPaths
+      environment {
+        ready
+        checks {
+          key
+          label
+          status
+          detail
+          remedy
+        }
+      }
+    }
+  }
+`
+
+const RETRY_TASK_ENVIRONMENT = gql`
+  mutation RetryTaskEnvironment($id: ID!) {
+    retryTaskEnvironment(id: $id) {
+      id
+      status
     }
   }
 `
@@ -403,7 +455,12 @@ const COLUMNS = [
   {
     key: 'review',
     label: '待验收',
-    match: ['AWAITING_REVIEW', 'AWAITING_APPROVAL'],
+    match: [
+      'AWAITING_REVIEW',
+      'AWAITING_APPROVAL',
+      'WAITING_CONFIRMATION',
+      'ENVIRONMENT_BLOCKED',
+    ],
   },
   { key: 'done', label: '已完成', match: ['DONE'] },
   { key: 'closed', label: '失败 / 取消', match: ['FAILED', 'CANCELLED'] },
@@ -414,6 +471,8 @@ const STATUS_LABELS = {
   DISPATCHED: '已派发',
   RUNNING: '执行中',
   QUEUED: '排队中',
+  WAITING_CONFIRMATION: '待人工确认',
+  ENVIRONMENT_BLOCKED: '环境阻塞',
   AWAITING_APPROVAL: '待确认方案',
   AWAITING_REVIEW: '待验收',
   DONE: '已完成',
@@ -754,7 +813,11 @@ const TaskBoard = ({
     try {
       if (editing) {
         await updateTask({ variables: { id: editing.id, input: values } })
-        setNotice({ type: 'success', message: '任务已更新' })
+        setNotice({
+          type: 'success',
+          message:
+            editing.status === 'DONE' ? '需求已更新，可再次发起' : '任务已更新',
+        })
       } else {
         await createTask({ variables: { input: values } })
         setNotice({ type: 'success', message: '任务已创建' })
@@ -822,17 +885,22 @@ const TaskBoard = ({
   const run = async (task) => {
     setNotice(null)
     // 待验收/失败的任务再次执行＝按新要求重做：直接进抽屉，在那里写修改要求
-    if (['AWAITING_REVIEW', 'FAILED'].includes(task.status)) {
+    if (['AWAITING_REVIEW', 'FAILED', 'DONE'].includes(task.status)) {
       setOpenId(task.id)
       return
     }
     if (task.mode === 'plan' && !(await confirmPlanSave())) return
     if (!(await confirmPrecheck(task))) return
     try {
-      await dispatchTask({ variables: { id: task.id, tool: dispatchTool } })
+      const result = await dispatchTask({
+        variables: { id: task.id, tool: dispatchTool },
+      })
       setNotice({
         type: 'success',
-        message: `已派发「${task.title}」到 ${dispatchToolLabel}`,
+        message:
+          result.data?.dispatchTask?.status === 'ENVIRONMENT_BLOCKED'
+            ? '环境预检未通过，请在任务详情查看原因后重试。'
+            : `已派发「${task.title}」到 ${dispatchToolLabel}`,
       })
       await refreshTasks()
     } catch (dispatchError) {
@@ -842,15 +910,20 @@ const TaskBoard = ({
 
   // 抽屉里的「确认重新派发」：带上本轮修改要求再次执行
   const redispatch = async (task, note) => {
+    if (modalOpen) return
     setNotice(null)
+    if (task.mode === 'plan' && !(await confirmPlanSave())) return
     if (!(await confirmPrecheck(task))) return
     try {
-      await dispatchTask({
+      const result = await dispatchTask({
         variables: { id: task.id, tool: dispatchTool, note },
       })
       setNotice({
         type: 'success',
-        message: `已按新要求重新派发「${task.title}」到 ${dispatchToolLabel}`,
+        message:
+          result.data?.dispatchTask?.status === 'ENVIRONMENT_BLOCKED'
+            ? '环境预检未通过，请在任务详情查看原因后重试。'
+            : `已提交「${task.title}」的新一轮执行到 ${dispatchToolLabel}`,
       })
       await refreshTasks()
     } catch (dispatchError) {
@@ -862,12 +935,15 @@ const TaskBoard = ({
     setNotice(null)
     setApproving(true)
     try {
-      await executePlan({
+      const result = await executePlan({
         variables: { id: task.id, tool, planPath: task.planPath },
       })
       setNotice({
         type: 'success',
-        message: `已按方案开始执行「${task.title}」`,
+        message:
+          result.data?.executeTaskPlan?.status === 'ENVIRONMENT_BLOCKED'
+            ? '环境预检未通过，方案和执行请求已保留。'
+            : `已按方案开始执行「${task.title}」`,
       })
       await refreshTasks()
     } catch (error) {
@@ -1090,18 +1166,24 @@ const TaskBoard = ({
                       className="task-card-actions"
                       onClick={(event) => event.stopPropagation()}
                     >
-                      {['DRAFT', 'FAILED', 'AWAITING_REVIEW'].includes(
-                        task.status
-                      ) && (
-                        <Button
-                          size="small"
-                          type="primary"
-                          icon={<Play size={13} />}
-                          onClick={() => run(task)}
-                        >
-                          {task.status === 'DRAFT' ? '派发' : '重新派发'}
-                        </Button>
-                      )}
+                      {!task.confirmation &&
+                        !task.blocker &&
+                        ['DRAFT', 'FAILED', 'AWAITING_REVIEW', 'DONE'].includes(
+                          task.status
+                        ) && (
+                          <Button
+                            size="small"
+                            type="primary"
+                            icon={<Play size={13} />}
+                            onClick={() => run(task)}
+                          >
+                            {task.status === 'DRAFT'
+                              ? '派发'
+                              : task.status === 'DONE'
+                                ? '再次发起'
+                                : '重新派发'}
+                          </Button>
+                        )}
                       {['DISPATCHED', 'RUNNING', 'QUEUED'].includes(
                         task.status
                       ) && (
@@ -1140,26 +1222,58 @@ const TaskBoard = ({
                           审阅方案
                         </Button>
                       )}
-                      {task.status === 'AWAITING_REVIEW' && (
+                      {task.confirmation && (
                         <Button
                           size="small"
                           type="primary"
                           onClick={() => {
-                            if (!task.artifacts.length) {
-                              setOpenId(task.id)
-                              setNotice({
-                                type: 'warning',
-                                message:
-                                  '这次执行没有登记任何产物：请在验收结论里写明交付物在哪，再点通过。',
-                              })
-                              return
-                            }
-                            review(task, 'APPROVE', task.reviewNote || '')
+                            setOpenSection('runs')
+                            setOpenId(task.id)
                           }}
                         >
-                          通过
+                          查看待确认事项
                         </Button>
                       )}
+                      {task.blocker && (
+                        <Button
+                          size="small"
+                          type="primary"
+                          onClick={() => {
+                            setOpenSection('runs')
+                            setOpenId(task.id)
+                          }}
+                        >
+                          检查执行环境
+                        </Button>
+                      )}
+                      {!task.confirmation &&
+                        !task.blocker &&
+                        task.status === 'AWAITING_REVIEW' && (
+                          <Button
+                            size="small"
+                            type="primary"
+                            onClick={() => {
+                              if (
+                                !task.artifacts.some(
+                                  (item) =>
+                                    item.lastRunId &&
+                                    item.lastRunId === task.runs[0]?.id
+                                )
+                              ) {
+                                setOpenId(task.id)
+                                setNotice({
+                                  type: 'warning',
+                                  message:
+                                    '这次执行没有本轮交付：请说明本轮完成内容或沿用了哪些历史产物，再点通过。',
+                                })
+                                return
+                              }
+                              review(task, 'APPROVE', task.reviewNote || '')
+                            }}
+                          >
+                            通过
+                          </Button>
+                        )}
                     </div>
                   </Card>
                 ))}
@@ -1416,6 +1530,15 @@ const decorateArtifactNode = (node, handlers) => ({
       </span>
       <span className="task-artifact-label">{node.artifact.label}</span>
       <code>{node.artifact.path}</code>
+      <Tag>{node.artifact.projectName || '未归属项目'}</Tag>
+      {!node.artifact.lastRunId && (
+        <Tag>
+          {node.artifact.source === 'manual' ? '手动登记' : '历史来源未记录'}
+        </Tag>
+      )}
+      {['missing', 'unavailable'].includes(node.artifact.availability) && (
+        <Tag color="warning">文件不可用</Tag>
+      )}
       <Flex gap={4}>
         <Button size="small" onClick={() => handlers.onOpen(node.artifact)}>
           打开
@@ -1463,12 +1586,13 @@ const TaskDetail = ({
         ? 'artifacts'
         : 'brief'
   )
+  const latestRunId = task.runs[0]?.id
   const latestPlatform = task.runs[0]?.platform || 'codex'
-  const [reworkNote, setReworkNote] = useState(task.reviewNote || '')
+  const [reworkNote, setReworkNote] = useState('')
   const [redispatching, setRedispatching] = useState(false)
   useEffect(() => {
-    setReworkNote(task.reviewNote || '')
-  }, [task.id, task.reviewNote])
+    setReworkNote('')
+  }, [task.id, latestRunId])
   const [planTool, setPlanTool] = useState(latestPlatform)
   useEffect(() => {
     setPlanTool(latestPlatform)
@@ -1493,7 +1617,17 @@ const TaskDetail = ({
   })
   const planReady =
     !planLoading && !planError && Boolean(planData?.taskPlanContent?.trim())
-  const [note, setNote] = useState(task.reviewNote || '')
+  const [note, setNote] = useState('')
+  const [artifactScope, setArtifactScope] = useState('all')
+  const currentArtifacts = task.artifacts.filter(
+    (item) => item.lastRunId && item.lastRunId === task.runs[0]?.id
+  )
+  const visibleArtifacts =
+    artifactScope === 'current'
+      ? currentArtifacts
+      : artifactScope === 'history'
+        ? task.artifacts.filter((item) => !currentArtifacts.includes(item))
+        : task.artifacts
   const [artifact, setArtifact] = useState(null)
   const [threadRun, setThreadRun] = useState(null)
   const [logRun, setLogRun] = useState(null)
@@ -1553,6 +1687,20 @@ const TaskDetail = ({
           { key: 'artifacts', label: `产物 ${task.artifacts.length}` },
         ]}
       />
+
+      <TaskEnvironmentPanel
+        task={task}
+        onChanged={onChanged}
+        setNotice={setNotice}
+      />
+
+      {task.confirmation && (
+        <TaskConfirmation
+          task={task}
+          onChanged={onChanged}
+          setNotice={setNotice}
+        />
+      )}
 
       {task.status === 'AWAITING_APPROVAL' && (
         <div className="task-plan-box">
@@ -1692,6 +1840,33 @@ const TaskDetail = ({
 
       {tab === 'artifacts' && (
         <div className="task-artifacts">
+          <KnowledgePublisher
+            key={task.id}
+            taskId={task.id}
+            artifacts={task.artifacts}
+          />
+          <p>所属项目：{task.runs[0]?.projectName || '未归属项目'}</p>
+          {task.runs[0]?.continuationStatus && (
+            <p className="task-board-hint">{task.runs[0].continuationStatus}</p>
+          )}
+          <p className="task-board-hint">
+            产物指向工作区当前文件，历史内容版本不在此保存。
+          </p>
+          <Segmented
+            value={artifactScope}
+            onChange={setArtifactScope}
+            options={[
+              { value: 'all', label: `全部产物 ${task.artifacts.length}` },
+              {
+                value: 'current',
+                label: `本轮交付 ${currentArtifacts.length}`,
+              },
+              {
+                value: 'history',
+                label: `历史产物 ${task.artifacts.length - currentArtifacts.length}`,
+              },
+            ]}
+          />
           <div className="task-artifact-toolbar">
             <Button
               size="small"
@@ -1704,14 +1879,17 @@ const TaskDetail = ({
           {!task.artifacts.length && (
             <p className="task-board-empty">还没有产物。</p>
           )}
-          {task.artifacts.length > 0 && (
+          {task.artifacts.length > 0 && !visibleArtifacts.length && (
+            <p className="task-board-empty">当前分类没有产物。</p>
+          )}
+          {visibleArtifacts.length > 0 && (
             <Tree
               className="task-artifact-tree"
               blockNode
               showLine={{ showLeafIcon: false }}
               defaultExpandAll
               selectable={false}
-              treeData={buildArtifactTree(task.artifacts).map((node) =>
+              treeData={buildArtifactTree(visibleArtifacts).map((node) =>
                 decorateArtifactNode(node, {
                   onOpen: openArtifact,
                   onRemove: async (item) => {
@@ -1731,80 +1909,98 @@ const TaskDetail = ({
             派发执行
           </Button>
         )}
-        {['DISPATCHED', 'RUNNING'].includes(task.status) && (
+        {[
+          'DISPATCHED',
+          'RUNNING',
+          'QUEUED',
+          'WAITING_CONFIRMATION',
+          'ENVIRONMENT_BLOCKED',
+        ].includes(task.status) && (
           <Button danger icon={<X size={14} />} onClick={onCancel}>
             取消
           </Button>
         )}
-        <Button onClick={onEdit} disabled={task.status === 'RUNNING'}>
+        <Button
+          onClick={onEdit}
+          disabled={['DISPATCHED', 'RUNNING', 'QUEUED'].includes(task.status)}
+        >
           编辑
         </Button>
       </div>
 
-      {['AWAITING_REVIEW', 'FAILED'].includes(task.status) && (
-        <div className="task-redispatch">
-          <h4>重新派发</h4>
-          <p className="task-board-hint">
-            写清这次要改什么：会并入执行提示词，作为本轮依据，并记入任务结论；留空则沿用原有需求。
-          </p>
-          <Input.TextArea
-            aria-label="本轮修改要求"
-            value={reworkNote}
-            onChange={(event) => setReworkNote(event.target.value)}
-            rows={3}
-            placeholder="本轮修改要求（可留空沿用原需求）"
-          />
-          <div className="task-redispatch-actions">
-            <Button
-              type="primary"
-              icon={<Play size={14} />}
-              loading={redispatching}
-              onClick={async () => {
-                setRedispatching(true)
-                try {
-                  await onRedispatch?.(reworkNote)
-                } finally {
-                  setRedispatching(false)
-                }
-              }}
-            >
-              确认重新派发
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {task.status === 'AWAITING_REVIEW' && (
-        <div className="task-review">
-          <h4>验收任务</h4>
-          {!task.artifacts.length && (
-            <p className="task-board-empty">
-              这次执行没有登记任何产物；验收标准要求的交付物如果不在产物里，请在结论中说明它在哪里。
+      {!task.confirmation &&
+        !task.blocker &&
+        ['AWAITING_REVIEW', 'FAILED', 'DONE'].includes(task.status) && (
+          <div className="task-redispatch">
+            <h4>{task.status === 'DONE' ? '再次发起' : '重新派发'}</h4>
+            <p className="task-board-hint">
+              复用历史结果、上下文和已有产物；本轮修改要求独立保存，留空则沿用已保存需求。当前工作模式：
+              {task.mode === 'plan' ? '重新生成方案，批准后实施' : '直接执行'}
+              {task.readOnly ? '；只读' : ''}。
             </p>
-          )}
-          <MarkdownEditor
-            value={note}
-            onChange={setNote}
-            minRows={2}
-            maxRows={4}
-            placeholder={
-              task.artifacts.length
-                ? '验收结论（打回时必填，支持 Markdown）'
-                : '验收结论（没有产物时必填：写明交付物在哪）'
-            }
-          />
-          <Flex gap={8}>
-            <Button
-              type="primary"
-              disabled={!task.artifacts.length && !note.trim()}
-              onClick={() => onReview(task, 'APPROVE', note)}
-            >
-              通过
-            </Button>
-            <Button onClick={() => onReview(task, 'REJECT', note)}>打回</Button>
-          </Flex>
-        </div>
-      )}
+            <Input.TextArea
+              aria-label="本轮修改要求"
+              value={reworkNote}
+              onChange={(event) => setReworkNote(event.target.value)}
+              rows={3}
+              maxLength={2000}
+              placeholder="本轮修改要求（可留空沿用原需求）"
+            />
+            <div className="task-redispatch-actions">
+              <Button
+                type="primary"
+                icon={<Play size={14} />}
+                loading={redispatching}
+                onClick={async () => {
+                  setRedispatching(true)
+                  try {
+                    await onRedispatch?.(reworkNote)
+                  } finally {
+                    setRedispatching(false)
+                  }
+                }}
+              >
+                {task.status === 'DONE' ? '确认再次发起' : '确认重新派发'}
+              </Button>
+            </div>
+          </div>
+        )}
+
+      {!task.confirmation &&
+        !task.blocker &&
+        task.status === 'AWAITING_REVIEW' && (
+          <div className="task-review">
+            <h4>验收任务</h4>
+            {!currentArtifacts.length && (
+              <p className="task-board-empty">
+                这次执行没有本轮交付；请说明完成内容、交付物在哪或沿用了哪些历史产物。
+              </p>
+            )}
+            <MarkdownEditor
+              value={note}
+              onChange={setNote}
+              minRows={2}
+              maxRows={4}
+              placeholder={
+                currentArtifacts.length
+                  ? '验收结论（打回时必填，支持 Markdown）'
+                  : '验收结论（无本轮交付时必填：说明本轮完成内容或沿用成果）'
+              }
+            />
+            <Flex gap={8}>
+              <Button
+                type="primary"
+                disabled={!currentArtifacts.length && !note.trim()}
+                onClick={() => onReview(task, 'APPROVE', note)}
+              >
+                通过
+              </Button>
+              <Button onClick={() => onReview(task, 'REJECT', note)}>
+                打回
+              </Button>
+            </Flex>
+          </div>
+        )}
 
       <Modal
         open={Boolean(threadRun)}
@@ -1923,3 +2119,165 @@ const TaskDetail = ({
 }
 
 export default TaskBoard
+
+function TaskEnvironmentPanel({ task, onChanged, setNotice }) {
+  const { data, error, loading, refetch } = useQuery(TASK_PRECHECK, {
+    variables: { id: task.id },
+    fetchPolicy: 'network-only',
+  })
+  const [retry] = useMutation(RETRY_TASK_ENVIRONMENT)
+  const [busy, setBusy] = useState(false)
+  const submitting = useRef(false)
+  const environment = data?.taskPrecheck?.environment
+  const resume = async () => {
+    if (submitting.current) return
+    submitting.current = true
+    setBusy(true)
+    try {
+      const result = await retry({ variables: { id: task.id } })
+      setNotice({
+        type: 'info',
+        message:
+          result.data?.retryTaskEnvironment?.status === 'ENVIRONMENT_BLOCKED'
+            ? '环境检查仍未通过，请先处理下面的阻塞项。'
+            : '已提交环境修复后的重试；岗位忙碌时会排队。',
+      })
+      await Promise.all([refetch(), onChanged()])
+    } catch (failure) {
+      setNotice({ type: 'error', message: failure.message })
+    } finally {
+      submitting.current = false
+      setBusy(false)
+    }
+  }
+  return (
+    <section className="task-plan-box" aria-label="执行环境预检">
+      <h4>执行环境预检</h4>
+      {task.blocker && (
+        <Alert
+          type="error"
+          title="环境阻塞，等待修复"
+          description={task.blocker.prompt}
+        />
+      )}
+      {loading && <p role="status">正在检查服务连接与目标目录…</p>}
+      {error && (
+        <Alert
+          type="error"
+          title="预检暂时无法完成"
+          description="请重新检查；执行前服务端仍会再次校验。"
+        />
+      )}
+      {environment && (
+        <ul>
+          {environment.checks.map((check) => (
+            <li key={check.key}>
+              <Tag
+                color={
+                  check.status === 'PASS'
+                    ? 'green'
+                    : check.status === 'BLOCKED'
+                      ? 'red'
+                      : 'gold'
+                }
+              >
+                {check.status === 'PASS'
+                  ? '通过'
+                  : check.status === 'BLOCKED'
+                    ? '阻塞'
+                    : '需注意'}
+              </Tag>
+              <strong>{check.label}</strong>：{check.detail}
+              {check.remedy && <p>{check.remedy}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <Flex gap={8}>
+        <Button loading={loading} onClick={() => refetch().catch(() => {})}>
+          重新检查环境
+        </Button>
+        {task.blocker && (
+          <Button
+            type="primary"
+            disabled={!environment?.ready || loading || Boolean(error)}
+            loading={busy}
+            onClick={resume}
+          >
+            环境已修复，重试
+          </Button>
+        )}
+      </Flex>
+      {task.blocker && environment?.ready && (
+        <p className="task-board-hint">
+          服务端检查已通过。请先处理上次执行报告的沙箱或权限问题，再重试；本次不会扩大原执行权限。
+        </p>
+      )}
+    </section>
+  )
+}
+
+function TaskConfirmation({ task, onChanged, setNotice }) {
+  const [note, setNote] = useState('')
+  const [confirm, { loading }] = useMutation(CONFIRM_TASK_CONTINUATION)
+  const [submitting, setSubmitting] = useState(false)
+  const submittingRef = useRef(false)
+  const [submittedRunId, setSubmittedRunId] = useState(null)
+  const request = task.confirmation
+  useEffect(() => {
+    setNote('')
+  }, [request.runId])
+  const submit = async () => {
+    if (submittingRef.current || submittedRunId === request.runId) return
+    submittingRef.current = true
+    setSubmitting(true)
+    try {
+      const result = await confirm({
+        variables: { id: task.id, runId: request.runId, note: note.trim() },
+      })
+      setSubmittedRunId(request.runId)
+      setNotice({
+        type: 'success',
+        message:
+          result.data?.confirmTaskContinuation?.status === 'ENVIRONMENT_BLOCKED'
+            ? '确认已保存，环境预检未通过，请修复后从环境重试入口继续。'
+            : '已确认并提交继续执行；岗位忙碌时会排队。',
+      })
+      await onChanged()
+    } catch (error) {
+      setNotice({ type: 'error', message: error.message })
+    } finally {
+      submittingRef.current = false
+      setSubmitting(false)
+    }
+  }
+  return (
+    <section className="task-plan-box" aria-label="人工确认">
+      <h4>等待人工确认</h4>
+      <Alert type="warning" title={request.prompt} />
+      <p>
+        请核对上面的操作对象和影响，再确认继续。需要补充配置或目标信息时，请填写确认意见。
+      </p>
+      <Input.TextArea
+        aria-label="确认意见"
+        placeholder="补充目标、配置说明或允许执行的范围（可选）"
+        value={note}
+        maxLength={1500}
+        rows={3}
+        onChange={(event) => setNote(event.target.value)}
+      />
+      <p className="task-board-hint">
+        确认后会携带本轮结果和历史产物发起下一轮。原只读与沙箱权限保持不变；宿主机权限问题仍需在运行环境处理。
+      </p>
+      <Button
+        type="primary"
+        icon={<Play size={14} />}
+        loading={loading || submitting}
+        disabled={submittedRunId === request.runId}
+        onClick={submit}
+      >
+        确认并继续
+      </Button>
+    </section>
+  )
+}

@@ -8,6 +8,10 @@ jest.mock('@cedarjs/web', () => ({
   useQuery: jest.fn(),
   useMutation: jest.fn(),
 }))
+jest.mock('src/components/MarkdownDocument/MarkdownDocument', () => ({
+  __esModule: true,
+  default: ({ content }) => <pre>{content}</pre>,
+}))
 
 const source = {
   enabled: true,

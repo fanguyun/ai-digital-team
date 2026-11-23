@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { readFileSync, lstatSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { promisify } from 'node:util'
@@ -23,25 +24,43 @@ const isIgnored = (file: string) =>
 export type WorkspaceSnapshot = Record<string, string>
 
 /**
- * 记一次工作区快照：路径 → git 状态码。
+ * 记一次工作区快照：路径 → git 状态码与内容指纹。
  * 派发前记一次，结束时再记一次，差集就是这次任务真正改动的文件。
  */
 export const snapshotWorkspace = async (
   repoRoot: string
 ): Promise<WorkspaceSnapshot> => {
   try {
-    const { stdout } = await run('git', ['status', '--porcelain=v1', '-uall'], {
-      cwd: repoRoot,
-      maxBuffer: 8 * 1024 * 1024,
-    })
+    const { stdout } = await run(
+      'git',
+      ['status', '--porcelain=v1', '-z', '-uall'],
+      {
+        cwd: repoRoot,
+        maxBuffer: 8 * 1024 * 1024,
+      }
+    )
 
     const snapshot: WorkspaceSnapshot = {}
-    for (const line of stdout.split('\n')) {
-      if (!line.trim()) continue
+    const entries = stdout.split('\0')
+    for (let index = 0; index < entries.length; index += 1) {
+      const line = entries[index]
+      if (!line) continue
       const status = line.slice(0, 2).trim()
-      const file = line.slice(3).trim()
+      const file = line.slice(3)
+      if (/[RC]/.test(status)) index += 1 // -z 的重命名原路径是下一项
       if (!file || isIgnored(file)) continue
-      snapshot[file] = status
+      let fingerprint = ''
+      try {
+        const absolute = path.join(repoRoot, file)
+        if (lstatSync(absolute).isFile()) {
+          fingerprint = createHash('sha256')
+            .update(readFileSync(absolute))
+            .digest('hex')
+        }
+      } catch {
+        /* 删除或不可读文件保留状态 */
+      }
+      snapshot[file] = fingerprint ? `${status}:${fingerprint}` : status
     }
     return snapshot
   } catch {
@@ -64,6 +83,13 @@ export const changedFiles = (
     if (isIgnored(file)) continue
     const previous = baseline[file]
     if (previous === status) continue
+    // 旧基线只有状态码，无法还原旧内容；沿用原比较规则。
+    if (
+      previous &&
+      !previous.includes(':') &&
+      previous === status.split(':')[0]
+    )
+      continue
     changed.push(file)
   }
 
@@ -131,7 +157,7 @@ const untrackedAdded = (repoRoot: string, file: string): FileDiff | null => {
 export const snapshotDiffStat = async (
   repoRoot: string,
   files?: string[]
-): Promise<DiffSnapshot> => {
+): Promise<DiffSnapshot | null> => {
   const snapshot: DiffSnapshot = {}
   const scoped = files?.length
     ? files.filter((file) => !isDiffIgnored(file))
@@ -157,7 +183,7 @@ export const snapshotDiffStat = async (
       }
     }
   } catch {
-    return snapshot
+    return null
   }
 
   // 未跟踪的新文件不在 diff 里，按行数补上
@@ -175,7 +201,7 @@ export const snapshotDiffStat = async (
       if (counted) snapshot[file] = counted
     }
   } catch {
-    // 读不到就只用已跟踪部分的统计
+    return null // 采集不完整，不把未知显示为零
   }
 
   return snapshot
@@ -253,7 +279,7 @@ export const summarizeDiffStat = (
   return { files, added, removed, byDirectory, uncategorized }
 }
 
-/** 汇总一次运行的交付统计；没有改动时返回 null */
+/** 已采集但没有改动时保留零统计，null 留给无法采集的历史运行。 */
 export const computeRunDiffStat = async ({
   repoRoot,
   baseline,
@@ -264,8 +290,8 @@ export const computeRunDiffStat = async ({
   files?: string[]
 }): Promise<RunDiffStat | null> => {
   const after = await snapshotDiffStat(repoRoot, files)
+  if (!after) return null
   const delta = diffStatDelta(baseline, after)
-  if (Object.keys(delta).length === 0) return null
   return summarizeDiffStat(delta, repoRoot)
 }
 

@@ -1,7 +1,6 @@
 import { useState } from 'react'
 
 import { Input, Modal } from 'antd'
-
 import {
   AlertTriangle,
   CheckCircle2,
@@ -47,6 +46,7 @@ const REFRESH_RUN = gql`
 `
 
 const TYPE_META = {
+  blocked: { label: '环境阻塞', icon: AlertTriangle },
   waiting: { label: '待确认', icon: ShieldAlert },
   approval: { label: '待批准方案', icon: ShieldAlert },
   review: { label: '待验收', icon: CheckCircle2 },
@@ -81,8 +81,16 @@ function ActionCenter({
     setNotice(null)
     setPending(item.id)
     try {
-      await action()
-      setNotice({ tone: 'success', text: successText })
+      const result = await action()
+      const blocked = Object.values(result?.data || {}).some(
+        (value) => value?.status === 'ENVIRONMENT_BLOCKED'
+      )
+      setNotice({
+        tone: blocked ? 'info' : 'success',
+        text: blocked
+          ? '请求已保存，环境预检未通过，请在任务详情查看阻塞原因。'
+          : successText,
+      })
       onRefresh?.()
     } catch (error) {
       setNotice({ tone: 'error', text: error.message || '操作失败' })

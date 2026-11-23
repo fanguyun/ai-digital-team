@@ -29,36 +29,35 @@ import {
 import { useMutation, useQuery, useSubscription } from '@cedarjs/web'
 
 import { useAuth } from 'src/auth'
-import { useTheme } from 'src/theme'
-
-import AgentOfficeView, {
-  formatTaskStage,
-} from 'src/components/AgentOfficeView/AgentOfficeView'
 import ActionCenter from 'src/components/ActionCenter/ActionCenter'
 import { buildActionCenterModel } from 'src/components/ActionCenter/actionItems'
 import AgentMetricsOverview, {
   formatJoinedAt,
 } from 'src/components/AgentMetricsOverview/AgentMetricsOverview'
+import { resolveMetricsRange } from 'src/components/AgentMetricsOverview/metricsTimeRange'
+import AgentOfficeView, {
+  formatTaskStage,
+} from 'src/components/AgentOfficeView/AgentOfficeView'
 import CapabilityHealthCenter from 'src/components/CapabilityHealthCenter/CapabilityHealthCenter'
+import MarkdownDocument from 'src/components/MarkdownDocument/MarkdownDocument'
 import OfficeStatGrid from 'src/components/OfficeStatGrid/OfficeStatGrid'
 import {
   RUNTIME_FILTER_LABELS,
   filterAgentsByRuntime,
 } from 'src/components/OfficeStatGrid/runtimeFilter'
-import MarkdownDocument from 'src/components/MarkdownDocument/MarkdownDocument'
 import RemoteApps from 'src/components/RemoteApps/RemoteApps'
 import RoleEvaluationHistory from 'src/components/RoleEvaluationHistory/RoleEvaluationHistory'
 import SkillMarket from 'src/components/SkillMarket/SkillMarket'
 import TaskBoard from 'src/components/TaskBoard/TaskBoard'
 import TaskPulse from 'src/components/TaskPulse/TaskPulse'
-import { resolveMetricsRange } from 'src/components/AgentMetricsOverview/metricsTimeRange'
 import TaskRuntimeCell from 'src/components/TaskRuntimeDashboard/TaskRuntimeDashboard'
 import WeeklyReport from 'src/components/WeeklyReport/WeeklyReport'
-import { copyText } from 'src/lib/clipboard'
-
-import agentManifest from '../../../../agents/manifest.json'
 import { RAFIKI_CREDIT, sceneForAgent } from 'src/illustrations/rafikiScenes'
 import { useThemedSceneSrc } from 'src/illustrations/useThemedSceneSrc'
+import { copyText } from 'src/lib/clipboard'
+import { useTheme } from 'src/theme'
+
+import agentManifest from '../../../../agents/manifest.json'
 
 const agents = agentManifest.agents
 const groups = ['全部岗位', ...agentManifest.groups]
@@ -162,7 +161,15 @@ const ACTION_CENTER_OVERVIEW = gql`
       name
       updatable
     }
-    tasks(statuses: ["AWAITING_APPROVAL", "AWAITING_REVIEW", "FAILED"]) {
+    tasks(
+      statuses: [
+        "AWAITING_APPROVAL"
+        "AWAITING_REVIEW"
+        "WAITING_CONFIRMATION"
+        "ENVIRONMENT_BLOCKED"
+        "FAILED"
+      ]
+    ) {
       id
       title
       agentSlug
@@ -171,6 +178,13 @@ const ACTION_CENTER_OVERVIEW = gql`
       updatedAt
       reviewNote
       planPath
+      blocker {
+        prompt
+      }
+      confirmation {
+        runId
+        prompt
+      }
       artifacts {
         id
       }
@@ -730,6 +744,16 @@ function App() {
             <ListChecks size={16} /> 任务
           </button>
           <button
+            className={`nav-item ${workspaceView === 'runs' ? 'active' : ''}`}
+            onClick={() => {
+              setWorkspaceView('runs')
+              setSidebarOpen(false)
+              setDetailOpen(false)
+            }}
+          >
+            <Activity size={16} /> 运行记录
+          </button>
+          <button
             className={`nav-item ${workspaceView === 'actions' ? 'active' : ''}`}
             onClick={() => {
               setWorkspaceView('actions')
@@ -743,16 +767,6 @@ function App() {
                 {actionCenterModel.counts.total}
               </span>
             )}
-          </button>
-          <button
-            className={`nav-item ${workspaceView === 'runs' ? 'active' : ''}`}
-            onClick={() => {
-              setWorkspaceView('runs')
-              setSidebarOpen(false)
-              setDetailOpen(false)
-            }}
-          >
-            <Activity size={16} /> 运行记录
           </button>
           <button
             className={`nav-item ${workspaceView === 'report' ? 'active' : ''}`}

@@ -21,6 +21,49 @@ const writeLog = (lines: string[]) => {
 }
 
 describe('parseTaskRunOutput', () => {
+  it.each([
+    '环境阻塞：思源连接失败，请检查部署网络。',
+    '待确认：请在允许访问团队 API 和思源服务的宿主机环境重跑本任务。',
+    '待确认：无法连接思源，请检查配置后重试。',
+  ])('distinguishes environment failures from approval (%s)', (content) => {
+    const logPath = writeLog([JSON.stringify({ type: 'final', text: content })])
+    const result = parseTaskRunOutput({ logPath, tool: 'deepseek-harness' })
+    expect(result.environmentBlock).toBeTruthy()
+    expect(result.confirmationRequest).toBeUndefined()
+  })
+  it.each(['codex', 'deepseek-harness'] as const)(
+    'extracts a confirmation request from the final %s reply before summary truncation',
+    (tool) => {
+      const content =
+        '检查结果'.repeat(200) +
+        '\n待确认：请确认目标笔记本后继续写入。\nartifact: docs/a.md'
+      const logPath = writeLog([
+        JSON.stringify(
+          tool === 'codex'
+            ? {
+                type: 'item.completed',
+                item: { type: 'agent_message', text: content },
+              }
+            : { type: 'final', text: content }
+        ),
+      ])
+      expect(parseTaskRunOutput({ logPath, tool }).confirmationRequest).toBe(
+        '请确认目标笔记本后继续写入。'
+      )
+    }
+  )
+
+  it('does not treat quoted or negative confirmation wording as a pending request', () => {
+    for (const content of ['已处理历史的待确认：目标问题。', '待确认：无。']) {
+      const logPath = writeLog([
+        JSON.stringify({ type: 'final', text: content }),
+      ])
+      expect(
+        parseTaskRunOutput({ logPath, tool: 'deepseek-harness' })
+          .confirmationRequest
+      ).toBeUndefined()
+    }
+  })
   it('reads codex final message and artifact lines', () => {
     const file = writeLog([
       '{"type":"thread.started","thread_id":"abc"}',

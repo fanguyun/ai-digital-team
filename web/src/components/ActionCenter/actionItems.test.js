@@ -3,6 +3,67 @@ import { buildActionCenterModel, STALE_TASK_THRESHOLD_MS } from './actionItems'
 const now = new Date('2026-10-16T08:00:00.000Z')
 
 describe('action center model', () => {
+  it('shows environment blockers once without offering human approval for the old run', () => {
+    const model = buildActionCenterModel({
+      now,
+      tasks: [
+        {
+          id: 'blocked-task',
+          status: 'ENVIRONMENT_BLOCKED',
+          updatedAt: now,
+          blocker: { prompt: '团队API未启动' },
+        },
+      ],
+      taskRuns: [
+        {
+          id: 'old-wait',
+          taskId: 'blocked-task',
+          status: 'WAITING_CONFIRMATION',
+          updatedAt: now,
+        },
+      ],
+    })
+    expect(model.items).toEqual([
+      expect.objectContaining({
+        type: 'blocked',
+        actionLabel: '检查执行环境',
+        section: 'runs',
+        description: '团队API未启动',
+      }),
+    ])
+    expect(model.counts.waiting).toBe(0)
+  })
+  it('routes both new and historical pending confirmations to the task instead of offering review approval', () => {
+    const model = buildActionCenterModel({
+      now,
+      tasks: ['WAITING_CONFIRMATION', 'AWAITING_REVIEW'].map((status, i) => ({
+        id: `task-${i}`,
+        status,
+        updatedAt: now,
+        confirmation: { runId: `run-${i}`, prompt: '确认目标后继续' },
+      })),
+      taskRuns: [
+        {
+          id: 'run-0',
+          taskId: 'task-0',
+          status: 'WAITING_CONFIRMATION',
+          updatedAt: now,
+        },
+      ],
+    })
+    expect(model.items).toHaveLength(2)
+    expect(
+      model.items.every(
+        (item) =>
+          item.type === 'waiting' &&
+          item.action === 'tasks' &&
+          item.section === 'runs' &&
+          item.actionLabel === '查看并确认'
+      )
+    ).toBe(true)
+    expect(model.counts.review).toBe(0)
+    expect(model.counts.waiting).toBe(2)
+  })
   it('keeps linked runtime confirmations visible when no task approval card exists', () => {
     const model = buildActionCenterModel({
       now,

@@ -4,19 +4,58 @@ jest.mock('src/lib/logger', () => ({
 
 jest.mock('src/lib/db', () => ({
   db: {
-    taskRun: { create: jest.fn(), update: jest.fn() },
-    taskEvent: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
+    taskRun: {
+      create: jest.fn(),
+      update: jest.fn(),
+      findFirst: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
+      findMany: jest.fn(),
+      deleteMany: jest.fn(),
+    },
+    taskEvent: {
+      findUnique: jest.fn(),
+      findFirst: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      deleteMany: jest.fn(),
+    },
+    $transaction: jest.fn(),
+    $queryRaw: jest.fn(),
   },
+}))
+
+jest.mock('./roleEvaluationSessions', () => ({
+  findDshSessionFile: jest.fn(),
+  sessionIdFromLog: jest.fn(),
+}))
+jest.mock('./roleEvaluationDispatch', () => ({
+  resolveRepoRoot: () => '/repo',
 }))
 
 import { db } from 'src/lib/db'
 
-import { upsertDeepSeekSession } from './deepseekSessionSync'
 import type { DeepSeekSessionSnapshot } from './deepseekSessions'
+import { upsertDeepSeekSession } from './deepseekSessionSync'
+import { sessionIdFromLog } from './roleEvaluationSessions'
 
 const mockedDb = db as unknown as {
-  taskRun: { create: jest.Mock; update: jest.Mock }
-  taskEvent: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock }
+  taskRun: {
+    create: jest.Mock
+    update: jest.Mock
+    findFirst: jest.Mock
+    findUniqueOrThrow: jest.Mock
+    findMany: jest.Mock
+    deleteMany: jest.Mock
+  }
+  taskEvent: {
+    findUnique: jest.Mock
+    findFirst: jest.Mock
+    create: jest.Mock
+    update: jest.Mock
+    deleteMany: jest.Mock
+  }
+  $transaction: jest.Mock
+  $queryRaw: jest.Mock
 }
 
 const snapshotFor = (
@@ -65,7 +104,239 @@ const pubSubFor = () => ({ publish: jest.fn().mockResolvedValue(undefined) })
 
 describe('upsertDeepSeekSession', () => {
   beforeEach(() => {
-    jest.clearAllMocks()
+    jest.resetAllMocks()
+    mockedDb.$transaction.mockImplementation((operation) => operation(mockedDb))
+    mockedDb.taskRun.findMany.mockResolvedValue([])
+    mockedDb.taskRun.findFirst.mockResolvedValue(null)
+    mockedDb.taskEvent.findFirst.mockResolvedValue(null)
+  })
+
+  it.each(['codex', 'deepseek-harness'] as const)(
+    'reuses the dispatched %s run without overwriting its state or summary',
+    async (platform) => {
+      const sessionId = '26e1582f-67b1-4bbc-9f0a-a672d4b5fc74'
+      const snapshot = snapshotFor({ platform, sessionId: `${sessionId}:1` })
+      const managed = {
+        ...taskRunFor(snapshot),
+        id: 'managed-run',
+        taskId: 'task-1',
+        status: 'FAILED',
+        currentStage: 'PLANNING',
+        summary: '真实执行失败原因',
+      }
+      mockedDb.taskRun.findFirst.mockResolvedValueOnce(managed)
+      mockedDb.taskRun.findUniqueOrThrow.mockResolvedValue(managed)
+      mockedDb.taskEvent.findUnique.mockResolvedValue(null)
+      mockedDb.taskEvent.findFirst.mockResolvedValue({ sequence: 4 })
+      const result = await upsertDeepSeekSession(snapshot)
+      expect(result).toBe(managed)
+      expect(mockedDb.taskRun.create).not.toHaveBeenCalled()
+      expect(mockedDb.taskRun.update).not.toHaveBeenCalled()
+      expect(mockedDb.taskRun.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            platform,
+            taskId: { not: null },
+            OR:
+              platform === 'codex'
+                ? [
+                    {
+                      externalReference: {
+                        startsWith: 'task:',
+                        endsWith: `:${sessionId}`,
+                      },
+                    },
+                  ]
+                : [
+                    {
+                      externalReference: {
+                        startsWith: 'task:',
+                        endsWith: `:${sessionId}`,
+                      },
+                    },
+                    {
+                      externalReference: {
+                        startsWith: 'task:',
+                        endsWith: `:session-${sessionId}`,
+                      },
+                    },
+                  ],
+          },
+        })
+      )
+      expect(mockedDb.taskEvent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          taskRunId: 'managed-run',
+          sequence: 5,
+          status: 'FAILED',
+          stage: 'PLANNING',
+          inputTokens: 10,
+        }),
+      })
+    }
+  )
+
+  it('finds the reserved run from its CLI log before captureSession has saved the reference', async () => {
+    const snapshot = snapshotFor({
+      platform: 'codex',
+      sessionId: 'session-1:1',
+    })
+    const reserved = {
+      ...taskRunFor(snapshot),
+      id: 'reserved-run',
+      taskId: 'task-1',
+      externalReference: 'task:task-1',
+      logPath: 'docs/tasks/logs/run.log',
+    }
+    mockedDb.taskRun.findMany.mockResolvedValue([reserved])
+    mockedDb.taskRun.findUniqueOrThrow.mockResolvedValue(reserved)
+    jest.mocked(sessionIdFromLog).mockReturnValue('session-1')
+    mockedDb.taskEvent.findUnique.mockResolvedValue(null)
+    expect(await upsertDeepSeekSession(snapshot)).toBe(reserved)
+    expect(mockedDb.taskRun.create).not.toHaveBeenCalled()
+    expect(sessionIdFromLog).toHaveBeenCalledWith(
+      '/repo/docs/tasks/logs/run.log',
+      'codex'
+    )
+  })
+
+  it('moves usage from an existing automatic mirror before removing only that mirror', async () => {
+    const snapshot = snapshotFor({ sessionId: 'session-1:1' })
+    const managed = {
+      ...taskRunFor(snapshot),
+      id: 'managed-run',
+      taskId: 'task-1',
+    }
+    const mirror = { ...taskRunFor(snapshot), id: 'mirror-run', taskId: null }
+    mockedDb.taskRun.findFirst
+      .mockResolvedValueOnce(managed)
+      .mockResolvedValueOnce(mirror)
+    mockedDb.taskRun.findUniqueOrThrow.mockResolvedValue(managed)
+    mockedDb.taskEvent.findUnique
+      .mockResolvedValueOnce({ taskRun: mirror })
+      .mockResolvedValueOnce({
+        ...usageEventFor(snapshot),
+        taskRunId: 'mirror-run',
+      })
+    mockedDb.taskEvent.findFirst.mockResolvedValue({ sequence: 3 })
+    await upsertDeepSeekSession(snapshot)
+    expect(mockedDb.taskEvent.update).toHaveBeenCalledWith({
+      where: { id: 'usage-1' },
+      data: expect.objectContaining({ taskRunId: 'managed-run', sequence: 4 }),
+    })
+    expect(mockedDb.taskRun.deleteMany).toHaveBeenCalledWith({
+      where: {
+        id: 'mirror-run',
+        taskId: null,
+        events: { none: {} },
+        deliveredArtifacts: { none: {} },
+      },
+    })
+    expect(mockedDb.taskRun.create).not.toHaveBeenCalled()
+  })
+
+  it('preserves a mirror that acquired real task data or non-sync events', async () => {
+    const snapshot = snapshotFor()
+    const managed = { ...taskRunFor(snapshot), id: 'managed-run' }
+    const mirror = { ...taskRunFor(snapshot), id: 'mirror-run' }
+    mockedDb.taskRun.findFirst
+      .mockResolvedValueOnce(managed)
+      .mockResolvedValueOnce(null)
+    mockedDb.taskRun.findUniqueOrThrow.mockResolvedValue(managed)
+    mockedDb.taskEvent.findUnique.mockResolvedValueOnce({ taskRun: mirror })
+    await upsertDeepSeekSession(snapshot)
+    expect(mockedDb.taskRun.deleteMany).not.toHaveBeenCalled()
+    expect(mockedDb.taskEvent.deleteMany).not.toHaveBeenCalled()
+    expect(mockedDb.taskEvent.update).not.toHaveBeenCalled()
+  })
+
+  it('matches the prefixed DeepSeek CLI session ID before capture completes', async () => {
+    const sessionId = '26e1582f-67b1-4bbc-9f0a-a672d4b5fc74'
+    const snapshot = snapshotFor({ sessionId: `${sessionId}:1` })
+    const reserved = {
+      ...taskRunFor(snapshot),
+      taskId: 'task-1',
+      externalReference: 'task:task-1',
+      logPath: 'docs/tasks/logs/run.log',
+    }
+    mockedDb.taskRun.findMany.mockResolvedValue([reserved])
+    mockedDb.taskRun.findUniqueOrThrow.mockResolvedValue(reserved)
+    jest.mocked(sessionIdFromLog).mockReturnValue(`session-${sessionId}`)
+    expect(await upsertDeepSeekSession(snapshot)).toBe(reserved)
+    expect(mockedDb.taskRun.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            {
+              externalReference: {
+                startsWith: 'task:',
+                endsWith: `:${sessionId}`,
+              },
+            },
+            {
+              externalReference: {
+                startsWith: 'task:',
+                endsWith: `:session-${sessionId}`,
+              },
+            },
+          ],
+        }),
+      })
+    )
+    expect(mockedDb.taskRun.create).not.toHaveBeenCalled()
+  })
+
+  it.each(['codex', 'deepseek-harness'] as const)(
+    'preserves a separate second turn in a dispatched %s session',
+    async (platform) => {
+      const snapshot = snapshotFor({ platform, sessionId: 'session-1:2' })
+      const secondTurn = {
+        ...taskRunFor(snapshot),
+        summary:
+          platform === 'codex'
+            ? 'Codex · ai-digital-team'
+            : 'DeepSeek Harness · ai-digital-team',
+      }
+      mockedDb.taskEvent.findUnique
+        .mockResolvedValueOnce({ taskRun: secondTurn })
+        .mockResolvedValueOnce(usageEventFor(snapshot))
+      expect(await upsertDeepSeekSession(snapshot)).toBe(secondTurn)
+      expect(mockedDb.taskRun.findFirst).not.toHaveBeenCalled()
+      expect(mockedDb.taskRun.findMany).not.toHaveBeenCalled()
+      expect(mockedDb.taskRun.deleteMany).not.toHaveBeenCalled()
+    }
+  )
+
+  it('defers token events until the reserved run has its initial dispatch event', async () => {
+    const snapshot = snapshotFor()
+    const reserved = { ...taskRunFor(snapshot), status: 'QUEUED' }
+    mockedDb.taskRun.findFirst.mockResolvedValueOnce(reserved)
+    mockedDb.taskRun.findUniqueOrThrow.mockResolvedValue(reserved)
+    expect(await upsertDeepSeekSession(snapshot)).toBe(reserved)
+    expect(mockedDb.taskEvent.create).not.toHaveBeenCalled()
+    expect(mockedDb.taskRun.create).not.toHaveBeenCalled()
+  })
+
+  it('retains known tokens when a later snapshot temporarily lacks usage', async () => {
+    const previous = snapshotFor()
+    const snapshot = snapshotFor({
+      modelId: undefined,
+      inputTokens: undefined,
+      outputTokens: undefined,
+      cachedTokens: undefined,
+    })
+    const managed = {
+      ...taskRunFor(snapshot),
+      primaryAgent: snapshot.primaryAgent,
+    }
+    mockedDb.taskRun.findFirst.mockResolvedValueOnce(managed)
+    mockedDb.taskRun.findUniqueOrThrow.mockResolvedValue(managed)
+    mockedDb.taskEvent.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(usageEventFor(previous))
+    await upsertDeepSeekSession(snapshot)
+    expect(mockedDb.taskEvent.update).not.toHaveBeenCalled()
+    expect(mockedDb.taskEvent.create).not.toHaveBeenCalled()
   })
 
   it('creates a task run and its usage event on first sync', async () => {

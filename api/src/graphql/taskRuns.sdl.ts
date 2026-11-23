@@ -34,6 +34,9 @@ export const schema = gql`
     logPath: String
     mode: String!
     dirtyAtDispatch: Boolean!
+    projectKey: String
+    projectName: String
+    continuationStatus: String
     inputTokens: Int
     outputTokens: Int
     cachedTokens: Int
@@ -145,7 +148,20 @@ export const schema = gql`
     removed: Int!
   }
 
+  type DeliveryProjectStat {
+    projectKey: String
+    projectName: String!
+    files: Int!
+    added: Int!
+    removed: Int!
+    byDirectory: [DeliveryDirectoryStat!]!
+    uncategorized: DeliveryStat!
+    coveredRuns: Int!
+    totalRuns: Int!
+  }
+
   type TeamDeliveryStat {
+    byProject: [DeliveryProjectStat!]!
     files: Int!
     added: Int!
     removed: Int!
