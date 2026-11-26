@@ -365,6 +365,7 @@ export const readSessionTurnTrace = async ({
       tool: 'codex',
       sessionId,
       projectRoot,
+      messageChars: limits?.messageChars,
     })
     return {
       turn,

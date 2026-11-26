@@ -77,11 +77,17 @@ const STATUS = {
   FAILED: '未写入',
 }
 
-export default function KnowledgePublisher({ taskId, artifacts = [] }) {
+export default function KnowledgePublisher({
+  taskId,
+  artifacts = [],
+  workflowArtifactId,
+  onChanged,
+  readOnly = false,
+}) {
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [markdown, setMarkdown] = useState('')
-  const [artifactId, setArtifactId] = useState(null)
+  const [artifactId, setArtifactId] = useState(workflowArtifactId || null)
   const [notebookId, setNotebookId] = useState(null)
   const [directory, setDirectory] = useState('')
   const [snapshot, setSnapshot] = useState(null)
@@ -164,25 +170,49 @@ export default function KnowledgePublisher({ taskId, artifacts = [] }) {
             : record.error || '结果仍待核对，请稍后重试。',
       })
       await refreshRecords()
+      await onChanged?.()
     })
   const start = () => {
     setSnapshot(null)
     setNotice(null)
+    if (
+      eligibleArtifacts.length &&
+      (workflowArtifactId || (!artifactId && !markdown.trim()))
+    ) {
+      const document = eligibleArtifacts[0]
+      setArtifactId(document.id)
+      setTitle(
+        document.path
+          .split('/')
+          .pop()
+          .replace(/\.(md|txt)$/i, '')
+      )
+    }
     setOpen(true)
   }
   return (
     <section className="task-plan-box" aria-label="知识库文档入库">
       <Flex gap={8} align="center" wrap>
         <strong>知识库文档入库</strong>
-        <Button onClick={start}>将文档写入知识库</Button>
+        <Button onClick={start} disabled={readOnly}>
+          将文档写入知识库
+        </Button>
         <Button type="text" onClick={() => refreshRecords().catch(() => {})}>
           刷新入库记录
         </Button>
       </Flex>
       <p>
-        选择任务文档或粘贴 AI
-        产物，预览正文与目标后确认。后端写入思源并回读验证；同名不同正文不会被覆盖。
+        {workflowArtifactId
+          ? '使用当前已通过核验的报告，'
+          : '选择任务文档或粘贴 AI 产物，'}
+        预览正文与目标后确认。后端写入思源并回读验证；同名不同正文不会被覆盖。
       </p>
+      {taskId && (
+        <p>
+          文档已生成时可直接在此入库，无需重跑
+          Agent；执行沙箱的网络报错不决定后端入库结果。
+        </p>
+      )}
       {recordError && (
         <Alert
           type="error"
@@ -255,12 +285,15 @@ export default function KnowledgePublisher({ taskId, artifacts = [] }) {
             <Select
               id="publication-source"
               aria-label="文档来源"
+              disabled={Boolean(workflowArtifactId)}
               value={artifactId || 'paste'}
               onChange={(value) =>
                 setArtifactId(value === 'paste' ? null : value)
               }
               options={[
-                { value: 'paste', label: '粘贴 AI 生成的正文' },
+                ...(!workflowArtifactId
+                  ? [{ value: 'paste', label: '粘贴 AI 生成的正文' }]
+                  : []),
                 ...eligibleArtifacts.map((artifact) => ({
                   value: artifact.id,
                   label: artifact.label + ' · ' + artifact.path,
@@ -344,15 +377,18 @@ export default function KnowledgePublisher({ taskId, artifacts = [] }) {
             {snapshot.documentUrl && (
               <a href={snapshot.documentUrl}>在思源中打开已验证文档</a>
             )}
-            {snapshot.status !== 'VERIFIED' && (
-              <Button type="primary" loading={busy} onClick={confirm}>
-                {snapshot.status === 'PREPARED' || snapshot.status === 'FAILED'
-                  ? '确认写入思源并回读验证'
-                  : '重试核对（避免重复创建）'}
-              </Button>
-            )}
+            {snapshot.status !== 'VERIFIED' &&
+              (!readOnly ||
+                !['PREPARED', 'FAILED'].includes(snapshot.status)) && (
+                <Button type="primary" loading={busy} onClick={confirm}>
+                  {snapshot.status === 'PREPARED' ||
+                  snapshot.status === 'FAILED'
+                    ? '确认写入思源并回读验证'
+                    : '重试核对（避免重复创建）'}
+                </Button>
+              )}
             <Button
-              disabled={busy}
+              disabled={busy || readOnly}
               onClick={() => {
                 setSnapshot(null)
                 setNotice(null)

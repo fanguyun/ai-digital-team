@@ -4,6 +4,7 @@ jest.mock('src/lib/logger', () => ({
 
 jest.mock('src/lib/db', () => ({
   db: {
+    workflowAttempt: { findMany: jest.fn() },
     taskRun: {
       create: jest.fn(),
       update: jest.fn(),
@@ -39,6 +40,7 @@ import { upsertDeepSeekSession } from './deepseekSessionSync'
 import { sessionIdFromLog } from './roleEvaluationSessions'
 
 const mockedDb = db as unknown as {
+  workflowAttempt: { findMany: jest.Mock }
   taskRun: {
     create: jest.Mock
     update: jest.Mock
@@ -106,10 +108,66 @@ describe('upsertDeepSeekSession', () => {
   beforeEach(() => {
     jest.resetAllMocks()
     mockedDb.$transaction.mockImplementation((operation) => operation(mockedDb))
+    mockedDb.workflowAttempt.findMany.mockResolvedValue([])
     mockedDb.taskRun.findMany.mockResolvedValue([])
     mockedDb.taskRun.findFirst.mockResolvedValue(null)
     mockedDb.taskEvent.findFirst.mockResolvedValue(null)
   })
+
+  it.each(['codex', 'deepseek-harness'] as const)(
+    'keeps workflow %s sessions on the single parent run',
+    async (platform) => {
+      const parent = { id: 'workflow-run', status: 'RUNNING' }
+      mockedDb.workflowAttempt.findMany.mockResolvedValue([
+        { sessionId: 'worker-id', step: { workflow: { run: parent } } },
+      ])
+      const result = await upsertDeepSeekSession(
+        snapshotFor({ platform, sessionId: 'worker-id:1' })
+      )
+      expect(result).toEqual(parent)
+      expect(mockedDb.taskRun.create).not.toHaveBeenCalled()
+      expect(mockedDb.taskRun.update).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each([true, false])(
+    'cleans only an unmodified automatic workflow mirror (safe=%s)',
+    async (safe) => {
+      const parent = { id: 'workflow-run', status: 'RUNNING' }
+      const reference = 'codex-task:worker-id:1'
+      mockedDb.workflowAttempt.findMany.mockResolvedValue([
+        { sessionId: 'worker-id', step: { workflow: { run: parent } } },
+      ])
+      const mirror = {
+        id: 'mirror-run',
+        taskId: null,
+        externalReference: reference,
+      }
+      mockedDb.taskEvent.findUnique.mockResolvedValue({
+        taskRunId: mirror.id,
+        taskRun: mirror,
+      })
+      mockedDb.taskRun.findFirst.mockResolvedValue(safe ? mirror : null)
+      const result = await upsertDeepSeekSession(
+        snapshotFor({ platform: 'codex', sessionId: 'worker-id:1' })
+      )
+      expect(result).toEqual(parent)
+      expect(mockedDb.taskRun.create).not.toHaveBeenCalled()
+      expect(mockedDb.taskRun.update).not.toHaveBeenCalled()
+      if (safe) {
+        expect(mockedDb.taskRun.deleteMany).toHaveBeenCalledWith({
+          where: expect.objectContaining({
+            id: mirror.id,
+            taskId: null,
+            events: { none: {} },
+          }),
+        })
+      } else {
+        expect(mockedDb.taskEvent.deleteMany).not.toHaveBeenCalled()
+        expect(mockedDb.taskRun.deleteMany).not.toHaveBeenCalled()
+      }
+    }
+  )
 
   it.each(['codex', 'deepseek-harness'] as const)(
     'reuses the dispatched %s run without overwriting its state or summary',

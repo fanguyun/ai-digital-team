@@ -3,13 +3,14 @@ import { createHash } from 'node:crypto'
 import type { KnowledgeItem, KnowledgeStatus } from './knowledgeRetrieval'
 
 /** 直连思源：只用只读接口，不发送 SQL，不接受调用方传入的语句 */
-export const SIYUAN_ADAPTER_VERSION = 'siyuan-fulltext-v1'
+export const SIYUAN_ADAPTER_VERSION = 'siyuan-fulltext-v2'
 const MAX_RESPONSE_BYTES = 256 * 1024
 const MAX_ITEMS = 6
 const MAX_CONTENT_LENGTH = 1500
 const PROBE_TIMEOUT_MS = 2000
 
 type SiYuanBlock = {
+  type?: string
   id?: string
   box?: string
   rootID?: string
@@ -26,6 +27,31 @@ export type SiYuanSearchOutcome =
   | { status: Exclude<KnowledgeStatus, 'hit' | 'disabled'> }
 
 const idPattern = /^\d{14}-[a-z0-9]{7}$/
+
+const queryStopwords = new Set(
+  '根据 已有 知识 知识库 笔记 文档 请 帮 帮我 整理 生成 一份 本周 行动 清单 如何 怎样 怎么 什么 为什么 哪些 是否 一个 可以 需要 进行 关于 结合 避免 变成 判断 值得 继续 的 了 和 与 把 还 我'.split(
+    ' '
+  )
+)
+
+/** 仅提取字面关键词，不生成查询语法或 SQL；短语和块 ID 保持原样。 */
+export const siyuanKeywordQuery = (query: string) => {
+  const bounded = query.trim().slice(0, 300)
+  if (idPattern.test(bounded)) return bounded
+  const words = [
+    ...new Intl.Segmenter('zh', { granularity: 'word' }).segment(bounded),
+  ]
+    .filter((part) => part.isWordLike)
+    .map((part) => part.segment)
+  if (words.length <= 2 && !/[，。？！?！\s]/.test(bounded)) return bounded
+  return [
+    ...new Set(
+      words.filter((word) => word.length >= 2 && !queryStopwords.has(word))
+    ),
+  ]
+    .slice(0, 6)
+    .join(' ')
+}
 
 const decodeEntities = (value: string) =>
   value
@@ -125,27 +151,39 @@ export const searchSiYuan = async ({
   notebooks?: string[]
   fetchImpl?: typeof fetch
 }): Promise<SiYuanSearchOutcome> => {
-  if (!query.trim()) return { status: 'empty' }
+  const keywords = siyuanKeywordQuery(query)
+  if (!keywords) return { status: 'empty' }
 
   try {
-    const response = await withTimeout(timeoutMs, (signal) =>
-      fetchImpl(`${origin}/api/search/fullTextSearchBlock`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...authHeader(token),
-        },
-        body: JSON.stringify({
-          query: query.slice(0, 300),
-          page: 1,
-          size: MAX_ITEMS,
-          method: 0,
-          orderBy: 0,
-          groupBy: 0,
-        }),
-        redirect: 'error',
-        signal,
-      })
+    const { response, parsed } = await withTimeout(
+      timeoutMs,
+      async (signal) => {
+        const response = await fetchImpl(
+          `${origin}/api/search/fullTextSearchBlock`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...authHeader(token),
+            },
+            body: JSON.stringify({
+              query: keywords,
+              page: 1,
+              pageSize: MAX_ITEMS,
+              boxes: notebooks,
+              method: 0,
+              orderBy: 7,
+              groupBy: 0,
+            }),
+            redirect: 'error',
+            signal,
+          }
+        )
+        return {
+          response,
+          parsed: response.ok ? await readLimitedJson(response) : null,
+        }
+      }
     )
 
     if (response.status === 401 || response.status === 403) {
@@ -157,8 +195,7 @@ export const searchSiYuan = async ({
       return { status: 'source_unavailable' }
     }
 
-    const parsed = await readLimitedJson(response)
-    if (!parsed.ok) return { status: 'invalid_response' }
+    if (!parsed?.ok) return { status: 'invalid_response' }
     const body = parsed.body as {
       code?: number
       data?: { blocks?: SiYuanBlock[] }
@@ -169,7 +206,18 @@ export const searchSiYuan = async ({
 
     const now = new Date().toISOString()
     const items: KnowledgeItem[] = []
-    for (const block of body.data.blocks) {
+    // 标题与正文可能一并命中。先给模型正文，避免每文档的片段额度被标题占满。
+    // 同类块保留思源的相关度顺序；只有标题命中时仍可作为来源返回。
+    const blocks = [...body.data.blocks].sort(
+      (left, right) =>
+        Number(
+          ['d', 'h', 'NodeDocument', 'NodeHeading'].includes(left.type || '')
+        ) -
+        Number(
+          ['d', 'h', 'NodeDocument', 'NodeHeading'].includes(right.type || '')
+        )
+    )
+    for (const block of blocks) {
       const blockId = block.id || ''
       const documentId = block.rootID || ''
       const notebookId = block.box || ''

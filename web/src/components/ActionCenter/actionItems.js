@@ -43,16 +43,57 @@ export const buildActionCenterModel = ({
     ],
   }
   for (const task of tasks) {
-    const metadata = task.blocker
-      ? ['blocked', task.blocker.prompt, '检查执行环境', 'runs']
-      : task.confirmation
-        ? ['waiting', task.confirmation.prompt, '查看并确认', 'runs']
-        : taskTypes[task.status]
+    const workflowMetadata = {
+      NEEDS_INPUT: [
+        'waiting',
+        '研究任务需要补充资料或说明。',
+        '补充研究信息',
+        'workflow',
+      ],
+      WAITING_CONFIRMATION: [
+        'waiting',
+        '报告已核验，请确认正文及思源入库目标。',
+        '预览并确认入库',
+        'workflow',
+      ],
+      REVIEW_FAILED: [
+        'review',
+        '自动返工后核验仍未通过，请查看核验意见。',
+        '查看核验并返工',
+        'workflow',
+      ],
+      BLOCKED: [
+        'blocked',
+        '资料来源或执行环境不可用，请修复或缩小来源范围。',
+        '处理研究阻塞',
+        'workflow',
+      ],
+      PUBLICATION_FAILED: [
+        'blocked',
+        '入库结果待核对，请沿用原快照核对结果。',
+        '核对入库结果',
+        'workflow',
+      ],
+      FAILED: [
+        'failed',
+        '当前步骤执行失败，请查看日志后重试。',
+        '重试工作流步骤',
+        'workflow',
+      ],
+    }[task.workflow?.status]
+    const metadata = task.workflow
+      ? workflowMetadata
+      : task.blocker
+        ? ['blocked', task.blocker.prompt, '检查执行环境', 'runs']
+        : task.confirmation
+          ? ['waiting', task.confirmation.prompt, '查看并确认', 'runs']
+          : taskTypes[task.status]
     if (!metadata) continue
     const [type, description, actionLabel, section] = metadata
     items.push({
       id: `task-${task.id}`,
       taskId: task.id,
+      workflow: Boolean(task.workflow),
       type,
       priority:
         task.blocker || task.confirmation || task.priority === 'P0'
@@ -62,8 +103,9 @@ export const buildActionCenterModel = ({
             : 'medium',
       title: task.title,
       agent: task.agentSlug,
-      description:
-        type === 'failed'
+      description: task.workflow
+        ? task.workflow.note || description
+        : type === 'failed'
           ? task.runs?.[0]?.summary || task.reviewNote || description
           : description,
       meta: waitLabel(minutesSince(task.updatedAt, now)),

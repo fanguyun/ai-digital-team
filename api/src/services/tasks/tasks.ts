@@ -56,6 +56,13 @@ import {
   snapshotDiffStat,
   snapshotWorkspace,
 } from 'src/lib/taskWorkspace'
+import {
+  advanceWorkflow,
+  cancelWorkflow,
+  getWorkflow,
+  sweepWorkflows,
+  syncWorkflowPublication,
+} from 'src/lib/workflowRuntime'
 import { reconcileRunningEvaluations } from 'src/services/roleEvaluations/roleEvaluations'
 import { resolveTaskImages } from 'src/services/taskImages/taskImages'
 
@@ -147,6 +154,8 @@ const reconcileTask = async (
   },
   options: { force?: boolean } = {}
 ) => {
+  if ((task as { workflow?: unknown }).workflow)
+    return { row: task, changed: false }
   if (!ACTIVE_STATUSES.has(task.status as never))
     return { row: task, changed: false }
   const run = task.runs[0]
@@ -405,6 +414,7 @@ const reconcileTask = async (
 }
 
 const withRelations = {
+  workflow: true,
   runs: { orderBy: { startedAt: 'desc' as const }, take: 5 },
   artifacts: {
     orderBy: { createdAt: 'asc' as const },
@@ -553,6 +563,10 @@ export const updateTask = async ({
     include: withRelations,
   })
   if (!row) throw new UserInputError('任务不存在')
+  if (row.workflow)
+    throw new UserInputError(
+      '工作流任务请使用步骤操作，不能通过普通任务接口修改或跳过步骤'
+    )
   if (
     ACTIVE_STATUSES.has(row.status as never) ||
     row.status === STATUS.QUEUED
@@ -634,6 +648,7 @@ const taskEnvironmentBlock = (row: {
     platform: string
   }>
 }) => {
+  if ((row as { workflow?: unknown }).workflow) return null
   if (row.status === STATUS.ENVIRONMENT_BLOCKED)
     return { prompt: row.reviewNote || '请检查执行环境后重试。' }
   if (
@@ -672,6 +687,7 @@ const pendingTaskConfirmation = (row: {
     mode?: string
   }>
 }) => {
+  if ((row as { workflow?: unknown }).workflow) return null
   if (taskEnvironmentBlock(row)) return null
   const latest = row.runs[0]
   if (
@@ -771,6 +787,10 @@ export const dispatchTask = async ({
     include: withRelations,
   })
   if (!row) throw new UserInputError('任务不存在')
+  if (row.workflow)
+    throw new UserInputError(
+      '工作流任务请使用步骤操作，不能通过普通任务接口修改或跳过步骤'
+    )
   if (row.status === STATUS.QUEUED && !resumeQueued) {
     throw new UserInputError('任务已在排队，请等待启动或先取消排队')
   }
@@ -1007,6 +1027,7 @@ export const dispatchTask = async ({
     const active = await transaction.taskRun.findMany({
       where: {
         primaryAgent: row.agentSlug,
+        mode: { not: 'workflow' },
         status: { in: ['QUEUED', 'RUNNING'] },
       },
     })
@@ -1029,7 +1050,16 @@ export const dispatchTask = async ({
       await closeLegacyEnvironmentWait()
       return null
     }
+    const workflowBusy = transaction.workflowAttempt
+      ? await transaction.workflowAttempt.count({
+          where: {
+            status: { in: ['QUEUED', 'RUNNING'] },
+            step: { agentSlug: row.agentSlug },
+          },
+        })
+      : 0
     if (
+      workflowBusy ||
       active.some(
         (candidate) =>
           alive(candidate.pid) ||
@@ -1297,6 +1327,9 @@ const captureSession = async (
         })
         return
       }
+      // Codex 的日志会给出精确 thread_id。按工作目录和更新时间猜测，
+      // 会误关联到同时运行的另一个会话；等待下一次日志读取即可。
+      if (tool === 'codex') continue
       const found = await discoverSession({
         tool,
         projectRoot,
@@ -1323,7 +1356,7 @@ const promoteQueuedFor = async (agentSlug: string) => {
   promoting.add(agentSlug)
   try {
     const next = await db.task.findFirst({
-      where: { agentSlug, status: STATUS.QUEUED },
+      where: { agentSlug, status: STATUS.QUEUED, workflow: { is: null } },
       orderBy: { createdAt: 'asc' },
     })
     if (next) await dispatchTask({ id: next.id, resumeQueued: true })
@@ -1432,7 +1465,10 @@ const sweepOrphanRuns = async () => {
 
 export const sweepTasks = async () => {
   const rows = await db.task.findMany({
-    where: { status: { in: [STATUS.DISPATCHED, STATUS.RUNNING] } },
+    where: {
+      status: { in: [STATUS.DISPATCHED, STATUS.RUNNING] },
+      workflow: { is: null },
+    },
     include: withRelations,
     take: 50,
   })
@@ -1447,7 +1483,7 @@ export const sweepTasks = async () => {
 
   // 没有运行中任务的岗位，也可能有排队任务（例如上次推进中断）
   const queuedAgents = await db.task.findMany({
-    where: { status: STATUS.QUEUED },
+    where: { status: STATUS.QUEUED, workflow: { is: null } },
     select: { agentSlug: true },
     distinct: ['agentSlug'],
   })
@@ -1531,12 +1567,23 @@ export const dispatchTasks = async ({
   })
 }
 
-export const cancelTask = async ({ id }: { id: string }) => {
+export const cancelTask = async ({
+  id,
+  version,
+}: {
+  id: string
+  version?: number
+}) => {
   const row = await db.task.findUnique({
     where: { id },
     include: withRelations,
   })
   if (!row) throw new UserInputError('任务不存在')
+  if (row.workflow) {
+    if (version == null)
+      throw new UserInputError('取消工作流需携带当前版本，请刷新页面')
+    return cancelWorkflow(id, version)
+  }
   if (row.status === STATUS.DONE)
     throw new UserInputError('已验收完成的任务不能取消')
   if (row.status === STATUS.CANCELLED) return row
@@ -1586,6 +1633,10 @@ export const reviewTask = async ({
     include: withRelations,
   })
   if (!row) throw new UserInputError('任务不存在')
+  if (row.workflow)
+    throw new UserInputError(
+      '工作流任务请使用步骤操作，不能通过普通任务接口修改或跳过步骤'
+    )
 
   const reviewNote = text(note, 2000, '结论')
   if (row.status !== STATUS.AWAITING_REVIEW) {
@@ -1656,6 +1707,10 @@ export const addTaskArtifact = async ({
 }) => {
   const row = await db.task.findUnique({ where: { id: taskId } })
   if (!row) throw new UserInputError('任务不存在')
+  if (await getWorkflow(taskId))
+    throw new UserInputError(
+      '工作流任务请使用步骤操作，不能通过普通任务接口修改或跳过步骤'
+    )
 
   const kind = text(input?.kind || 'file', 16, '类型') || 'file'
   if (!ARTIFACT_KINDS.has(kind)) {
@@ -1769,6 +1824,8 @@ export const workspaceStatus = async () => {
 export const removeTaskArtifact = async ({ id }: { id: string }) => {
   const artifact = await db.taskArtifact.findUnique({ where: { id } })
   if (!artifact) throw new UserInputError('产物不存在')
+  if (artifact.source === 'workflow')
+    throw new UserInputError('工作流版本产物需要保留追溯，不能单独删除')
 
   await db.taskArtifact.delete({ where: { id } })
   return db.task.findUnique({
@@ -1832,6 +1889,11 @@ export const refreshTask = async ({ id }: { id: string }) => {
   })
   if (!row) throw new UserInputError('任务不存在')
 
+  if (row.workflow) {
+    await advanceWorkflow(id)
+    await syncWorkflowPublication(id)
+    return db.task.findUnique({ where: { id }, include: withRelations })
+  }
   const run = row.runs[0]
   const looksDone =
     run &&
@@ -1849,6 +1911,13 @@ export const refreshTask = async ({ id }: { id: string }) => {
 export const refreshRun = async ({ runId }: { runId: string }) => {
   const run = await db.taskRun.findUnique({ where: { id: runId } })
   if (!run) throw new UserInputError('执行记录不存在')
+  if (run.mode === 'workflow') {
+    if (run.taskId) {
+      await advanceWorkflow(run.taskId)
+      await syncWorkflowPublication(run.taskId)
+    }
+    return db.taskRun.findUnique({ where: { id: runId } })
+  }
   if (!['RUNNING', 'QUEUED'].includes(run.status)) return run
 
   // 会话同步来的运行没有 pid：现场读一次会话快照再判断（只读，不触发清理）
@@ -1967,6 +2036,7 @@ if (
 ) {
   startTaskTicker(async () => {
     await sweepTasks()
+    await sweepWorkflows()
     await reconcileRunningEvaluations().catch((error) =>
       logger.warn({ error }, 'role evaluation sweep failed')
     )
@@ -1975,6 +2045,7 @@ if (
 }
 
 export const Task = {
+  workflow: (_args, { root }) => getWorkflow(root.id),
   blocker: async (_args, { root }) => {
     const row = root.runs
       ? root

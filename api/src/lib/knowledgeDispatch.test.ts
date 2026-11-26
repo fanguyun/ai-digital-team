@@ -16,7 +16,13 @@ jest.mock('src/lib/db', () => ({
       findFirst: jest.fn(),
       updateMany: jest.fn(),
     },
-    taskRun: { findMany: jest.fn(), create: jest.fn(), updateMany: jest.fn() },
+    taskRun: {
+      findMany: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
+      create: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+    },
     taskEvent: { create: jest.fn() },
     $transaction: jest.fn(),
     $queryRaw: jest.fn(),
@@ -33,6 +39,9 @@ jest.mock('src/lib/agentDispatch', () => ({
 jest.mock('src/lib/taskWorkspace', () => ({
   snapshotWorkspace: async () => ({}),
   snapshotDiffStat: async () => ({}),
+}))
+jest.mock('src/lib/taskEnvironment', () => ({
+  checkTaskEnvironment: async () => ({ ready: true, checks: [] }),
 }))
 jest.mock('src/services/taskImages/taskImages', () => ({
   resolveTaskImages: async () => [],

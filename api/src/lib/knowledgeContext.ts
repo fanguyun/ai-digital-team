@@ -66,7 +66,7 @@ export const knowledgeContext = (result: KnowledgeResult) => {
 
 /** 仅存状态及来源摘要，禁止把查询与片段写入 TaskEvent。 */
 export const knowledgeEvidence = (result: KnowledgeResult) => ({
-  adapterVersion: KNOWLEDGE_ADAPTER_VERSION,
+  adapterVersion: result.adapterVersion || KNOWLEDGE_ADAPTER_VERSION,
   status: result.status,
   mode: result.mode,
   elapsedMs: result.elapsedMs,

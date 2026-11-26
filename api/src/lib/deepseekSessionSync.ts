@@ -104,6 +104,83 @@ const syncSession = async (
   snapshot: DeepSeekSessionSnapshot,
   transaction: Prisma.TransactionClient
 ) => {
+  // 工作流的所有岗位会话都归入已有顶层运行；由编排器统一记录状态和用量。
+  if (transaction.workflowAttempt) {
+    const session = snapshot.sessionId.split(':')[0].replace(/^session-/, '')
+    const attempts = await transaction.workflowAttempt.findMany({
+      where: {
+        OR: [
+          { sessionId: { in: [session, `session-${session}`] } },
+          { sessionId: null, logPath: { not: null } },
+        ],
+      },
+      include: { step: { include: { workflow: { include: { run: true } } } } },
+      orderBy: { startedAt: 'desc' },
+    })
+    const managed = attempts.find(
+      (a) =>
+        a.sessionId?.replace(/^session-/, '') === session ||
+        (a.logPath &&
+          sessionIdFromLog(
+            path.join(resolveRepoRoot(), a.logPath),
+            snapshot.platform
+          )?.replace(/^session-/, '') === session)
+    )
+    if (managed?.step.workflow.run) {
+      const parent = managed.step.workflow.run
+      const reference = referenceFor(snapshot)
+      const mirror = await transaction.taskEvent.findUnique({
+        where: { idempotencyKey: `${reference}:created` },
+        include: { taskRun: true },
+      })
+      if (
+        mirror &&
+        mirror.taskRunId !== parent.id &&
+        !mirror.taskRun.taskId &&
+        mirror.taskRun.externalReference === reference
+      ) {
+        await transaction.$queryRaw`SELECT "id" FROM "TaskRun" WHERE "id" IN (${parent.id}::uuid, ${mirror.taskRunId}::uuid) ORDER BY "id" FOR UPDATE`
+        const safeMirror = await transaction.taskRun.findFirst({
+          where: {
+            id: mirror.taskRunId,
+            taskId: null,
+            externalReference: reference,
+            platform: snapshot.platform,
+            logPath: null,
+            pid: null,
+            deliveredArtifacts: { none: {} },
+            events: {
+              every: {
+                idempotencyKey: {
+                  in: [`${reference}:created`, `${reference}:usage`],
+                },
+              },
+            },
+          },
+        })
+        if (safeMirror) {
+          await transaction.taskEvent.deleteMany({
+            where: {
+              taskRunId: mirror.taskRunId,
+              idempotencyKey: {
+                in: [`${reference}:created`, `${reference}:usage`],
+              },
+            },
+          })
+          await transaction.taskRun.deleteMany({
+            where: {
+              id: mirror.taskRunId,
+              taskId: null,
+              externalReference: reference,
+              events: { none: {} },
+              deliveredArtifacts: { none: {} },
+            },
+          })
+        }
+      }
+      return { taskRun: parent, changed: false }
+    }
+  }
   const externalReference = referenceFor(snapshot)
   const createdKey = `${externalReference}:created`
   const usageKey = `${externalReference}:usage`

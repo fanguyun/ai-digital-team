@@ -1,0 +1,244 @@
+{
+  "evaluatedAt": "2026-11-24T05:08:43.857Z",
+  "adapterVersion": "siyuan-fulltext-v2",
+  "casesFile": "docs/acceptance/2026-11-24-p1-knowledge-cases.json",
+  "targetDocumentId": "20261124114528-q4huiws",
+  "description": "10题小样本；只评估命中状态及P0文档是否出现，不代表答案质量或完整召回率。",
+  "scope": "当前适配器与已配置笔记本/目录范围；不包含模型回答的语义评分。",
+  "results": [
+    {
+      "kind": "原词",
+      "query": "长期主义",
+      "expectedStatus": "hit",
+      "baseline": {
+        "status": "hit",
+        "targetHit": true
+      },
+      "actual": {
+        "status": "hit",
+        "elapsedMs": 1288,
+        "documents": [
+          "20261124103900-evsy4ey",
+          "20261124114528-q4huiws"
+        ],
+        "targetHit": true,
+        "matchesExpectedStatus": true
+      }
+    },
+    {
+      "kind": "原词",
+      "query": "专注当下",
+      "expectedStatus": "hit",
+      "baseline": {
+        "status": "hit",
+        "targetHit": true
+      },
+      "actual": {
+        "status": "hit",
+        "elapsedMs": 599,
+        "documents": [
+          "20261124103900-evsy4ey",
+          "20261124114528-q4huiws"
+        ],
+        "targetHit": true,
+        "matchesExpectedStatus": true
+      }
+    },
+    {
+      "kind": "原词",
+      "query": "沉没成本",
+      "expectedStatus": "hit",
+      "baseline": {
+        "status": "hit",
+        "targetHit": true
+      },
+      "actual": {
+        "status": "hit",
+        "elapsedMs": 701,
+        "documents": [
+          "20260806173721-11oo36m",
+          "20260811111901-bjqygeu"
+        ],
+        "targetHit": false,
+        "matchesExpectedStatus": true
+      }
+    },
+    {
+      "kind": "原词",
+      "query": "机会成本",
+      "expectedStatus": "hit",
+      "baseline": {
+        "status": "hit",
+        "targetHit": true
+      },
+      "actual": {
+        "status": "hit",
+        "elapsedMs": 574,
+        "documents": [
+          "20260811111833-k2ay8ld",
+          "20261124103900-evsy4ey",
+          "20261124114528-q4huiws"
+        ],
+        "targetHit": true,
+        "matchesExpectedStatus": true
+      }
+    },
+    {
+      "kind": "自然问法",
+      "query": "根据已有的长期主义笔记，整理一份本周行动清单",
+      "expectedStatus": "hit",
+      "baseline": {
+        "status": "empty",
+        "targetHit": false
+      },
+      "actual": {
+        "status": "hit",
+        "elapsedMs": 621,
+        "documents": [
+          "20261124114528-q4huiws",
+          "20261124103900-evsy4ey"
+        ],
+        "targetHit": true,
+        "matchesExpectedStatus": true
+      }
+    },
+    {
+      "kind": "自然问法",
+      "query": "长期主义和专注当下如何结合？",
+      "expectedStatus": "hit",
+      "baseline": {
+        "status": "empty",
+        "targetHit": false
+      },
+      "actual": {
+        "status": "hit",
+        "elapsedMs": 574,
+        "documents": [
+          "20261124114528-q4huiws",
+          "20261124103900-evsy4ey"
+        ],
+        "targetHit": true,
+        "matchesExpectedStatus": true
+      }
+    },
+    {
+      "kind": "换一种说法",
+      "query": "如何避免把坚持变成固执？",
+      "expectedStatus": "hit",
+      "baseline": {
+        "status": "empty",
+        "targetHit": false
+      },
+      "actual": {
+        "status": "hit",
+        "elapsedMs": 597,
+        "documents": [
+          "20261124114528-q4huiws",
+          "20261124103900-evsy4ey"
+        ],
+        "targetHit": true,
+        "matchesExpectedStatus": true
+      }
+    },
+    {
+      "kind": "换一种说法",
+      "query": "怎样判断一个目标还值得继续投入？",
+      "expectedStatus": "hit",
+      "baseline": {
+        "status": "empty",
+        "targetHit": false
+      },
+      "actual": {
+        "status": "hit",
+        "elapsedMs": 698,
+        "documents": [
+          "20261124114528-q4huiws",
+          "20261124103900-evsy4ey"
+        ],
+        "targetHit": true,
+        "matchesExpectedStatus": true
+      }
+    },
+    {
+      "kind": "无答案",
+      "query": "P1无答案验收ZXQ847192",
+      "expectedStatus": "empty",
+      "baseline": {
+        "status": "empty",
+        "targetHit": false
+      },
+      "actual": {
+        "status": "empty",
+        "elapsedMs": 558,
+        "documents": [],
+        "targetHit": false,
+        "matchesExpectedStatus": true
+      }
+    },
+    {
+      "kind": "无答案",
+      "query": "P1量子火星邮编ZXQ847192",
+      "expectedStatus": "empty",
+      "baseline": {
+        "status": "empty",
+        "targetHit": false
+      },
+      "actual": {
+        "status": "empty",
+        "elapsedMs": 563,
+        "documents": [],
+        "targetHit": false,
+        "matchesExpectedStatus": true
+      }
+    }
+  ],
+  "liveTask": {
+    "taskId": "6a501340-414d-4f49-82d0-7011b0655e07",
+    "title": "长期主义与专注当下",
+    "status": "AWAITING_REVIEW",
+    "finalRunId": "b99a2253-ecbb-4a22-84f9-f5b45f551805",
+    "sessionId": "01a20bf4-8215-78c1-b379-30aef0a22528",
+    "retrievalElapsedMs": 581,
+    "sourcesProvided": 4,
+    "p0CitedBlocks": [
+      "20261124114528-93h9z40",
+      "20261124114528-xn9vc0o"
+    ],
+    "verified": "实际回答引用P0文档正文并生成行动清单；KB-1/KB-2标注及精确链接与本轮来源一致；片段内容人工核对支持方向、当下行动、复盘及健康关系边界。具体时间安排为模型建议。",
+    "screenshot": "docs/acceptance/2026-11-24-p1-knowledge-browser.jpg"
+  },
+  "checks": {
+    "apiUnit": {
+      "suites": 8,
+      "passedTests": 73,
+      "scope": "72个原局部用例通过，补充历史改名/移动快照用例后TaskKnowledge的13个用例复测通过，总73个。"
+    },
+    "webUnit": {
+      "suites": 3,
+      "passedTests": 28
+    },
+    "targetedTypeCheck": {
+      "files": 12,
+      "targetErrors": 0,
+      "outsideTargetDiagnostics": 12
+    },
+    "lint": {
+      "newErrors": 0,
+      "existingTaskBoardErrors": 5,
+      "note": "TaskBoard与HEAD比对保留相同5个既有错误；原有2条警告。其他本轮目标文件通过。"
+    },
+    "independentReview": "Approve（本轮代码范围）；4套修正相关API测试39/39通过。",
+    "diffCheck": "passed",
+    "fullBuild": "not_run",
+    "fullRepositoryTypeCheck": "not_run",
+    "moveScenario": "模拟改名/移动后的历史快照匹配测试通过；未移动真实思源文档。",
+    "renameScenario": "真实已改名文档仍可检索，并显示当轮路径与稳定块链接。",
+    "sourceUnavailableScenario": "通过模拟连接失败、响应正文超时、派发required/optional状态与页面展示验证；未关闭真实思源服务。"
+  },
+  "limits": [
+    "10题小样本，非完整召回率或答案质量评分。",
+    "8个有答案问题中P0文档出现7次；沉没成本返回其他已有文档，本轮未对该结果做语义评分。",
+    "引用检测只核对标记与精确链接，不能自动证明事实得到支持。",
+    "保留用户人工验收；未发布、迁移或修改思源内容。"
+  ]
+}

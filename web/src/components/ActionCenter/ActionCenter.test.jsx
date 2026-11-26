@@ -4,6 +4,35 @@ import ActionCenter from './ActionCenter'
 import { buildActionCenterModel } from './actionItems'
 
 it.each([
+  ['WAITING_CONFIRMATION', '预览并确认入库'],
+  ['REVIEW_FAILED', '查看核验并返工'],
+  ['BLOCKED', '处理研究阻塞'],
+  ['PUBLICATION_FAILED', '核对入库结果'],
+  ['NEEDS_INPUT', '补充研究信息'],
+])('工作流 %s 导向专用步骤，不能普通验收', (status, label) => {
+  const navigate = jest.fn()
+  const model = buildActionCenterModel({
+    tasks: [
+      {
+        id: 'wf-task',
+        title: '研究工作流',
+        status: 'AWAITING_REVIEW',
+        workflow: { status, note: '步骤说明' },
+        updatedAt: new Date().toISOString(),
+      },
+    ],
+  })
+  render(<ActionCenter model={model} onNavigate={navigate} />)
+  expect(screen.queryByRole('button', { name: '通过' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '打回' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: label }))
+  expect(navigate).toHaveBeenCalledWith('tasks', {
+    taskId: 'wf-task',
+    section: 'workflow',
+  })
+})
+
+it.each([
   ['AWAITING_APPROVAL', '审阅方案', 'plan'],
   ['AWAITING_REVIEW', '验收成果', 'review'],
   ['FAILED', '查看失败原因', 'runs'],

@@ -136,6 +136,58 @@ it('disables preparation when the knowledge source is not available', async () =
   expect(screen.getByRole('button', { name: '预览待入库文档' })).toBeDisabled()
 })
 
+it('工作流仅允许已核验的产物，不能切换到粘贴正文', () => {
+  render(
+    <KnowledgePublisher
+      taskId="task-1"
+      artifacts={[{ id: 'report', path: 'docs/report.md', kind: 'report' }]}
+      workflowArtifactId="report"
+    />
+  )
+  fireEvent.click(screen.getByRole('button', { name: '将文档写入知识库' }))
+  expect(screen.queryByLabelText('Markdown 正文')).not.toBeInTheDocument()
+  expect(screen.getByLabelText('文档标题')).toHaveValue('report')
+  expect(screen.queryByText('粘贴 AI 生成的正文')).not.toBeInTheDocument()
+  expect(mutations.PublishKnowledgePublication).not.toHaveBeenCalled()
+})
+
+it('已取消工作流禁止准备新快照，仍允许原不确定记录回读核对', () => {
+  records = [
+    { ...snapshot, status: 'UNCERTAIN', attemptedAt: '2026-11-24T07:00:00Z' },
+  ]
+  render(
+    <KnowledgePublisher taskId="task-1" workflowArtifactId="report" readOnly />
+  )
+  expect(
+    screen.getByRole('button', { name: '将文档写入知识库' })
+  ).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: '查看并继续' }))
+  expect(
+    screen.getByRole('button', { name: '重试核对（避免重复创建）' })
+  ).toBeInTheDocument()
+})
+
+it('starts with the existing task document without redispatching an agent', async () => {
+  render(
+    <KnowledgePublisher
+      taskId="task-1"
+      artifacts={[
+        {
+          id: 'doc-1',
+          kind: 'report',
+          path: 'docs/report.md',
+          label: 'report.md',
+        },
+      ]}
+    />
+  )
+  fireEvent.click(screen.getByRole('button', { name: '将文档写入知识库' }))
+  expect(screen.getByLabelText('文档标题')).toHaveValue('report')
+  expect(screen.queryByLabelText('Markdown 正文')).not.toBeInTheDocument()
+  expect(screen.getByText('report.md · docs/report.md')).toBeInTheDocument()
+  expect(mutations.PublishKnowledgePublication).not.toHaveBeenCalled()
+})
+
 it('resumes the persisted snapshot and prevents duplicate confirmations while submitting', async () => {
   records = [{ ...snapshot, status: 'UNCERTAIN', error: '上次请求超时' }]
   let rejectFirst

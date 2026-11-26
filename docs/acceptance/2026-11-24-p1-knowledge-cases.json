@@ -1,0 +1,96 @@
+{
+  "description": "10题小样本；只评估命中状态及P0文档是否出现，不代表答案质量或完整召回率。",
+  "targetDocumentId": "20261124114528-q4huiws",
+  "cases": [
+    {
+      "kind": "原词",
+      "query": "长期主义",
+      "expectedStatus": "hit",
+      "baseline": {
+        "status": "hit",
+        "targetHit": true
+      }
+    },
+    {
+      "kind": "原词",
+      "query": "专注当下",
+      "expectedStatus": "hit",
+      "baseline": {
+        "status": "hit",
+        "targetHit": true
+      }
+    },
+    {
+      "kind": "原词",
+      "query": "沉没成本",
+      "expectedStatus": "hit",
+      "baseline": {
+        "status": "hit",
+        "targetHit": true
+      }
+    },
+    {
+      "kind": "原词",
+      "query": "机会成本",
+      "expectedStatus": "hit",
+      "baseline": {
+        "status": "hit",
+        "targetHit": true
+      }
+    },
+    {
+      "kind": "自然问法",
+      "query": "根据已有的长期主义笔记，整理一份本周行动清单",
+      "expectedStatus": "hit",
+      "baseline": {
+        "status": "empty",
+        "targetHit": false
+      }
+    },
+    {
+      "kind": "自然问法",
+      "query": "长期主义和专注当下如何结合？",
+      "expectedStatus": "hit",
+      "baseline": {
+        "status": "empty",
+        "targetHit": false
+      }
+    },
+    {
+      "kind": "换一种说法",
+      "query": "如何避免把坚持变成固执？",
+      "expectedStatus": "hit",
+      "baseline": {
+        "status": "empty",
+        "targetHit": false
+      }
+    },
+    {
+      "kind": "换一种说法",
+      "query": "怎样判断一个目标还值得继续投入？",
+      "expectedStatus": "hit",
+      "baseline": {
+        "status": "empty",
+        "targetHit": false
+      }
+    },
+    {
+      "kind": "无答案",
+      "query": "P1无答案验收ZXQ847192",
+      "expectedStatus": "empty",
+      "baseline": {
+        "status": "empty",
+        "targetHit": false
+      }
+    },
+    {
+      "kind": "无答案",
+      "query": "P1量子火星邮编ZXQ847192",
+      "expectedStatus": "empty",
+      "baseline": {
+        "status": "empty",
+        "targetHit": false
+      }
+    }
+  ]
+}

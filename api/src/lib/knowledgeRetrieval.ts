@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 
 import type { KnowledgeMode } from './knowledgeConfig'
 import { filterByPathPrefixes, loadKnowledgeSource } from './knowledgeSource'
-import { searchSiYuan } from './siyuanKnowledge'
+import { searchSiYuan, SIYUAN_ADAPTER_VERSION } from './siyuanKnowledge'
 
 export const KNOWLEDGE_ADAPTER_VERSION = 'siyuan-keyword-v1'
 export type KnowledgeStatus =
@@ -28,6 +28,7 @@ export type KnowledgeItem = {
   rankingMethod: 'keyword-hit-count-v1' | 'siyuan-fulltext-v1'
 }
 export type KnowledgeResult = {
+  adapterVersion?: string
   status: KnowledgeStatus
   mode: KnowledgeMode
   items: KnowledgeItem[]
@@ -69,6 +70,7 @@ export const retrieveKnowledge = async ({
 }): Promise<KnowledgeResult> => {
   const start = Date.now()
   let mode: KnowledgeMode = 'required'
+  let adapterVersion = KNOWLEDGE_ADAPTER_VERSION
   const result = (
     status: KnowledgeStatus,
     items: KnowledgeItem[] = [],
@@ -79,6 +81,7 @@ export const retrieveKnowledge = async ({
     mode,
     elapsedMs: Date.now() - start,
     filteredOut,
+    adapterVersion,
   })
   // 数据库配置优先，没有时回落到环境变量
   let resolved: Awaited<ReturnType<typeof loadKnowledgeSource>>
@@ -106,6 +109,7 @@ export const retrieveKnowledge = async ({
 
   // 直连思源：只调只读全文检索接口，由本进程做范围过滤与映射
   if (resolved.provider === 'siyuan') {
+    adapterVersion = SIYUAN_ADAPTER_VERSION
     const outcome = await searchSiYuan({
       origin: config.url,
       token: config.token,

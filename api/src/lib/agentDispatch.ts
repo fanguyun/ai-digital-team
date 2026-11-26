@@ -147,10 +147,18 @@ export const buildTaskPrompt = ({
 }
 
 /** 思源凭证只能留在 NAS；新检索配置不继承到执行子进程。 */
-export const taskAgentEnv = (env: NodeJS.ProcessEnv = process.env) =>
+export const taskAgentEnv = (
+  env: NodeJS.ProcessEnv = process.env,
+  managedWorkflow = false
+) =>
   Object.fromEntries(
     Object.entries(env).filter(
-      ([key]) => !/^(KNOWLEDGE_|SIYUAN_|RAG_BRIDGE_)/i.test(key)
+      ([key]) =>
+        !/^(KNOWLEDGE_|SIYUAN_|RAG_BRIDGE_)/i.test(key) &&
+        !(
+          managedWorkflow &&
+          /^(TASK_RUNTIME_|DATABASE_URL$|DIRECT_URL$)/i.test(key)
+        )
     )
   )
 
@@ -161,6 +169,7 @@ export const buildTaskCommand = ({
   prompt,
   readOnly,
   images = [],
+  outputSchema,
 }: {
   tool: AgentToolId
   bin: string
@@ -168,6 +177,7 @@ export const buildTaskCommand = ({
   prompt: string
   readOnly: boolean
   images?: string[]
+  outputSchema?: string
 }): { command: string; args: string[] } => {
   if (tool === 'codex') {
     const imageArgs = images.flatMap((file) => ['-i', file])
@@ -184,6 +194,7 @@ export const buildTaskCommand = ({
         'never',
         ...imageArgs,
         '--json',
+        ...(outputSchema ? ['--output-schema', outputSchema] : []),
         prompt,
       ],
     }
@@ -217,6 +228,7 @@ export const spawnTaskAgent = ({
   logAbsolute,
   readOnly,
   images = [],
+  managedWorkflow = false,
 }: {
   tool: AgentToolId
   projectRoot: string
@@ -224,6 +236,7 @@ export const spawnTaskAgent = ({
   logAbsolute: string
   readOnly: boolean
   images?: string[]
+  managedWorkflow?: boolean
 }): SpawnedAgent => {
   const probe = probeBinary(tool)
   if (!('bin' in probe)) throw new Error(probe.reason)
@@ -241,6 +254,14 @@ export const spawnTaskAgent = ({
     prompt,
     readOnly,
     images,
+    ...(managedWorkflow
+      ? {
+          outputSchema: path.join(
+            projectRoot,
+            'api/src/lib/workflowOutput.schema.json'
+          ),
+        }
+      : {}),
   })
 
   mkdirSync(path.dirname(logAbsolute), { recursive: true })
@@ -251,7 +272,7 @@ export const spawnTaskAgent = ({
       cwd: projectRoot,
       detached: true,
       stdio: ['ignore', logHandle, logHandle],
-      env: taskAgentEnv(),
+      env: taskAgentEnv(process.env, managedWorkflow),
     })
   } finally {
     closeSync(logHandle)

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import {
   mkdirSync,
   mkdtempSync,
@@ -16,6 +17,8 @@ import {
   readThreadMessages,
   sessionIdFromLog,
 } from './roleEvaluationSessions'
+import { readSessionTurnTrace } from './sessionTrace'
+import { taskKnowledgeView } from './taskKnowledge'
 
 const projectRoot = '/Users/fan/ai-digital-team'
 const sessionId = '11111111-2222-4333-8444-555555555555'
@@ -80,6 +83,56 @@ const writeCodexSession = ({ cwd = projectRoot } = {}) => {
 }
 
 describe('codex session discovery and thread', () => {
+  it('preserves bounded long knowledge prompts through the Codex trace reader', async () => {
+    const sources = Array.from({ length: 4 }, (_, index) => {
+      const content = '知识片段'.repeat(375)
+      return {
+        blockId: `20261124114528-aaaaaa${index}`,
+        documentId: '20261124114528-q4huiws',
+        notebookId: '20261120125154-pdkeju4',
+        citation: `[KB-${index + 1}]`,
+        retrievedAt: '2026-11-24T00:00:00.000Z',
+        contentHash: createHash('sha256').update(content).digest('hex'),
+        content,
+        title: '知识快照',
+      }
+    })
+    const prompt =
+      '任务说明'.repeat(1000) +
+      '\n## 本轮外部知识参考\n' +
+      JSON.stringify(sources)
+    const file = writeCodexSession()
+    writeFileSync(
+      file,
+      codexLine({
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: prompt }],
+        },
+      })
+    )
+    const defaults = await readThreadMessages({
+      tool: 'codex',
+      sessionId,
+      projectRoot,
+    })
+    expect(defaults[0].content.length).toBeLessThan(prompt.length)
+    const trace = await readSessionTurnTrace({
+      tool: 'codex',
+      sessionId,
+      projectRoot,
+      limits: { messageChars: 60_000 },
+    })
+    expect(trace.messages[0].content).toBe(prompt)
+    const view = taskKnowledgeView({
+      evidence: { knowledge: { status: 'hit', sources } },
+      prompts: trace.messages.map((message) => message.content),
+    })
+    expect(view.sources.filter((source) => source.content)).toHaveLength(4)
+  })
+
   it('finds the session by cwd and reads user/assistant messages', async () => {
     writeCodexSession()
     const since = new Date(Date.now() - 60_000)

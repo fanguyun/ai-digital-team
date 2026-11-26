@@ -21,6 +21,24 @@ const writeLog = (lines: string[]) => {
 }
 
 describe('parseTaskRunOutput', () => {
+  it('accepts Markdown code-wrapped artifact paths without duplicate or invalid references', () => {
+    const file = writeLog([
+      JSON.stringify({
+        type: 'final',
+        text: 'artifact: `docs/report.md`\nartifact: docs/report.md',
+      }),
+    ])
+    expect(
+      parseTaskRunOutput({ logPath: file, tool: 'deepseek-harness' }).artifacts
+    ).toEqual([
+      {
+        path: 'docs/report.md',
+        label: 'report.md',
+        kind: 'report',
+        source: 'item',
+      },
+    ])
+  })
   it.each([
     '环境阻塞：思源连接失败，请检查部署网络。',
     '待确认：请在允许访问团队 API 和思源服务的宿主机环境重跑本任务。',

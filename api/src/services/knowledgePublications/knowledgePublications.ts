@@ -13,9 +13,11 @@ import { UserInputError } from '@cedarjs/graphql-server'
 import { assertAuthenticated } from 'src/directives/requireAuth/requireAuth'
 import { db } from 'src/lib/db'
 import { loadKnowledgeSource } from 'src/lib/knowledgeSource'
+import { logger } from 'src/lib/logger'
 import { resolveRepoRoot } from 'src/lib/roleEvaluationDispatch'
 import { listSiYuanNotebooks } from 'src/lib/siyuanKnowledge'
 import {
+  normalizePublicationHtml,
   normalizePublicationMarkdown,
   publicationHash,
   publicationPath,
@@ -23,6 +25,11 @@ import {
   siyuanId,
   siyuanPublicationClient,
 } from 'src/lib/siyuanPublication'
+import {
+  assertWorkflowPublication,
+  beginWorkflowPublication,
+  syncWorkflowPublication,
+} from 'src/lib/workflowRuntime'
 
 type Session = { context?: { currentUser?: { id?: string } | null } }
 type PrepareInput = {
@@ -156,6 +163,8 @@ export const prepareKnowledgePublication = async (
   service: Session = {}
 ) => {
   const createdBy = userId(service)
+  if (input.taskId)
+    await assertWorkflowPublication(input.taskId, input.artifactId)
   const source = await sourceFor(input.taskId)
   let markdown = input.markdown || ''
   if (input.artifactId) {
@@ -268,7 +277,12 @@ export const publishKnowledgePublication = async (
     throw new UserInputError('入库记录不存在')
   if (contentHash !== row.contentHash)
     throw new UserInputError('文档快照已变化，请重新预览后确认')
-  if (row.status === 'VERIFIED') return row
+  if (row.taskId)
+    await assertWorkflowPublication(row.taskId, row.artifactId, row.id)
+  if (row.status === 'VERIFIED') {
+    if (row.taskId) await syncWorkflowPublication(row.taskId)
+    return row
+  }
   if (
     row.status === 'PUBLISHING' &&
     Date.now() - row.updatedAt.getTime() < 60_000
@@ -278,18 +292,22 @@ export const publishKnowledgePublication = async (
   if (fingerprint(source) !== row.sourceFingerprint)
     throw new UserInputError('知识库地址或范围配置已变化，请重新准备并确认文档')
   await checkDestination(source, row.notebookId, row.documentPath)
-  const claimed = await db.knowledgePublication.updateMany({
-    where: { id, status: row.status, updatedAt: row.updatedAt },
-    data: {
-      status: 'PUBLISHING',
-      confirmedAt: row.confirmedAt || new Date(),
-      error: null,
-    },
+  await db.$transaction(async (tx) => {
+    const claimed = await tx.knowledgePublication.updateMany({
+      where: { id, status: row.status, updatedAt: row.updatedAt },
+      data: {
+        status: 'PUBLISHING',
+        confirmedAt: row.confirmedAt || new Date(),
+        error: null,
+      },
+    })
+    if (!claimed.count) throw new UserInputError('入库状态已变化，请刷新后重试')
+    if (row.taskId) await beginWorkflowPublication(row.taskId, row.id, tx)
   })
-  if (!claimed.count) throw new UserInputError('入库状态已变化，请刷新后重试')
   const client = siyuanPublicationClient(source)
   let documentId = row.documentId
   let attempted = Boolean(row.attemptedAt)
+  let result
   try {
     if (!documentId) {
       const ids = await client.find(row.notebookId, row.documentPath)
@@ -303,6 +321,8 @@ export const publishKnowledgePublication = async (
           throw new Error(
             '上次写入结果未确认，暂未查到目标文档；请在思源检查后重试核对，系统不会重复创建。'
           )
+        if (row.taskId)
+          await assertWorkflowPublication(row.taskId, row.artifactId, row.id)
         const attempt = await db.knowledgePublication.updateMany({
           where: { id, attemptedAt: null },
           data: { attemptedAt: new Date() },
@@ -339,13 +359,15 @@ export const publishKnowledgePublication = async (
         client.render(row.markdown),
         client.render(readback.markdown),
       ])
-      contentMatches = publicationHash(expected) === publicationHash(actual)
+      contentMatches =
+        publicationHash(normalizePublicationHtml(expected)) ===
+        publicationHash(normalizePublicationHtml(actual))
     }
     if (!contentMatches)
       throw new Error(
         '目标文档路径或回读正文与确认快照不一致；未覆盖已有文档，请检查思源内容或更换标题重新准备。'
       )
-    return await db.knowledgePublication.update({
+    result = await db.knowledgePublication.update({
       where: { id },
       data: {
         status: 'VERIFIED',
@@ -355,7 +377,7 @@ export const publishKnowledgePublication = async (
       },
     })
   } catch (error) {
-    return db.knowledgePublication.update({
+    result = await db.knowledgePublication.update({
       where: { id },
       data: {
         status: attempted || documentId ? 'UNCERTAIN' : 'FAILED',
@@ -367,6 +389,17 @@ export const publishKnowledgePublication = async (
       },
     })
   }
+  if (row.taskId) {
+    try {
+      await syncWorkflowPublication(row.taskId)
+    } catch (error) {
+      logger.warn(
+        { error, taskId: row.taskId },
+        'workflow publication state sync deferred to sweep'
+      )
+    }
+  }
+  return result
 }
 
 export const KnowledgePublication = {

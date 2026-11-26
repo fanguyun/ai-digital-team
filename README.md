@@ -347,6 +347,47 @@ node scripts/capability-health.mjs --platform deepseek-harness
 也可在 GUI 插件管理器中完成安装。不建议直接拷贝 `~/.dsh/profiles/` 目录迁移：
 `node_modules` 含平台相关二进制，且容易带入旧缓存。
 
+## Antigravity 插件使用
+
+仓库同时提供原生 Antigravity 插件导出，位置在 `antigravity/plugins/personal-digital-team/`，与 Codex 插件及 DeepSeek Harness 共享同一份 `agents/` 源规则。
+
+为避免 27 个岗位同时占用 Antigravity 的 Skill 上下文预算，插件采用渐进式披露结构：仅暴露 `main-agent` 1 个入口 Skill 与精简的 `rules/AGENTS.md`（严格低于 24 KB 上限），其余岗位规则与共享协议存放于 `skills/main-agent/references/` 按需读取；外部专项 Skill 仍保持本机全局安装，不复制到插件内。
+
+### 同步与校验
+
+```bash
+yarn sync-antigravity
+yarn check-antigravity
+```
+
+`yarn sync-team` 与 `yarn check-team` 已自动包含 Antigravity 插件的同步与校验。
+
+### 在 Antigravity 中启用
+
+方式一（推荐）：在 `~/.gemini/config/plugins.json` 中注册本仓库插件父目录，后续执行 `yarn sync-antigravity` 即自动生效：
+
+```json
+{
+  "entries": [
+    { "path": "<repo-root>/antigravity/plugins" }
+  ]
+}
+```
+
+方式二：将插件目录软链接到 Antigravity 全局插件目录：
+
+```bash
+mkdir -p ~/.gemini/config/plugins
+ln -s <repo-root>/antigravity/plugins/personal-digital-team ~/.gemini/config/plugins/personal-digital-team
+```
+
+内置只读自检命令：
+
+```bash
+node antigravity/plugins/personal-digital-team/scripts/check-installation.mjs
+node antigravity/plugins/personal-digital-team/scripts/list-team.mjs --format json
+```
+
 ## 换设备初始化
 
 拉取项目后，先检查 Skill 软链接。该检查同时验证已有软链接是否有效，以及岗位规则引用的已安装 Skill 是否已建立岗位级绑定：

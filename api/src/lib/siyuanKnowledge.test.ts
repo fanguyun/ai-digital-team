@@ -4,6 +4,7 @@ import {
   listSiYuanNotebooks,
   probeSiYuan,
   searchSiYuan,
+  siyuanKeywordQuery,
 } from './siyuanKnowledge'
 
 const BLOCK_ID = '20260812102732-1ydpyes'
@@ -26,6 +27,81 @@ const block = (overrides: Record<string, unknown> = {}) => ({
 })
 
 describe('searchSiYuan', () => {
+  it('bounds response-body reading by the retrieval timeout', async () => {
+    const fetchImpl = jest.fn(
+      async (_url: string, init: RequestInit) =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              init.signal?.addEventListener('abort', () =>
+                controller.error(new DOMException('timed out', 'AbortError'))
+              )
+            },
+          })
+        )
+    )
+    expect(
+      await searchSiYuan({
+        origin: 'http://siyuan.local',
+        token: 't',
+        query: '任务',
+        timeoutMs: 10,
+        fetchImpl: fetchImpl as never,
+      })
+    ).toEqual({ status: 'timeout' })
+  })
+
+  it('reports an unavailable source without manufacturing evidence', async () => {
+    expect(
+      await searchSiYuan({
+        origin: 'http://siyuan.local',
+        token: 't',
+        query: '任务',
+        fetchImpl: jest.fn().mockRejectedValue(new TypeError('fetch failed')),
+      })
+    ).toEqual({ status: 'source_unavailable' })
+  })
+  it.each([
+    ['d', 'h', 'p'],
+    ['NodeDocument', 'NodeHeading', 'NodeParagraph'],
+  ])(
+    'prioritizes body evidence with block types %s/%s/%s while retaining title fallback',
+    async (document, heading, paragraph) => {
+      const fetchImpl = jest.fn().mockResolvedValue(
+        siyuanBody([
+          block({ type: document, id: DOC_ID, markdown: '长期主义' }),
+          block({
+            type: heading,
+            id: '20260812102732-aaaaaaa',
+            markdown: '# 长期主义',
+          }),
+          block({ type: paragraph, markdown: '长期方向需要近期反馈。' }),
+        ])
+      )
+      const outcome = await searchSiYuan({
+        origin: 'http://siyuan.local',
+        token: 't',
+        query: '长期主义',
+        fetchImpl: fetchImpl as never,
+      })
+      expect(outcome.status).toBe('hit')
+      if (outcome.status === 'hit')
+        expect(outcome.items.map((item) => item.blockId)).toEqual([
+          BLOCK_ID,
+          DOC_ID,
+          '20260812102732-aaaaaaa',
+        ])
+    }
+  )
+  it('extracts bounded literal keywords from questions while keeping short terms and identifiers', () => {
+    expect(
+      siyuanKeywordQuery('根据已有的长期主义笔记，整理一份本周行动清单')
+    ).toBe('长期 主义')
+    expect(siyuanKeywordQuery('如何避免把坚持变成固执？')).toBe('坚持 固执')
+    expect(siyuanKeywordQuery('长期主义')).toBe('长期主义')
+    expect(siyuanKeywordQuery(DOC_ID)).toBe(DOC_ID)
+    expect(siyuanKeywordQuery('如何？')).toBe('')
+  })
   it('maps blocks into knowledge items with stripped highlights', async () => {
     const fetchImpl = jest.fn().mockResolvedValue(siyuanBody([block()]))
 
@@ -55,7 +131,12 @@ describe('searchSiYuan', () => {
     expect(url).toBe('http://siyuan.local:6806/api/search/fullTextSearchBlock')
     // 思源要求 Token 方案，不是 Bearer
     expect(init.headers.Authorization).toBe('Token token-value')
-    expect(JSON.parse(init.body)).toMatchObject({ query: '任务', size: 6 })
+    expect(JSON.parse(init.body)).toMatchObject({
+      query: '任务',
+      pageSize: 6,
+      method: 0,
+      orderBy: 7,
+    })
   })
 
   it('drops blocks outside the notebook whitelist', async () => {
@@ -81,6 +162,9 @@ describe('searchSiYuan', () => {
     if (outcome.status !== 'hit') return
     expect(outcome.items).toHaveLength(1)
     expect(outcome.items[0].notebookId).toBe(NOTEBOOK_ID)
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body).boxes).toEqual([
+      NOTEBOOK_ID,
+    ])
   })
 
   it('reports auth failure on 401', async () => {

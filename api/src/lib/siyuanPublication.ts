@@ -6,6 +6,57 @@ export const publicationHash = (value: string) =>
 export const normalizePublicationMarkdown = (value: string) =>
   value.replace(/\r\n?/g, '\n').replace(/^\n+|\n+$/g, '')
 
+/** Ignore SiYuan's generated block metadata and prose formatting, preserving code and HTML attributes. */
+export const normalizePublicationHtml = (html: string) => {
+  let protectedTag: string | null = null
+  let paragraphStart = false
+  return html.replace(
+    /<(?:[^"'<>]|"[^"]*"|'[^']*')*>|[^<]+|</g,
+    (token: string, offset: number) => {
+      const tag = /^<(\/)?([a-z][\w-]*)\b/i.exec(token)
+      if (protectedTag) {
+        if (tag?.[1] && tag[2].toLowerCase() === protectedTag)
+          protectedTag = null
+        return token
+      }
+      if (tag) {
+        const name = tag[2].toLowerCase()
+        paragraphStart = !tag[1] && name === 'p'
+        if (tag[1]) return token
+        if (['pre', 'code', 'script', 'style', 'textarea'].includes(name))
+          protectedTag = name
+        if (
+          !/^(p|blockquote|ul|ol|li|table|thead|tbody|tr|td|th|h[1-6]|pre|hr|div)$/.test(
+            name
+          )
+        )
+          return token
+        // Consume whole quoted attributes so attribute-like text inside a value remains intact.
+        return token.replace(
+          /\s+([^\s=/>]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'`=<>]+))?/g,
+          (attribute: string, key: string, quoted?: string) => {
+            const value = quoted?.replace(/^["']|["']$/g, '')
+            return (key === 'id' && siyuanId(value)) ||
+              (key === 'updated' && /^\d{14}$/.test(value || ''))
+              ? ''
+              : attribute
+          }
+        )
+      }
+      if (token.startsWith('<')) return token
+      let text = token
+      if (paragraphStart) {
+        text = text.replace(/^\u3000{2} ?/, '')
+        paragraphStart = false
+      }
+      // SiYuan inserts a zero-width separator immediately before inline code on export.
+      if (/^<code\b/i.test(html.slice(offset + token.length)))
+        text = text.replace(/\u200b$/, '')
+      return text.replace(/[ \t]+/g, ' ')
+    }
+  )
+}
+
 const hasControlCharacters = (value: string) =>
   [...value].some(
     (character) =>

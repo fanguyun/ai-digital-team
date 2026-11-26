@@ -868,6 +868,10 @@ export const appendTaskEvent = async (
         include: { _count: { select: { events: true } } },
       })
       if (!current) throw new UserInputError('Task run not found')
+      if (current.mode === 'workflow')
+        throw new UserInputError(
+          '工作流运行由后端编排维护，请使用工作流步骤操作'
+        )
 
       const normalized = asUserInput(() =>
         normalizeTaskEventInput(

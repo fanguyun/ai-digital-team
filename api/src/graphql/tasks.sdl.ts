@@ -41,6 +41,7 @@ export const schema = gql`
   }
 
   type Task {
+    workflow: TaskWorkflow
     id: ID!
     title: String!
     brief: String!
@@ -189,7 +190,7 @@ export const schema = gql`
     updateTaskTemplate(id: ID!, input: UpdateTaskTemplateInput!): TaskTemplate!
       @requireAuth
     deleteTaskTemplate(id: ID!): TaskTemplate! @requireAuth
-    cancelTask(id: ID!): Task! @requireAuth
+    cancelTask(id: ID!, version: Int): Task! @requireAuth
     reviewTask(id: ID!, decision: String!, note: String): Task! @requireAuth
     """
     手动刷新任务状态：进程已退出/日志不动时按日志收尾并推进任务

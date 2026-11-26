@@ -177,6 +177,11 @@ const ACTION_CENTER_OVERVIEW = gql`
       status
       updatedAt
       reviewNote
+      workflow {
+        status
+        currentStep
+        note
+      }
       planPath
       blocker {
         prompt

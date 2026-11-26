@@ -240,7 +240,7 @@ export const parseTaskRunOutput = ({
   const pattern = new RegExp(ARTIFACT_PATTERN.source, 'gim')
 
   for (const match of haystack.matchAll(pattern)) {
-    const value = match[1].trim().replace(/^['"]|['"]$/g, '')
+    const value = match[1].trim().replace(/^['"`]|['"`]$/g, '')
     if (!value || seen.has(value)) continue
     seen.add(value)
     artifacts.push({

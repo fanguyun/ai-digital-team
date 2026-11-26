@@ -34,12 +34,18 @@ jest.mock('src/lib/db', () => {
       updateMany: jest.fn(),
     },
     taskRun: {
+      count: jest.fn(),
       findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
     },
-    taskArtifact: { findMany: jest.fn(), createMany: jest.fn() },
+    taskArtifact: {
+      findMany: jest.fn(),
+      createMany: jest.fn(),
+      create: jest.fn(),
+      updateMany: jest.fn(),
+    },
     taskEvent: { findFirst: jest.fn(), create: jest.fn() },
     $transaction: jest.fn(),
     $queryRaw: jest.fn(),
@@ -47,6 +53,9 @@ jest.mock('src/lib/db', () => {
   db.$transaction.mockImplementation((callback) => callback(db))
   return { db }
 })
+jest.mock('src/lib/taskEnvironment', () => ({
+  checkTaskEnvironment: async () => ({ ready: true, checks: [] }),
+}))
 jest.mock('src/lib/agentDispatch', () => ({
   ...jest.requireActual('src/lib/agentDispatch'),
   spawnTaskAgent: jest.fn(),
@@ -130,9 +139,13 @@ beforeEach(() => {
   )
   database.task.findUnique.mockResolvedValue(row() as never)
   database.task.findUniqueOrThrow.mockResolvedValue(row() as never)
-  database.task.findFirst.mockResolvedValue(null)
+  database.task.findFirst.mockImplementation((({ where }) =>
+    Promise.resolve(
+      where?.status === 'DISPATCHED' ? { id: taskId } : null
+    )) as never)
   database.task.updateMany.mockResolvedValue({ count: 1 })
   database.taskRun.findMany.mockResolvedValue([])
+  database.taskRun.count.mockResolvedValue(0)
   database.taskRun.create.mockResolvedValue({ id: runId } as never)
   database.taskArtifact.findMany.mockResolvedValue([])
   database.taskEvent.findFirst.mockResolvedValue(null)
@@ -200,15 +213,15 @@ describe('approval boundary', () => {
     expect(spawnTaskAgent).not.toHaveBeenCalled()
   })
 
-  it('preserves awaiting approval when the role is busy', async () => {
+  it('queues approved work and revisions when the role is busy', async () => {
     database.taskRun.findMany.mockResolvedValue([{ pid: process.pid }] as never)
-    await expect(
-      executeTaskPlan({ id: taskId, planPath: row().planPath })
-    ).rejects.toThrow('忙碌')
-    await expect(
-      reviseTaskPlan({ id: taskId, note: '缩小范围' })
-    ).rejects.toThrow('忙碌')
-    expect(database.task.updateMany).not.toHaveBeenCalled()
+    await executeTaskPlan({ id: taskId, planPath: row().planPath })
+    await reviseTaskPlan({ id: taskId, note: '缩小范围' })
+    expect(database.task.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'QUEUED' }),
+      })
+    )
     expect(spawnTaskAgent).not.toHaveBeenCalled()
   })
 
@@ -241,13 +254,16 @@ describe('approval boundary', () => {
         pid: null,
       },
     ] as never)
-    await expect(
-      executeTaskPlan({ id: taskId, planPath: row().planPath })
-    ).rejects.toThrow('忙碌')
+    await executeTaskPlan({ id: taskId, planPath: row().planPath })
+    expect(database.task.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'QUEUED' }),
+      })
+    )
     expect(spawnTaskAgent).not.toHaveBeenCalled()
   })
 
-  it('invalidates the previous plan when revision startup fails', async () => {
+  it('preserves the previous plan when revision startup fails before execution', async () => {
     jest.mocked(spawnTaskAgent).mockImplementation(() => {
       throw new Error('sandbox unavailable')
     })
@@ -256,7 +272,10 @@ describe('approval boundary', () => {
     ).rejects.toThrow('sandbox unavailable')
     expect(database.task.updateMany).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: 'FAILED', planPath: null }),
+        data: expect.objectContaining({
+          status: 'AWAITING_APPROVAL',
+          planPath: 'docs/plans/current.md',
+        }),
       })
     )
   })
@@ -373,7 +392,7 @@ describe('plan completion', () => {
           data: expect.objectContaining({ status: 'AWAITING_APPROVAL' }),
         })
       )
-      expect(database.taskArtifact.createMany).toHaveBeenCalledTimes(1)
+      expect(database.taskArtifact.create).toHaveBeenCalledTimes(1)
     }
   )
 

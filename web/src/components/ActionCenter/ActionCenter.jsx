@@ -170,6 +170,7 @@ function ActionCenter({
   const renderInlineActions = (item) => {
     const busy = pending === item.id
     const buttons = []
+    if (item.workflow) return buttons
 
     if (item.type === 'approval') {
       buttons.push(

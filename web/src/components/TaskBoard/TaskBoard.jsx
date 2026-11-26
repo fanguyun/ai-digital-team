@@ -45,6 +45,9 @@ import CodePreview from 'src/components/CodePreview/CodePreview'
 import KnowledgePublisher from 'src/components/KnowledgePublisher/KnowledgePublisher'
 import MarkdownDocument from 'src/components/MarkdownDocument/MarkdownDocument'
 import MarkdownEditor from 'src/components/MarkdownEditor/MarkdownEditor'
+import TaskKnowledge from 'src/components/TaskKnowledge/TaskKnowledge'
+import WorkflowCreator from 'src/components/Workflow/WorkflowCreator'
+import WorkflowPanel from 'src/components/Workflow/WorkflowPanel'
 
 import agentManifest from '../../../../agents/manifest.json'
 
@@ -57,6 +60,12 @@ const TASKS_QUERY = gql`
   ) {
     tasks(status: $status, agentSlug: $agentSlug, from: $from, to: $to) {
       id
+      workflow {
+        id
+        status
+        currentStep
+        version
+      }
       title
       brief
       acceptance
@@ -124,6 +133,46 @@ const TASK_BY_ID = gql`
   query ActionTask($id: ID!) {
     task(id: $id) {
       id
+      workflow {
+        id
+        taskId
+        runId
+        templateKey
+        templateVersion
+        status
+        currentStep
+        version
+        reworkCount
+        note
+        publicationId
+        input
+        steps {
+          id
+          ordinal
+          key
+          name
+          kind
+          agentSlug
+          status
+          attemptCount
+          attempts {
+            id
+            number
+            status
+            sessionId
+            logPath
+            startedAt
+            finishedAt
+            error
+            artifactId
+            contentHash
+            inputTokens
+            outputTokens
+            cachedTokens
+            output
+          }
+        }
+      }
       title
       brief
       acceptance
@@ -228,8 +277,8 @@ const CONFIRM_TASK_CONTINUATION = gql`
 `
 
 const CANCEL_TASK = gql`
-  mutation CancelTask($id: ID!) {
-    cancelTask(id: $id) {
+  mutation CancelTask($id: ID!, $version: Int) {
+    cancelTask(id: $id, version: $version) {
       id
     }
   }
@@ -570,6 +619,7 @@ const TaskBoard = ({
 
   const [form] = Form.useForm()
   const [modalOpen, setModalOpen] = useState(false)
+  const [taskKind, setTaskKind] = useState('normal')
   const [editing, setEditing] = useState(null)
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState(null)
@@ -956,7 +1006,12 @@ const TaskBoard = ({
   const cancel = async (task) => {
     setNotice(null)
     try {
-      await cancelTask({ variables: { id: task.id } })
+      await cancelTask({
+        variables: {
+          id: task.id,
+          ...(task.workflow ? { version: task.workflow.version } : {}),
+        },
+      })
       await refreshTasks()
     } catch (cancelError) {
       setNotice({ type: 'error', message: cancelError.message })
@@ -1166,7 +1221,8 @@ const TaskBoard = ({
                       className="task-card-actions"
                       onClick={(event) => event.stopPropagation()}
                     >
-                      {!task.confirmation &&
+                      {!task.workflow &&
+                        !task.confirmation &&
                         !task.blocker &&
                         ['DRAFT', 'FAILED', 'AWAITING_REVIEW', 'DONE'].includes(
                           task.status
@@ -1184,32 +1240,34 @@ const TaskBoard = ({
                                 : '重新派发'}
                           </Button>
                         )}
-                      {['DISPATCHED', 'RUNNING', 'QUEUED'].includes(
-                        task.status
-                      ) && (
-                        <Button
-                          size="small"
-                          icon={<RotateCcw size={13} />}
-                          loading={refreshingState}
-                          onClick={() => refreshState(task)}
-                        >
-                          刷新状态
-                        </Button>
-                      )}
-                      {['DISPATCHED', 'RUNNING', 'QUEUED'].includes(
-                        task.status
-                      ) && (
-                        <Popconfirm
-                          title="取消这个任务？"
-                          okText="取消"
-                          cancelText="返回"
-                          onConfirm={() => cancel(task)}
-                        >
-                          <Button size="small" danger icon={<X size={13} />}>
-                            取消
+                      {!task.workflow &&
+                        ['DISPATCHED', 'RUNNING', 'QUEUED'].includes(
+                          task.status
+                        ) && (
+                          <Button
+                            size="small"
+                            icon={<RotateCcw size={13} />}
+                            loading={refreshingState}
+                            onClick={() => refreshState(task)}
+                          >
+                            刷新状态
                           </Button>
-                        </Popconfirm>
-                      )}
+                        )}
+                      {!task.workflow &&
+                        ['DISPATCHED', 'RUNNING', 'QUEUED'].includes(
+                          task.status
+                        ) && (
+                          <Popconfirm
+                            title="取消这个任务？"
+                            okText="取消"
+                            cancelText="返回"
+                            onConfirm={() => cancel(task)}
+                          >
+                            <Button size="small" danger icon={<X size={13} />}>
+                              取消
+                            </Button>
+                          </Popconfirm>
+                        )}
                       {task.status === 'AWAITING_APPROVAL' && (
                         <Button
                           size="small"
@@ -1222,7 +1280,7 @@ const TaskBoard = ({
                           审阅方案
                         </Button>
                       )}
-                      {task.confirmation && (
+                      {!task.workflow && task.confirmation && (
                         <Button
                           size="small"
                           type="primary"
@@ -1246,7 +1304,8 @@ const TaskBoard = ({
                           检查执行环境
                         </Button>
                       )}
-                      {!task.confirmation &&
+                      {!task.workflow &&
+                        !task.confirmation &&
                         !task.blocker &&
                         task.status === 'AWAITING_REVIEW' && (
                           <Button
@@ -1318,141 +1377,176 @@ const TaskBoard = ({
         onClose={() => setModalOpen(false)}
         destroyOnHidden
         footer={
-          <Flex justify="flex-end" gap={8}>
-            <Button onClick={() => setModalOpen(false)}>取消</Button>
-            <Button
-              type="primary"
-              loading={saving}
-              onClick={() => void submit()}
-            >
-              保存
-            </Button>
-          </Flex>
+          taskKind === 'workflow' && !editing ? null : (
+            <Flex justify="flex-end" gap={8}>
+              <Button onClick={() => setModalOpen(false)}>取消</Button>
+              <Button
+                type="primary"
+                loading={saving}
+                onClick={() => void submit()}
+              >
+                保存
+              </Button>
+            </Flex>
+          )
         }
       >
-        <div className="task-template-bar">
-          <Select
-            allowClear
-            placeholder="从模板开始"
-            style={{ minWidth: 200 }}
-            value={selectedTemplateId}
-            options={templates.map((item) => ({
-              label: item.name,
-              value: item.id,
-            }))}
-            onChange={(value) => {
-              setSelectedTemplateId(value || null)
-              if (value) applyTemplate(value)
+        {!editing && (
+          <Segmented
+            aria-label="任务类型"
+            value={taskKind}
+            onChange={setTaskKind}
+            options={[
+              { value: 'normal', label: '普通任务' },
+              { value: 'workflow', label: '工作流任务' },
+            ]}
+          />
+        )}
+        {taskKind === 'workflow' && !editing ? (
+          <WorkflowCreator
+            onCreated={async (id, message) => {
+              setModalOpen(false)
+              setOpenId(id)
+              setNotice({ type: 'success', message })
+              await refreshTasks()
             }}
           />
-          <Button onClick={() => setTemplateModalOpen(true)}>另存为模板</Button>
-          <Button
-            disabled={!selectedTemplateId}
-            onClick={() => void overwriteTemplate()}
-          >
-            覆盖所选模板
-          </Button>
-          <Button type="link" onClick={() => setManageOpen(true)}>
-            管理
-          </Button>
-        </div>
+        ) : (
+          <>
+            <div className="task-template-bar">
+              <Select
+                allowClear
+                placeholder="从模板开始"
+                style={{ minWidth: 200 }}
+                value={selectedTemplateId}
+                options={templates.map((item) => ({
+                  label: item.name,
+                  value: item.id,
+                }))}
+                onChange={(value) => {
+                  setSelectedTemplateId(value || null)
+                  if (value) applyTemplate(value)
+                }}
+              />
+              <Button onClick={() => setTemplateModalOpen(true)}>
+                另存为模板
+              </Button>
+              <Button
+                disabled={!selectedTemplateId}
+                onClick={() => void overwriteTemplate()}
+              >
+                覆盖所选模板
+              </Button>
+              <Button type="link" onClick={() => setManageOpen(true)}>
+                管理
+              </Button>
+            </div>
 
-        <Form form={form} layout="vertical">
-          <Form.Item
-            name="title"
-            label="标题"
-            rules={[{ required: true, message: '请填写标题' }, { max: 120 }]}
-          >
-            <Input
-              placeholder="例如：重构登录页并补齐空状态"
-              autoComplete="off"
-            />
-          </Form.Item>
-          <Form.Item
-            name="brief"
-            label="需求"
-            rules={[
-              { required: true, message: '请写清楚要做什么' },
-              { max: 4000 },
-            ]}
-          >
-            <MarkdownEditor
-              minRows={4}
-              maxRows={10}
-              placeholder="背景、要做什么、不要做什么（支持 Markdown）"
-            />
-          </Form.Item>
-          <Form.Item name="acceptance" label="验收标准" rules={[{ max: 2000 }]}>
-            <MarkdownEditor
-              minRows={2}
-              maxRows={6}
-              placeholder="怎样算做完：可验证的检查项（支持 Markdown）"
-            />
-          </Form.Item>
-          <Flex gap={12} align="flex-start">
-            <Form.Item
-              name="agentSlug"
-              label="执行岗位"
-              style={{ flex: 1, minWidth: 0 }}
-            >
-              <Select
-                options={agentOptions}
-                showSearch
-                optionFilterProp="label"
-              />
-            </Form.Item>
-            <Form.Item
-              name="priority"
-              label="优先级"
-              style={{ flex: 1, minWidth: 0 }}
-            >
-              <Select
-                options={[
-                  { label: 'P0', value: 'P0' },
-                  { label: 'P1', value: 'P1' },
-                  { label: 'P2', value: 'P2' },
+            <Form form={form} layout="vertical">
+              <Form.Item
+                name="title"
+                label="标题"
+                rules={[
+                  { required: true, message: '请填写标题' },
+                  { max: 120 },
                 ]}
-              />
-            </Form.Item>
-            <Form.Item
-              name="mode"
-              label="工作方式"
-              style={{ flex: 1, minWidth: 0 }}
-            >
-              <Select
-                options={[
-                  { label: '默认（直接执行）', value: 'auto' },
-                  { label: '计划（先出方案）', value: 'plan' },
+              >
+                <Input
+                  placeholder="例如：重构登录页并补齐空状态"
+                  autoComplete="off"
+                />
+              </Form.Item>
+              <Form.Item
+                name="brief"
+                label="需求"
+                rules={[
+                  { required: true, message: '请写清楚要做什么' },
+                  { max: 4000 },
                 ]}
-              />
-            </Form.Item>
-            <Form.Item
-              name="readOnly"
-              label="只读任务"
-              style={{ flex: 1, minWidth: 0 }}
-            >
-              <Select
-                options={[
-                  { label: '可改代码', value: false },
-                  { label: '只读', value: true },
-                ]}
-              />
-            </Form.Item>
-            <Form.Item
-              name="useKnowledge"
-              label="外部知识库"
-              style={{ flex: 1, minWidth: 0 }}
-              extra="开启且可用时带知识片段；未配置或不可用时自动忽略"
-            >
-              <Select
-                options={[
-                  { label: '使用', value: true },
-                  { label: '不使用', value: false },
-                ]}
-              />
-            </Form.Item>
-          </Flex>
-        </Form>
+              >
+                <MarkdownEditor
+                  minRows={4}
+                  maxRows={10}
+                  placeholder="背景、要做什么、不要做什么（支持 Markdown）"
+                />
+              </Form.Item>
+              <Form.Item
+                name="acceptance"
+                label="验收标准"
+                rules={[{ max: 2000 }]}
+              >
+                <MarkdownEditor
+                  minRows={2}
+                  maxRows={6}
+                  placeholder="怎样算做完：可验证的检查项（支持 Markdown）"
+                />
+              </Form.Item>
+              <Flex gap={12} align="flex-start">
+                <Form.Item
+                  name="agentSlug"
+                  label="执行岗位"
+                  style={{ flex: 1, minWidth: 0 }}
+                >
+                  <Select
+                    options={agentOptions}
+                    showSearch
+                    optionFilterProp="label"
+                  />
+                </Form.Item>
+                <Form.Item
+                  name="priority"
+                  label="优先级"
+                  style={{ flex: 1, minWidth: 0 }}
+                >
+                  <Select
+                    options={[
+                      { label: 'P0', value: 'P0' },
+                      { label: 'P1', value: 'P1' },
+                      { label: 'P2', value: 'P2' },
+                    ]}
+                  />
+                </Form.Item>
+                <Form.Item
+                  name="mode"
+                  label="工作方式"
+                  style={{ flex: 1, minWidth: 0 }}
+                >
+                  <Select
+                    options={[
+                      { label: '默认（直接执行）', value: 'auto' },
+                      { label: '计划（先出方案）', value: 'plan' },
+                    ]}
+                  />
+                </Form.Item>
+                <Form.Item
+                  name="readOnly"
+                  label="只读任务"
+                  style={{ flex: 1, minWidth: 0 }}
+                >
+                  <Select
+                    options={[
+                      { label: '可改代码', value: false },
+                      { label: '只读', value: true },
+                    ]}
+                  />
+                </Form.Item>
+                <Form.Item
+                  name="useKnowledge"
+                  label="外部知识库"
+                  style={{ flex: 1, minWidth: 0 }}
+                  extra="开启且可用时带知识片段；未配置或不可用时自动忽略"
+                >
+                  <Select
+                    options={[
+                      { label: '使用', value: true },
+                      { label: '不使用', value: false },
+                    ]}
+                  />
+                </Form.Item>
+              </Flex>
+            </Form>
+          </>
+        )}
       </Drawer>
 
       <Modal
@@ -1688,13 +1782,24 @@ const TaskDetail = ({
         ]}
       />
 
-      <TaskEnvironmentPanel
-        task={task}
-        onChanged={onChanged}
-        setNotice={setNotice}
-      />
+      {task.workflow && <WorkflowPanel task={task} onChanged={onChanged} />}
+      {!task.workflow && (
+        <TaskEnvironmentPanel
+          task={task}
+          onChanged={onChanged}
+          setNotice={setNotice}
+        />
+      )}
 
-      {task.confirmation && (
+      {!task.workflow && (task.blocker || tab === 'artifacts') && (
+        <KnowledgePublisher
+          key={task.id}
+          taskId={task.id}
+          artifacts={task.artifacts}
+        />
+      )}
+
+      {!task.workflow && task.confirmation && (
         <TaskConfirmation
           task={task}
           onChanged={onChanged}
@@ -1833,6 +1938,7 @@ const TaskDetail = ({
                   </li>
                 ))}
               </ol>
+              <TaskKnowledge taskId={task.id} runId={run.id} />
             </div>
           ))}
         </div>
@@ -1840,11 +1946,6 @@ const TaskDetail = ({
 
       {tab === 'artifacts' && (
         <div className="task-artifacts">
-          <KnowledgePublisher
-            key={task.id}
-            taskId={task.id}
-            artifacts={task.artifacts}
-          />
           <p>所属项目：{task.runs[0]?.projectName || '未归属项目'}</p>
           {task.runs[0]?.continuationStatus && (
             <p className="task-board-hint">{task.runs[0].continuationStatus}</p>
@@ -1904,31 +2005,37 @@ const TaskDetail = ({
       )}
 
       <div className="task-detail-actions">
-        {['DRAFT', 'CANCELLED'].includes(task.status) && (
+        {!task.workflow && ['DRAFT', 'CANCELLED'].includes(task.status) && (
           <Button type="primary" icon={<Play size={14} />} onClick={onDispatch}>
             派发执行
           </Button>
         )}
-        {[
-          'DISPATCHED',
-          'RUNNING',
-          'QUEUED',
-          'WAITING_CONFIRMATION',
-          'ENVIRONMENT_BLOCKED',
-        ].includes(task.status) && (
+        {(task.workflow
+          ? !['COMPLETED', 'CANCELLED'].includes(task.workflow.status)
+          : [
+              'DISPATCHED',
+              'RUNNING',
+              'QUEUED',
+              'WAITING_CONFIRMATION',
+              'ENVIRONMENT_BLOCKED',
+            ].includes(task.status)) && (
           <Button danger icon={<X size={14} />} onClick={onCancel}>
             取消
           </Button>
         )}
         <Button
           onClick={onEdit}
-          disabled={['DISPATCHED', 'RUNNING', 'QUEUED'].includes(task.status)}
+          disabled={
+            Boolean(task.workflow) ||
+            ['DISPATCHED', 'RUNNING', 'QUEUED'].includes(task.status)
+          }
         >
           编辑
         </Button>
       </div>
 
-      {!task.confirmation &&
+      {!task.workflow &&
+        !task.confirmation &&
         !task.blocker &&
         ['AWAITING_REVIEW', 'FAILED', 'DONE'].includes(task.status) && (
           <div className="task-redispatch">
@@ -1966,7 +2073,8 @@ const TaskDetail = ({
           </div>
         )}
 
-      {!task.confirmation &&
+      {!task.workflow &&
+        !task.confirmation &&
         !task.blocker &&
         task.status === 'AWAITING_REVIEW' && (
           <div className="task-review">

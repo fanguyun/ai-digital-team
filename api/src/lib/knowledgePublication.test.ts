@@ -11,6 +11,10 @@ import {
   siyuanPublicationClient,
 } from 'src/lib/siyuanPublication'
 import {
+  syncWorkflowPublication,
+  beginWorkflowPublication,
+} from 'src/lib/workflowRuntime'
+import {
   knowledgePublications,
   prepareKnowledgePublication,
   publishKnowledgePublication,
@@ -18,8 +22,15 @@ import {
   knowledgePublicationTargets,
 } from 'src/services/knowledgePublications/knowledgePublications'
 
+jest.mock('src/lib/workflowRuntime', () => ({
+  assertWorkflowPublication: jest.fn(),
+  beginWorkflowPublication: jest.fn(),
+  syncWorkflowPublication: jest.fn(),
+}))
+
 jest.mock('src/lib/db', () => ({
   db: {
+    $transaction: jest.fn(),
     task: { findUnique: jest.fn() },
     taskArtifact: { findUnique: jest.fn() },
     knowledgePublication: {
@@ -42,6 +53,7 @@ jest.mock('src/lib/siyuanPublication', () => ({
 }))
 
 const database = db as unknown as {
+  $transaction: jest.Mock
   knowledgePublication: Record<string, jest.Mock>
   task: Record<string, jest.Mock>
   taskArtifact: Record<string, jest.Mock>
@@ -64,6 +76,9 @@ let row
 let client
 beforeEach(() => {
   jest.clearAllMocks()
+  database.$transaction.mockImplementation((fn) => fn(database))
+  jest.mocked(syncWorkflowPublication).mockResolvedValue(undefined)
+  jest.mocked(beginWorkflowPublication).mockResolvedValue(undefined)
   jest.mocked(resolveRepoRoot).mockReturnValue(process.cwd())
   row = {
     id: 'publication-id',
@@ -334,6 +349,76 @@ it('keeps the receipt uncertain when formatting comparison is unavailable', asyn
   expect(KnowledgePublication.documentUrl({}, { root: result })).toBeNull()
 })
 
+it('verifies SiYuan formatting despite generated block metadata and configured paragraph indentation', async () => {
+  row.markdown = '正文 **重点** 和 `code`\n\n- 项目'
+  row.contentHash = publicationHash(row.markdown)
+  client.read.mockResolvedValue({
+    documentPath: row.documentPath,
+    markdown: '　　正文 **重点**  和 ​`code`\n\n* 项目',
+  })
+  client.render
+    .mockResolvedValueOnce(
+      '<p id="20261124114311-aaaaaaa" updated="20261124114311">正文 <strong>重点</strong> 和 <code>code</code></p>\n<ul id="20261124114311-bbbbbbb" updated="20261124114311"><li id="20261124114311-ccccccc" updated="20261124114311">项目</li></ul>'
+    )
+    .mockResolvedValueOnce(
+      '<p id="20261124114312-ddddddd" updated="20261124114312">　　正文 <strong>重点</strong>  和 ​<code>code</code></p>\n<ul id="20261124114312-eeeeeee" updated="20261124114312"><li id="20261124114312-fffffff" updated="20261124114312">项目</li></ul>'
+    )
+  const result = await publishKnowledgePublication(
+    { id: row.id, contentHash: row.contentHash },
+    session
+  )
+  expect(result.status).toBe('VERIFIED')
+  expect(KnowledgePublication.documentUrl({}, { root: result })).toBe(
+    `siyuan://blocks/${documentId}`
+  )
+})
+
+it.each([
+  [
+    'code spaces',
+    '<pre><code>  x  y\n</code></pre>',
+    '<pre><code>x y\n</code></pre>',
+  ],
+  [
+    'code metadata literal',
+    '<code> id="20261124114311-aaaaaaa"</code>',
+    '<code> id="20261124114312-bbbbbbb"</code>',
+  ],
+  ['hard breaks', '<p>正文<br />下一行</p>', '<p>正文 下一行</p>'],
+  ['link targets', '<a href="/one">链接</a>', '<a href="/two">链接</a>'],
+  [
+    'quoted attributes',
+    '<a title=\' id="20261124114311-aaaaaaa"\'>链接</a>',
+    '<a title=\' id="20261124114312-bbbbbbb"\'>链接</a>',
+  ],
+  ['body text', '<p>同意</p>', '<p>不同意</p>'],
+  [
+    'spacing after inline code',
+    '<p><code>x</code>　　正文</p>',
+    '<p><code>x</code>正文</p>',
+  ],
+  [
+    'spacing in a heading after an empty paragraph',
+    '<p></p><h1>　　标题</h1>',
+    '<p></p><h1>标题</h1>',
+  ],
+])(
+  'keeps changed %s uncertain during formatting comparison',
+  async (_name, expected, actual) => {
+    client.read.mockResolvedValue({
+      documentPath: row.documentPath,
+      markdown: '已改变',
+    })
+    client.render.mockResolvedValueOnce(expected).mockResolvedValueOnce(actual)
+    const result = await publishKnowledgePublication(
+      { id: row.id, contentHash: row.contentHash },
+      session
+    )
+    expect(result.status).toBe('UNCERTAIN')
+    expect(KnowledgePublication.documentUrl({}, { root: result })).toBeNull()
+  }
+)
+
 it('rechecks notebook ownership for persisted document IDs before marking a receipt verified', async () => {
   row.documentId = documentId
   row.status = 'UNCERTAIN'
@@ -497,4 +582,21 @@ it('does not recreate an uncertain missing document and does not overwrite diffe
   expect(conflict.status).toBe('UNCERTAIN')
   expect(conflict.error).toContain('不一致')
   expect(client.create).not.toHaveBeenCalled()
+})
+
+it('keeps VERIFIED after successful readback if workflow synchronization is temporarily unavailable', async () => {
+  jest
+    .mocked(syncWorkflowPublication)
+    .mockRejectedValueOnce(new Error('temporary sync failure'))
+  const result = await publishKnowledgePublication(
+    { id: row.id, contentHash: row.contentHash },
+    session
+  )
+  expect(result.status).toBe('VERIFIED')
+  expect(client.create).toHaveBeenCalledTimes(1)
+  expect(database.knowledgePublication.update).not.toHaveBeenCalledWith(
+    expect.objectContaining({
+      data: expect.objectContaining({ status: 'UNCERTAIN' }),
+    })
+  )
 })

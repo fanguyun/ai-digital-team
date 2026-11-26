@@ -68,6 +68,7 @@ model TaskRun {
   projectName       String?       @db.VarChar(120)
   deliveredArtifacts TaskArtifact[] @relation("ArtifactLastRun")
   task              Task?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  workflow          TaskWorkflow?
 
   @@index([taskId, startedAt(sort: Desc)])
   @@index([status, updatedAt(sort: Desc)])
@@ -200,6 +201,7 @@ model Task {
   runs        TaskRun[]
   artifacts   TaskArtifact[]
   pendingDispatch Json?
+  workflow    TaskWorkflow?
 
   @@index([status, updatedAt(sort: Desc)])
   @@index([agentSlug, updatedAt(sort: Desc)])
@@ -271,4 +273,70 @@ model TaskTemplate {
 
   @@unique([name])
   @@index([createdAt])
+}
+
+/// 固定模板的任务实例；旧任务不转换，一个实例只有一个顶层运行。
+model TaskWorkflow {
+  id            String   @id @default(uuid()) @db.Uuid
+  taskId        String   @unique @db.Uuid
+  runId         String?  @unique @db.Uuid
+  templateKey   String   @db.VarChar(80)
+  templateVersion Int    @default(1)
+  definition    Json
+  input         Json
+  status        String   @default("DRAFT") @db.VarChar(32)
+  currentStep   Int      @default(0)
+  version       Int      @default(1)
+  reworkCount   Int      @default(0)
+  tool          String   @default("codex") @db.VarChar(40)
+  note          String?  @db.VarChar(2000)
+  publicationId String?  @db.Uuid
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+  task          Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  run           TaskRun? @relation(fields: [runId], references: [id], onDelete: Restrict)
+  steps         WorkflowStep[]
+
+  @@index([status, updatedAt])
+}
+
+model WorkflowStep {
+  id           String   @id @default(uuid()) @db.Uuid
+  workflowId   String   @db.Uuid
+  ordinal      Int
+  key          String   @db.VarChar(60)
+  name         String   @db.VarChar(100)
+  kind         String   @db.VarChar(16)
+  agentSlug    String   @db.VarChar(120)
+  status       String   @default("PENDING") @db.VarChar(32)
+  attemptCount Int      @default(0)
+  workflow     TaskWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  attempts     WorkflowAttempt[]
+
+  @@unique([workflowId, ordinal])
+}
+
+model WorkflowAttempt {
+  id           String   @id @default(uuid()) @db.Uuid
+  stepId       String   @db.Uuid
+  number       Int
+  status       String   @default("QUEUED") @db.VarChar(32)
+  pid          Int?
+  logPath      String?  @db.VarChar(500)
+  sessionId    String?  @db.VarChar(200)
+  input        Json
+  output       Json?
+  artifactId   String?  @db.Uuid
+  contentHash  String?  @db.VarChar(64)
+  error        String?  @db.VarChar(2000)
+  inputTokens  Int?
+  outputTokens Int?
+  cachedTokens Int?
+  startedAt    DateTime @default(now()) @db.Timestamptz(3)
+  finishedAt   DateTime? @db.Timestamptz(3)
+  step         WorkflowStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  @@unique([stepId, number])
+  @@index([sessionId])
+  @@index([status, startedAt])
 }

@@ -22,6 +22,10 @@ jest.mock('src/components/MarkdownEditor/MarkdownEditor', () => ({
     />
   ),
 }))
+jest.mock('src/components/Workflow/WorkflowPanel', () => ({
+  __esModule: true,
+  default: () => <div>专用工作流步骤</div>,
+}))
 
 const initialSelectedTask = {
   id: 'filtered-out',
@@ -96,6 +100,48 @@ const openTask = () =>
       onOpenRequestHandled={jest.fn()}
     />
   )
+
+it('工作流失败时展示步骤操作，隐藏普通派发和验收；取消携带当前版本', async () => {
+  selectedTask = {
+    ...initialSelectedTask,
+    status: 'FAILED',
+    workflow: { status: 'FAILED', version: 8 },
+  }
+  openTask()
+  expect(await screen.findByText('专用工作流步骤')).toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: '确认重新派发' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: '通过验收' })
+  ).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '取消' }))
+  await waitFor(() =>
+    expect(mutations.CancelTask).toHaveBeenCalledWith({
+      variables: { id: selectedTask.id, version: 8 },
+    })
+  )
+})
+
+it('offers backend publication for an existing document despite a sandbox environment blocker', async () => {
+  selectedTask = {
+    ...selectedTask,
+    status: 'ENVIRONMENT_BLOCKED',
+    blocker: { prompt: '沙箱访问127.0.0.1:8901返回EPERM' },
+    artifacts: [
+      {
+        id: 'doc-1',
+        kind: 'report',
+        path: 'docs/report.md',
+        label: 'report.md',
+      },
+    ],
+  }
+  openTask()
+  expect(await screen.findByText('环境阻塞，等待修复')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '将文档写入知识库' })).toBeEnabled()
+  expect(mutations.RetryTaskEnvironment).not.toHaveBeenCalled()
+})
 
 it('shows the environment blocker and remedy while disabling retry until checks pass', async () => {
   selectedTask = {

@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "markdown", "sources", "webStatus", "verdict", "retryFrom"],
+  "properties": {
+    "status": { "type": "string", "enum": ["OK", "WAITING", "BLOCKED"] },
+    "markdown": { "type": "string" },
+    "sources": {
+      "type": ["array", "null"],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "url", "title", "date", "accessedAt", "excerpt", "supports", "type"],
+        "properties": {
+          "id": { "type": "string" },
+          "url": { "type": "string" },
+          "title": { "type": "string" },
+          "date": { "type": "string" },
+          "accessedAt": { "type": "string" },
+          "excerpt": { "type": "string" },
+          "supports": { "type": "string" },
+          "type": { "type": "string", "enum": ["fact", "opinion", "inference"] }
+        }
+      }
+    },
+    "webStatus": { "type": ["string", "null"], "enum": ["ok", "empty", "unavailable", null] },
+    "verdict": { "type": ["string", "null"], "enum": ["PASS", "REWORK", null] },
+    "retryFrom": { "type": ["string", "null"], "enum": ["research", "draft", null] }
+  }
+}

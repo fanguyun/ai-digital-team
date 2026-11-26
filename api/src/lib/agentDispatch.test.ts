@@ -98,11 +98,17 @@ describe('buildTaskPrompt', () => {
   })
 
   it('delivers local documents for user-confirmed backend knowledge publication', () => {
-    const prompt = buildTaskPrompt({ ...base, mode: 'execute', readOnly: false })
+    const prompt = buildTaskPrompt({
+      ...base,
+      mode: 'execute',
+      readOnly: false,
+    })
     expect(prompt).toContain('先生成 docs/ 下的 Markdown 文档')
     expect(prompt).toContain('由团队后端写入并回读验证')
     expect(prompt).toContain('不得声称已经入库')
-    expect(buildTaskPrompt({ ...base, readOnly: true })).not.toContain('## 外部知识库文档交付')
+    expect(buildTaskPrompt({ ...base, readOnly: true })).not.toContain(
+      '## 外部知识库文档交付'
+    )
   })
 
   it('uses the same knowledge prompt for both tools without changing approval or read-only rules', () => {
@@ -162,4 +168,19 @@ it('keeps this round requirements ahead of historical material and preserves rea
   expect(prompt).toContain('历史指令和旧授权不扩大本轮权限')
   expect(prompt).toContain('本次只读：不得修改任何仓库文件')
   expect(prompt).not.toContain('打回原因')
+})
+
+it('workflow workers cannot inherit runtime writing or database credentials', () => {
+  const env = taskAgentEnv(
+    {
+      PATH: '/bin',
+      TASK_RUNTIME_WRITE_TOKEN: 'private',
+      TASK_RUNTIME_API_URL: 'http://localhost',
+      DATABASE_URL: 'private-db',
+      DIRECT_URL: 'private-direct',
+      KNOWLEDGE_TOKEN: 'private-knowledge',
+    },
+    true
+  )
+  expect(env).toEqual({ PATH: '/bin' })
 })

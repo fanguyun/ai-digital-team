@@ -58,8 +58,8 @@ const textOf = (value: unknown): string => {
   return ''
 }
 
-const clip = (text: string) =>
-  text.length > MESSAGE_MAX ? `${text.slice(0, MESSAGE_MAX)}…` : text
+const clip = (text: string, max = MESSAGE_MAX) =>
+  text.length > max ? `${text.slice(0, max)}…` : text
 
 const parseJson = (line: string): Record<string, unknown> | null => {
   const trimmed = line.trim()
@@ -235,7 +235,10 @@ export const discoverSession = async ({
     ? discoverCodexSession({ projectRoot, since })
     : discoverDshSession({ projectRoot, since })
 
-const readCodexThread = async (filePath: string): Promise<ThreadMessage[]> => {
+const readCodexThread = async (
+  filePath: string,
+  messageChars: number
+): Promise<ThreadMessage[]> => {
   const stream = createReadStream(filePath, { encoding: 'utf8' })
   const reader = createInterface({ input: stream, crlfDelay: Infinity })
   const messages: ThreadMessage[] = []
@@ -247,7 +250,7 @@ const readCodexThread = async (filePath: string): Promise<ThreadMessage[]> => {
       if (payload.type !== 'message') continue
       const role = payload.role
       if (role !== 'user' && role !== 'assistant') continue
-      const text = clip(textOf(payload.content).trim())
+      const text = clip(textOf(payload.content).trim(), messageChars)
       if (!text) continue
       const timestamp =
         typeof record.timestamp === 'string'
@@ -273,7 +276,10 @@ const recordTime = (record: Record<string, unknown>) => {
   return new Date()
 }
 
-const readDshThread = async (filePath: string): Promise<ThreadMessage[]> => {
+const readDshThread = async (
+  filePath: string,
+  messageChars: number
+): Promise<ThreadMessage[]> => {
   let raw: string
   try {
     raw = await readZstdText(filePath)
@@ -294,7 +300,7 @@ const readDshThread = async (filePath: string): Promise<ThreadMessage[]> => {
         ? ((data.message as { content?: unknown } | undefined)?.content ??
           data.content)
         : data.content
-    const text = clip(textOf(content).trim())
+    const text = clip(textOf(content).trim(), messageChars)
     if (!text) continue
     const stamp = recordTime(record)
     messages.push({
@@ -312,11 +318,13 @@ export const readThreadMessages = async ({
   sessionId,
   projectRoot,
   filePath,
+  messageChars = MESSAGE_MAX,
 }: {
   tool: RoleEvaluationToolId
   sessionId: string
   projectRoot: string
   filePath?: string
+  messageChars?: number
 }): Promise<ThreadMessage[]> => {
   let resolved = filePath
 
@@ -333,10 +341,13 @@ export const readThreadMessages = async ({
   }
   if (!resolved) return []
 
+  const max = Number.isFinite(messageChars)
+    ? Math.max(1, Math.min(60_000, Math.floor(messageChars)))
+    : MESSAGE_MAX
   const messages =
     tool === 'codex'
-      ? await readCodexThread(resolved)
-      : await readDshThread(resolved)
+      ? await readCodexThread(resolved, max)
+      : await readDshThread(resolved, max)
   return messages.slice(-THREAD_LIMIT)
 }
 
